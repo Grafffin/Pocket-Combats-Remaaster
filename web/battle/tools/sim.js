@@ -1,12 +1,15 @@
 // Проверка баланса: node web/battle/tools/sim.js [боёв] [--career] [--log]
 // По умолчанию — таблица: персонаж каждого класса на уровне монстра (и на 1 выше) с типичной экипировкой.
 // --no-potions — без зелий, чтобы видеть «чистый» баланс.
-// --career — «прохождение»: новый персонаж бьёт подходящих монстров, сам надевает лут и раскидывает очки.
+// --career — «прохождение»: новый персонаж бьёт подходящих монстров, надевает лут, продаёт остальное,
+//   докупает зелья на вырученное и раскидывает очки.
 // Игрок-бот играет «жадно»: самый дорогой доступный приём, зелье при HP < 35%.
 const PC = require('../js/engine.js');
 require('../js/data.js');
 require('../js/progression.js');
-const { data, Battle, progression: P, makeRng } = PC;
+require('../js/world-data.js');
+require('../js/economy.js');
+const { data, Battle, progression: P, economy: E, makeRng } = PC;
 
 const N = Number(process.argv[2]) || 1000;
 const career = process.argv.includes('--career');
@@ -91,16 +94,22 @@ if (!career) {
   const rng = makeRng(42);
   const rows = [];
   for (const job of Object.keys(data.jobs)) {
-    let totalBattles = 0, totalLosses = 0, totalItems = 0;
+    let totalBattles = 0, totalLosses = 0, totalItems = 0, totalGold = 0, totalPotions = 0;
     const runs = Math.max(1, Math.floor(N / 50));
     for (let run = 0; run < runs; run++) {
       const c = P.newCharacter(data, { nick: 'Тест', gender: 'm', job });
-      let battles = 0;
+      let battles = 0, streak = 0, stepDown = 0;
       while (c.level < 8 && battles < 2000) {
-        const pool = Object.entries(data.monsters).filter(([, m]) => m.ai !== 'idle' && !m.boss && m.level <= c.level);
-        const [monId] = pool.sort((a, b) => b[1].level - a[1].level)[0];
+        // Самый сильный монстр не выше своего уровня; после двух поражений подряд — пару боёв с кем полегче
+        const pool = Object.entries(data.monsters).filter(([, m]) => m.ai !== 'idle' && !m.boss && m.level <= c.level)
+          .sort((a, b) => b[1].level - a[1].level);
+        const [monId] = pool[Math.min(stepDown > 0 ? 1 : 0, pool.length - 1)];
+        if (stepDown > 0) stepDown--;
         const b = fight(c, monId, rng.int(1, 1e9));
         const res = P.applyBattleResult(data, c, b, monId, rng);
+        c.location = data.HOME; // в симуляции не ходим по карте
+        streak = res.win ? 0 : streak + 1;
+        if (streak >= 2) { stepDown = 3; streak = 0; }
         battles++;
         totalItems += res.loot.filter((d) => d.kind === 'item').length;
         // Надеваем всё, что новее по уровню, остальное выбрасываем
@@ -109,17 +118,37 @@ if (!career) {
           const cur = c.equipment[p.slot];
           if (P.canEquip(data, c, it).ok && (!cur || data.items[cur.id].level < p.level)) P.equip(data, c, it.uid);
         }
-        c.backpack = [];
-        c.potions.hp_potion = Math.max(c.potions.hp_potion, 2); // как будто докупил зелья
+        for (const it of [...c.backpack]) E.sell(data, c, it.uid);
+        // Покупаем в лавке вещи посильнее надетых, затачиваем оружие до безопасного +4 — с запасом золота на зелья
+        for (const id of data.npcs.shop.stock) {
+          const it = data.items[id];
+          if (!it || !P.canEquip(data, c, { id }).ok) continue;
+          const cur = c.equipment[it.slot];
+          if (cur && data.items[cur.id].level >= it.level) continue;
+          if (c.gold < E.priceOf(data, id) + 40) continue;
+          E.buy(data, c, id);
+          P.equip(data, c, c.backpack[c.backpack.length - 1].uid);
+          for (const old of [...c.backpack]) E.sell(data, c, old.uid);
+        }
+        const w = c.equipment.weapon;
+        if (w) {
+          const info = E.refineInfo(data, w);
+          if (!info.maxed && !info.risky && c.gold >= info.cost + 40) E.refine(data, c, w.uid, rng);
+        }
+        // Докупаем зелья здоровья до трёх, если хватает золота
+        while (c.potions.hp_potion < 3 && E.buy(data, c, 'hp_potion').ok) totalPotions++;
         autoAllocate(c);
       }
       totalBattles += battles;
       totalLosses += c.losses;
+      totalGold += c.gold;
     }
     rows.push({
       job, 'боёв до 8 ур.': (totalBattles / runs).toFixed(0),
       'поражений': `${Math.round(totalLosses / totalBattles * 100)}%`,
       'вещей выпало': (totalItems / runs).toFixed(1),
+      'зелий куплено': (totalPotions / runs).toFixed(0),
+      'золота на 8 ур.': (totalGold / runs).toFixed(0),
     });
   }
   console.table(rows);

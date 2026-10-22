@@ -9,6 +9,7 @@
   const MAX_LEVEL = 20;
   const BACKPACK_SIZE = 30;
   const FISTS = { name: 'Кулаки', type: 'melee', min: 1, max: 2 };
+  const CHAR_VERSION = 2;
 
   const expToNext = (level) => Math.floor(25 * Math.pow(level, 1.5));
 
@@ -23,22 +24,47 @@
   function newCharacter(data, { nick, gender, job }) {
     const j = data.jobs[job];
     const char = {
-      version: 1, nick, gender, job,
+      version: CHAR_VERSION, nick, gender, job,
       level: 1, exp: 0, statPoints: 0,
       stats: { ...j.stats },
       equipment: {},
       backpack: [],
       potions: { hp_potion: 0, mp_potion: 0, ...j.potions },
+      gold: 20,
+      location: data.HOME, transit: null,
       wins: 0, losses: 0,
     };
     for (const id of j.gear) char.equipment[data.items[id].slot] = makeItem(id);
     return char;
   }
 
-  // Базовые свойства предмета + случайные прибавки конкретного экземпляра
+  // Сохранения старых версий прототипа дополняются недостающими полями
+  function migrate(data, char) {
+    if (!char) return char;
+    if ((char.version || 1) < 2) {
+      char.gold = char.gold || 0;
+      char.location = data.HOME;
+      char.transit = null;
+    }
+    char.version = CHAR_VERSION;
+    return char;
+  }
+
+  // Базовые свойства предмета + случайные прибавки + заточка конкретного экземпляра.
+  // Заточка: оружию +1 к урону (посоху и к силе заклинаний), остальному +1% защиты за уровень.
   function itemProps(data, item) {
     const base = data.items[item.id];
-    return { ...base, bonus: addBonus(addBonus({}, base.bonus), item.bonus) };
+    const p = { ...base, bonus: addBonus(addBonus({}, base.bonus), item.bonus) };
+    const up = item.upgrade || 0;
+    if (up) {
+      if (p.slot === 'weapon') {
+        p.min += up; p.max += up;
+        if (p.wtype === 'staff') p.mdmg = (p.mdmg || 0) + up;
+      } else {
+        p.def = (p.def || 0) + up;
+      }
+    }
+    return p;
   }
 
   function equipped(data, char) {
@@ -226,17 +252,34 @@
     return drops;
   }
 
-  // Итог боя: возвращает выпитые зелья, начисляет опыт и добычу. Возвращает сводку для экрана результата.
-  function applyBattleResult(data, char, battle, monsterId, rng) {
+  // Итог боя: возвращает выпитые зелья, начисляет опыт, золото и добычу. Возвращает сводку для экрана результата.
+  // Поражение (не бегство) отправляет персонажа в деревню и стоит части золота.
+  function applyBattleResult(data, char, battle, monsterId, rng, { fled = false } = {}) {
     for (const c of battle.player.consumables) char.potions[c.id] = c.count;
     const win = battle.winner === battle.player;
-    const summary = { win, exp: 0, levelsUp: [], newSkills: [], loot: [], lost: [] };
-    if (!win) { char.losses++; return summary; }
+    const summary = { win, fled, exp: 0, gold: 0, goldLost: 0, sentHome: false, levelsUp: [], newSkills: [], loot: [], lost: [] };
+    if (!win) {
+      char.losses++;
+      if (!fled) {
+        summary.goldLost = Math.floor((char.gold || 0) * (data.DEATH_GOLD_LOSS || 0));
+        char.gold -= summary.goldLost;
+        if (data.HOME && char.location !== data.HOME) {
+          char.location = data.HOME;
+          char.transit = null;
+          summary.sentHome = true;
+        }
+      }
+      return summary;
+    }
     char.wins++;
 
     const monster = data.monsters[monsterId];
     summary.exp = Math.max(1, Math.round(monster.exp * expMultiplier(char.level, monster.level)));
     Object.assign(summary, grantExp(data, char, summary.exp));
+    if (monster.gold) {
+      summary.gold = rng.int(monster.gold[0], monster.gold[1]);
+      char.gold = (char.gold || 0) + summary.gold;
+    }
 
     for (const d of rollLoot(data, monster, rng)) {
       if (d.kind === 'potion') {
@@ -253,8 +296,8 @@
   }
 
   PC.progression = {
-    STAT_KEYS, STAT_POINTS_PER_LEVEL, MAX_LEVEL, BACKPACK_SIZE,
-    expToNext, expMultiplier, newCharacter, makeItem, itemProps, itemLines,
+    STAT_KEYS, STAT_POINTS_PER_LEVEL, MAX_LEVEL, BACKPACK_SIZE, CHAR_VERSION,
+    expToNext, expMultiplier, newCharacter, migrate, makeItem, itemProps, itemLines,
     bonusStats, totalStats, derived, unlockedSkills, toFighter,
     allocate, canEquip, equip, unequip, discard,
     grantExp, rollLoot, applyBattleResult,

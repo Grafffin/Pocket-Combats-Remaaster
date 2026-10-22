@@ -22,8 +22,11 @@
   }
 
   // Шторка: содержимое и обработчик кликов задаёт тот, кто её открыл
+  // modal: шторку нельзя закрыть мимо кнопок (например, засаду)
   let sheetHandler = null;
-  function openSheet(title, html, onClick) {
+  let sheetModal = false;
+  function openSheet(title, html, onClick, { modal = false } = {}) {
+    sheetModal = modal;
     $('#sheet-title').textContent = title;
     $('#sheet-body').innerHTML = html;
     sheetHandler = onClick || null;
@@ -34,10 +37,10 @@
     sheetHandler = null;
   }
   $('#sheet').addEventListener('click', (e) => {
-    if (e.target.closest('[data-close]')) return closeSheet();
+    if (e.target.closest('[data-close]')) return sheetModal ? undefined : closeSheet();
     if (sheetHandler) sheetHandler(e);
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeSheet(); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheetModal) closeSheet(); });
 
   function storage(key, fallback) {
     return {
