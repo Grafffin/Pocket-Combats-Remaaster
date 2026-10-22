@@ -1,105 +1,76 @@
-// Данные мира: локации и переходы между ними, NPC, лавка, заточка.
-// В оригинале локации, маршруты (с длительностью перехода) и NPC приходили с сервера (api/location/...).
+// Мир (GDD §7): зоны, переходы, NPC деревни.
 (function (root) {
   'use strict';
   const PC = root.PC || (root.PC = {});
-  const data = PC.data;
+  const data = PC.data || (PC.data = {});
 
   const HOME = 'village';
 
-  // routes: { куда: секунд в пути }. levels — подсказка, на какой уровень рассчитана локация.
+  // monsters: [id, мин. уровень, макс. уровень]. boss: [id, уровень] — открывается после BOSS_KILLS побед в зоне.
+  // tier — тир вещей и материалов зоны (1…7). routes: { куда: секунд в пути }.
   const locations = {
     village: {
-      name: 'Пыльный Брод', levels: null, safe: true,
+      name: 'Пыльный Брод', levels: null, safe: true, tier: 1, art: 'locations/village',
       desc: 'Деревня на краю леса. Тут можно перевести дух, продать добычу и подлатать снаряжение.',
-      monsters: ['dummy'],
-      npcs: ['shop', 'buyer', 'smith'],
-      routes: { forest_edge: 8 },
+      monsters: [['dummy', 1, 1]],
+      npcs: ['shop', 'buyer', 'smith', 'enchanter'],
+      routes: { forest_edge: 6 },
     },
     forest_edge: {
-      name: 'Лесная опушка', levels: [1, 2],
-      desc: 'Светлый подлесок сразу за частоколом. В траве шуршат крысы, между деревьями блестит паутина.',
-      monsters: ['rat', 'spider'],
-      routes: { village: 8, deep_forest: 12, old_road: 15 },
+      name: 'Лесная опушка', levels: [1, 5], tier: 1, art: 'locations/forest_edge',
+      desc: 'Светлый подлесок за частоколом. В траве шуршат крысы, между деревьями блестит паутина.',
+      monsters: [['rat', 1, 3], ['spider', 2, 4], ['boar', 3, 5]],
+      boss: ['boar_king', 6],
+      routes: { village: 6, deep_forest: 10 },
     },
     deep_forest: {
-      name: 'Глухой лес', levels: [3, 4],
-      desc: 'Ели смыкаются над головой, и днём здесь сумрачно. Волки охотятся стаей и нападают первыми.',
-      monsters: ['wolf', 'spider'],
-      routes: { forest_edge: 12, goblin_camp: 15 },
+      name: 'Глухой лес', levels: [5, 10], tier: 2, art: 'locations/deep_forest',
+      desc: 'Ели смыкаются над головой, и днём здесь сумрачно. Волки охотятся стаей.',
+      monsters: [['wolf', 5, 8], ['spider', 6, 9], ['forest_spirit', 7, 10]],
+      boss: ['ancient_spirit', 11],
+      routes: { forest_edge: 10, goblin_camp: 12 },
     },
     goblin_camp: {
-      name: 'Гоблинская стоянка', levels: [4, 5],
+      name: 'Гоблинская стоянка', levels: [10, 15], tier: 3, art: 'locations/goblin_camp',
       desc: 'Дым от костров, кости и ржавые котлы. Шаманы бормочут заклинания над варевом.',
-      monsters: ['shaman', 'wolf'],
-      routes: { deep_forest: 15 },
+      monsters: [['goblin_warrior', 10, 13], ['goblin_shaman', 11, 14], ['wolf', 12, 15]],
+      boss: ['goblin_chief', 16],
+      routes: { deep_forest: 12, old_road: 14 },
     },
     old_road: {
-      name: 'Старый тракт', levels: [6, 7],
+      name: 'Старый тракт', levels: [15, 20], tier: 4, art: 'locations/old_road',
       desc: 'Заброшенная дорога через холмы. Купцы давно здесь не ездят — на тракте хозяйничают разбойники.',
-      monsters: ['bandit', 'wolf'],
-      routes: { forest_edge: 15, stone_hills: 20 },
+      monsters: [['bandit', 15, 18], ['bandit_archer', 16, 19], ['harpy', 17, 20]],
+      boss: ['ataman', 21],
+      routes: { goblin_camp: 14, stone_hills: 16 },
     },
     stone_hills: {
-      name: 'Каменные холмы', levels: [8, 9],
+      name: 'Каменные холмы', levels: [20, 27], tier: 5, art: 'locations/stone_hills',
       desc: 'Валуны размером с избу. Говорят, один из них иногда встаёт и уходит.',
-      monsters: ['troll', 'bandit'],
-      routes: { old_road: 20 },
+      monsters: [['golem', 20, 24], ['harpy', 21, 25], ['stone_troll', 23, 27]],
+      boss: ['troll_elder', 28],
+      routes: { old_road: 16, flooded_crypt: 18 },
+    },
+    flooded_crypt: {
+      name: 'Затопленный склеп', levels: [27, 35], tier: 6, art: 'locations/flooded_crypt',
+      desc: 'Руины склепа наполовину под водой. Из тёмных арок тянет холодом и тихим шёпотом.',
+      monsters: [['skeleton', 27, 31], ['ghoul', 28, 33], ['wraith', 30, 35]],
+      boss: ['lich', 36],
+      routes: { stone_hills: 18 },
     },
   };
 
-  // Шанс, что агрессивный монстр нападёт по прибытии на локацию
-  const AMBUSH_CHANCE = 30;
-  // Сколько золота теряется при поражении (персонаж приходит в себя в деревне)
-  const DEATH_GOLD_LOSS = 0.1;
+  const BOSS_KILLS = 10;           // побед в зоне до появления босса
+  const AMBUSH_CHANCE = 0;         // засады отключены: в гриндилке мешают автобою
+  const DEATH_GOLD_LOSS = 0.1;     // поражение стоит 10% золота и возвращает в деревню
 
   const npcs = {
-    shop: {
-      name: 'Лавка Марфы', emoji: '🏪',
-      desc: 'Зелья и простое снаряжение для начинающих.',
-      greeting: 'Проходи, не стесняйся. Всё свежее, почти не ржавое.',
-      stock: [
-        'hp_potion', 'mp_potion',
-        'rusty_sword', 'short_sword', 'short_bow', 'hunting_bow', 'novice_staff', 'ash_staff',
-        'wooden_shield', 'leather_cap', 'quilted', 'leather_jacket', 'novice_robe', 'boots', 'leather_gloves',
-      ],
-    },
-    buyer: {
-      name: 'Скупщик Ефим', emoji: '⚖️',
-      desc: 'Купит всё, что вы принесли с охоты. За четверть цены.',
-      greeting: 'Показывай, что притащил. Только не торгуйся — не люблю.',
-    },
-    smith: {
-      name: 'Кузнец Тарас', emoji: '⚒️',
-      desc: 'Заточка оружия и доспехов. Чем выше заточка, тем выше риск.',
-      greeting: 'До +4 точу без риска — в худшем случае потеряешь деньги. Дальше металл может не выдержать.',
-    },
+    shop: { name: 'Лавка Марфы', art: 'npcs/shopkeeper', emoji: '🏪', desc: 'Зелья, камни заточки и свитки.', greeting: 'Проходи, не стесняйся. Всё свежее, почти не ржавое.' },
+    buyer: { name: 'Скупщик Ефим', art: 'npcs/buyer', emoji: '⚖️', desc: 'Купит всё, что вы принесли с охоты.', greeting: 'Показывай, что притащил. Только не торгуйся — не люблю.' },
+    smith: { name: 'Кузнец Тарас', art: 'npcs/blacksmith', emoji: '⚒️', desc: 'Заточка, ранги, разбор и ковка.', greeting: 'До +5 точу без риска. Дальше металл может и не выдержать — бери свиток защиты.' },
+    enchanter: { name: 'Чародейка Велена', art: 'npcs/enchanter', emoji: '🔮', desc: 'Перековка свойств вещей.', greeting: 'Свойства вещи — как нити. Потяну за одну, и узор сложится иначе.' },
   };
 
-  // Заточка: шанс успеха для перехода на уровень N (индекс = целевой уровень).
-  // До SAFE_REFINE неудача стоит только денег, выше — предмет ломается.
-  const refine = {
-    max: 7,
-    safe: 4,
-    chance: [0, 100, 95, 85, 70, 55, 40, 30],
-    costFactor: 0.25,
-  };
-
-  // Цена зелий; цена вещей считается по уровню (economy.priceOf), здесь можно переопределить
-  const prices = { hp_potion: 12, mp_potion: 15 };
-
-  // Золото с монстров и агрессивность (нападают первыми при входе на локацию)
-  const monsterExtras = {
-    dummy: { gold: [0, 0] },
-    rat: { gold: [2, 5] },
-    spider: { gold: [3, 7] },
-    wolf: { gold: [6, 12], aggressive: true },
-    shaman: { gold: [8, 15] },
-    bandit: { gold: [15, 30], aggressive: true },
-    troll: { gold: [60, 100] },
-  };
-  for (const [id, extra] of Object.entries(monsterExtras)) Object.assign(data.monsters[id], extra);
-
-  Object.assign(data, { HOME, locations, npcs, refine, prices, AMBUSH_CHANCE, DEATH_GOLD_LOSS });
+  Object.assign(data, { HOME, locations, npcs, BOSS_KILLS, AMBUSH_CHANCE, DEATH_GOLD_LOSS });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

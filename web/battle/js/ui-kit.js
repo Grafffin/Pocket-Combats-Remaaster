@@ -1,13 +1,22 @@
-// Общие мелочи интерфейса: выборка элементов, иконки тактик, аватары, нижняя шторка.
+// Общие мелочи интерфейса: выборка элементов, картинки из assets, шторка, тосты, хранилище.
 (function () {
   'use strict';
-  const $ = (s) => document.querySelector(s);
-  const icon = (t) => `<svg><use href="#i-${t}"/></svg>`;
+  const $ = (s, el = document) => el.querySelector(s);
+  const $$ = (s, el = document) => [...el.querySelectorAll(s)];
 
-  function avatar(f) {
-    if (f.icon) return `<div class="ava"><img src="${f.icon}" alt="" onerror="this.replaceWith(document.createTextNode('${f.emoji || '?'}'))"></div>`;
-    if (f.emoji) return `<div class="ava">${f.emoji}</div>`;
-    return `<div class="ava letter">${f.name.charAt(0).toUpperCase()}</div>`;
+  // Картинка из web/battle/assets; если файла нет — запасной символ
+  function art(path, fallback = '', cls = '') {
+    if (!path) return `<span class="fallback ${cls}">${fallback}</span>`;
+    const fb = String(fallback).replace(/'/g, '');
+    return `<img class="${cls}" src="assets/${path}.svg" alt="" loading="lazy" onerror="this.outerHTML='<span class=&quot;fallback&quot;>${fb}</span>'">`;
+  }
+  const statIcon = (key) => {
+    const def = PC.data.statDefs[key];
+    return def ? `<img class="stat-ico" src="assets/stats/${def.icon}.svg" alt="" onerror="this.remove()">` : '';
+  };
+
+  function avatar(f, size) {
+    return `<div class="ava" ${size ? `style="width:${size}px;height:${size}px"` : ''}>${art(f.art, f.emoji || (f.name || '?').charAt(0))}</div>`;
   }
 
   function escapeHtml(s) {
@@ -21,12 +30,16 @@
     return many;
   }
 
-  // Шторка: содержимое и обработчик кликов задаёт тот, кто её открыл
-  // modal: шторку нельзя закрыть мимо кнопок (например, засаду)
+  const fmtNum = (n) => (n >= 10000 ? `${Math.round(n / 1000)}к` : String(Math.round(n)));
+
+  // Шторка: содержимое и обработчик кликов задаёт тот, кто её открыл.
+  // modal: шторку нельзя закрыть мимо кнопок.
   let sheetHandler = null;
   let sheetModal = false;
-  function openSheet(title, html, onClick, { modal = false } = {}) {
+  let sheetOnClose = null;
+  function openSheet(title, html, onClick, { modal = false, onClose = null } = {}) {
     sheetModal = modal;
+    sheetOnClose = onClose;
     $('#sheet-title').textContent = title;
     $('#sheet-body').innerHTML = html;
     sheetHandler = onClick || null;
@@ -35,12 +48,25 @@
   function closeSheet() {
     $('#sheet').hidden = true;
     sheetHandler = null;
+    const cb = sheetOnClose;
+    sheetOnClose = null;
+    if (cb) cb();
   }
   $('#sheet').addEventListener('click', (e) => {
     if (e.target.closest('[data-close]')) return sheetModal ? undefined : closeSheet();
     if (sheetHandler) sheetHandler(e);
   });
-  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheetModal) closeSheet(); });
+  $('#sheet').addEventListener('change', (e) => { if (sheetHandler) sheetHandler(e); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheetModal && !$('#sheet').hidden) closeSheet(); });
+
+  function toast(text, kind = '') {
+    const el = document.createElement('div');
+    el.className = `toast ${kind}`;
+    el.innerHTML = text;
+    $('#toasts').appendChild(el);
+    setTimeout(() => { el.style.transition = 'opacity .3s'; el.style.opacity = '0'; }, 2600);
+    setTimeout(() => el.remove(), 3000);
+  }
 
   function storage(key, fallback) {
     return {
@@ -56,5 +82,5 @@
     };
   }
 
-  PC.kit = { $, icon, avatar, escapeHtml, plural, openSheet, closeSheet, storage };
+  PC.kit = { $, $$, art, statIcon, avatar, escapeHtml, plural, fmtNum, openSheet, closeSheet, toast, storage };
 })();

@@ -1,11 +1,9 @@
-// Боевой движок прототипа. Без DOM: тот же код потом можно перенести на сервер.
+// Боевой движок (GDD §6). Без DOM: тот же код потом можно перенести на сервер.
+// Тактик больше нет: умения стоят ресурс (ярость, энергия, мана) и уходят на перезарядку.
 // Лог пишется текстом с разметкой в духе оригинала (<ch>, <dmg>, <hp>, <skill>), UI сам решает, как её рисовать.
 (function (root) {
   'use strict';
   const PC = root.PC || (root.PC = {});
-
-  const TACTICS = ['hit', 'block', 'crit', 'dodge'];
-  const TACTIC_CAP = 9;
 
   function makeRng(seed) {
     let s = (seed >>> 0) || 1;
@@ -20,6 +18,7 @@
       next,
       chance: (pct) => next() * 100 < pct,
       int: (min, max) => min + Math.floor(next() * (max - min + 1)),
+      float: (min, max) => min + next() * (max - min),
       pick: (arr) => arr[Math.floor(next() * arr.length)],
     };
   }
@@ -30,70 +29,56 @@
     return String(s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
   }
 
-  // ---------- Персонажи ----------
+  const VERB_GROUP = {
+    sword: 'melee', mace: 'melee', axe: 'melee', greatsword: 'melee', greataxe: 'melee', fist: 'melee',
+    bow: 'bow', crossbow: 'bow', staff: 'staff', wand: 'staff',
+  };
+  const RANGED = { bow: true, crossbow: true };
 
-  function createFighter(tpl, id, team) {
+  // ---------- Боец ----------
+  // tpl: { name, forms, gender, level, stats (итоговые, см. stats.js), skills: [{id, lvl}], kind (тип монстра),
+  //        weaponType, consumables, isPlayer, ai, art, emoji, verbs, monsterSkills }
+  function createFighter(tpl, id, team, data) {
     const st = tpl.stats;
-    const level = tpl.level;
-    const maxHp = tpl.hp != null ? tpl.hp : 20 + level * 3 + st.vit * 3;
-    const maxMana = tpl.mana != null ? tpl.mana : 5 + st.wis * 3;
     const forms = tpl.forms || {};
     const nom = escapeHtml(tpl.name);
-    return {
+    const resDef = data.resources[st.resource] || null;
+    const f = {
       id, team,
       name: nom,
       forms: { nom, gen: forms.gen || nom, dat: forms.dat || nom, acc: forms.acc || nom },
       gender: tpl.gender || 'm',
       isPlayer: !!tpl.isPlayer,
-      level, stats: { ...st },
-      icon: tpl.icon || null, emoji: tpl.emoji || null,
-      maxHp, hp: maxHp, maxMana, mana: maxMana,
-      weapon: { ...tpl.weapon },
-      shield: !!tpl.shield,
-      blockBase: tpl.block,
-      softDef: tpl.softDef || 0, hardDef: tpl.hardDef || 0,
-      softMdef: tpl.softMdef || 0, hardMdef: tpl.hardMdef || 0,
-      mdmg: tpl.mdmg || 0,
+      level: st.level,
+      kind: tpl.kind || null,
+      boss: !!tpl.boss,
+      art: tpl.art || null, emoji: tpl.emoji || null,
+      weaponType: tpl.weaponType || 'fist',
       verbs: tpl.verbs || null,
       ai: tpl.ai || 'default',
-      skills: ['basic', ...(tpl.skills || [])],
+      s: st,
+      maxHp: Math.max(1, Math.round(st.maxHp)), hp: 0,
+      resource: st.resource || null,
+      resName: resDef ? resDef.name : null,
+      resMax: st.resMax || 0, res: 0,
+      skills: (tpl.skills || []).filter((sk) => sk.lvl > 0),
+      monsterSkills: tpl.monsterSkills || [],
       cooldowns: {},
-      tactics: { hit: 0, block: 0, crit: 0, dodge: 0 },
       effects: [],
+      legendary: new Set(st.legendary || []),
       consumables: (tpl.consumables || []).map((c) => ({ ...c })),
-      exp: tpl.exp || 0,
       usedConsumableTurn: 0,
+      attacksMade: 0,
+      secondWindUsed: false,
     };
+    f.hp = f.maxHp;
+    if (f.resource === 'mana') f.res = f.resMax;
+    else if (resDef) f.res = Math.min(f.resMax, resDef.start + (st.startRes || 0));
+    return f;
   }
 
-  function effectSum(f, key) {
-    return f.effects.reduce((s, e) => s + (e[key] || 0), 0);
-  }
-
-  // Формулы в духе Ragnarok Online, на котором явно строился оригинал:
-  // попадание — от интуиции (DEX) и чуть от удачи, уклонение — от ловкости и чуть от удачи, крит — от удачи.
-  const formulas = {
-    dodgeChance(att, def) {
-      const hit = att.level + att.stats.dex + att.stats.luk / 3;
-      const flee = def.level + def.stats.agi + def.stats.luk / 5;
-      return clamp(10 + (flee - hit) * 1.5 + effectSum(def, 'dodgeBonus'), 3, 60);
-    },
-    critChance(att) {
-      return clamp(3 + att.stats.luk + effectSum(att, 'critBonus'), 1, 50);
-    },
-    blockChance(def) {
-      if (def.weapon.type === 'bow') return 0; // с луком блокировать нельзя
-      const base = def.blockBase != null ? def.blockBase : (def.shield ? 20 + def.stats.vit : 6);
-      return clamp(base + effectSum(def, 'blockBonus'), 0, 75);
-    },
-    weaponBonus(att) {
-      if (att.weapon.type === 'bow') return Math.floor(att.stats.dex / 2);
-      return Math.floor(att.stats.str / 2);
-    },
-    hardDef(def) {
-      return clamp(def.hardDef + effectSum(def, 'hardDefBonus'), 0, 80);
-    },
-  };
+  // Сумма модификаторов эффектов по ключу (баффы/дебаффы)
+  const mod = (f, key) => f.effects.reduce((s, e) => s + ((e.mods && e.mods[key]) || 0), 0);
 
   // ---------- Бой ----------
 
@@ -101,33 +86,41 @@
     constructor({ player, monster, seed, data }) {
       this.data = data;
       this.rng = makeRng(seed != null ? seed : Date.now());
-      this.player = createFighter({ ...player, isPlayer: true }, 'p', 1);
-      this.monster = createFighter(monster, 'm', 2);
+      this.player = createFighter({ ...player, isPlayer: true }, 'p', 1, data);
+      this.monster = createFighter(monster, 'm', 2, data);
       this.fighters = [this.player, this.monster];
       this.turn = 1;
       this.log = [];
       this.ended = false;
       this.winner = null;
       this.say('poetry', this.rng.pick(data.haiku));
+      for (const f of this.fighters) {
+        if (f.legendary.has('boneShield')) this.addShield(f, Math.round(f.maxHp * 0.15), 99, 'Костяной щит');
+      }
       this.say('turn', String(this.turn));
     }
 
     opponentOf(f) { return f === this.player ? this.monster : this.player; }
+    roll(p) { return this.rng.next() < p; }
 
-    // Каждая запись хранит снимок HP/маны/тактик/эффектов, чтобы UI мог проигрывать бой по строчкам
+    // Каждая запись хранит снимок состояния, чтобы UI мог проигрывать бой по строчкам
     say(type, text, ev) {
       const snap = {};
       for (const f of this.fighters || []) {
-        snap[f.id] = { hp: f.hp, mana: f.mana, tactics: { ...f.tactics }, effects: f.effects.map((e) => ({ ...e })) };
+        snap[f.id] = {
+          hp: f.hp, res: f.res,
+          shield: this.shieldOf(f),
+          effects: f.effects.map((e) => ({ id: e.id, name: e.name, kind: e.kind, turns: e.turns, disable: e.disable })),
+        };
       }
       this.log.push({ id: this.log.length + 1, turn: this.turn, type, text, ev: ev || null, snap });
     }
 
     // ---- Текстовые шаблоны ----
     // {A} {A.gen} {B.dat} — имена в падежах, {a:ударил|ударила} — по роду A, {b:...|...} — по роду B,
-    // {dmg} {hp} {skill} {verb} {adv} {ger} {Ger} — подставляются из ctx.
+    // {dmg} {hp} {skill} {heal} {verb} {adv} {ger} {Ger} — подставляются из ctx.
     fill(tpl, A, B, ctx = {}) {
-      const ch = (f, form) => f ? `<ch t="${f.team}">${f.forms[form || 'nom']}</ch>` : '';
+      const ch = (f, form) => (f ? `<ch t="${f.team}">${f.forms[form || 'nom']}</ch>` : '');
       let s = tpl;
       s = s.replace(/\{(Ger|ger|adv)\}/g, (_, k) => {
         const v = this.rng.pick(this.data.phrases[k === 'adv' ? 'adverbs' : 'gerunds']);
@@ -146,108 +139,296 @@
 
     pickVerb(f) {
       if (f.verbs) return this.rng.pick(f.verbs);
-      return this.rng.pick(this.data.phrases.verbs[f.weapon.type] || this.data.phrases.verbs.melee);
+      const g = VERB_GROUP[f.weaponType] || 'melee';
+      return this.rng.pick(this.data.phrases.verbs[g]);
     }
 
-    phrase(key, A, B, ctx) {
-      return this.fill(this.rng.pick(this.data.phrases[key]), A, B, ctx);
-    }
-
+    phrase(key, A, B, ctx) { return this.fill(this.rng.pick(this.data.phrases[key]), A, B, ctx); }
     hpTag(f) { return `<hp>[${f.hp}/${f.maxHp}]</hp>`; }
     dmgTag(n, kind) { return `<dmg k="${kind}">-${n}</dmg>`; }
 
-    // ---- Ресурсы ----
+    // ---- Умения и ресурс ----
 
-    canAfford(f, skill) {
-      const cost = skill.cost || {};
-      for (const t of TACTICS) if ((cost[t] || 0) > f.tactics[t]) return false;
-      if ((cost.mana || 0) > f.mana) return false;
-      return true;
+    skillDef(id) { return this.data.skills[id] || this.data.monsterSkills[id]; }
+
+    skillCost(f, id) {
+      const def = this.skillDef(id);
+      const cost = (def && def.cost) || 0;
+      return f.legendary.has('manaFont') ? Math.round(cost * 0.7) : cost;
     }
 
-    skillState(f, skillId) {
-      const skill = this.data.skills[skillId];
-      const cd = f.cooldowns[skillId] || 0;
-      return { skill, cooldown: cd, affordable: this.canAfford(f, skill), usable: cd === 0 && this.canAfford(f, skill) };
+    skillState(f, id) {
+      const def = this.skillDef(id);
+      const cd = f.cooldowns[id] || 0;
+      const cost = this.skillCost(f, id);
+      const affordable = f.res >= cost;
+      return { def, cd, cost, affordable, usable: cd === 0 && affordable };
     }
 
-    usableSkillCount(f) {
-      return f.skills.filter((id) => id !== 'basic' && this.skillState(f, id).usable).length;
+    usableSkills(f) {
+      return f.skills.filter((sk) => this.skillState(f, sk.id).usable).map((sk) => sk.id);
     }
 
-    gainTactic(f, t) { f.tactics[t] = Math.min(TACTIC_CAP, f.tactics[t] + 1); }
-
-    pay(f, skill) {
-      const cost = skill.cost || {};
-      for (const t of TACTICS) f.tactics[t] -= cost[t] || 0;
-      f.mana -= cost.mana || 0;
-      if (skill.cooldown) f.cooldowns[skill.id] = skill.cooldown + 1; // +1: текущий ход тоже считается
+    gainResource(f, n, silent) {
+      if (!f.resource || n <= 0) return;
+      f.res = Math.min(f.resMax, f.res + n);
+      void silent;
     }
 
-    // ---- Боевые действия (вызываются из skill.run) ----
-
-    // Физический или магический удар. Возвращает исход, чтобы приём мог навесить эффект только при попадании.
-    strike(att, def, opts = {}) {
-      if (!def.hp) return { outcome: 'none' };
-      const r = this.rng;
-      const magic = !!opts.magic;
-
-      if (!magic && !opts.undodgeable && r.chance(formulas.dodgeChance(att, def))) {
-        this.gainTactic(def, 'dodge');
-        this.say('dodge', this.phrase('dodge', att, def), { type: 'miss', target: def.id });
-        return { outcome: 'dodge' };
+    setCooldown(f, id) {
+      const def = this.skillDef(id);
+      if (!def || !def.cd) return;
+      if (f.legendary.has('echo') && this.rng.chance(20)) {
+        this.say('effect', this.fill('Эхо: {skill} готов снова.', f, f, { skill: `<skill>${def.name}</skill>` }));
+        return;
       }
+      const cut = Math.floor((f.s.cdr || 0) / 25);
+      f.cooldowns[id] = Math.max(1, def.cd - cut) + 1; // +1: текущий ход тоже считается
+    }
 
-      const crit = !magic && (opts.forceCrit || r.chance(formulas.critChance(att)));
-      const blocked = !magic && !opts.unblockable && !this.isDisabled(def) && r.chance(formulas.blockChance(def));
-      const mult = (opts.mult || 1) * (1 + effectSum(att, 'dmgBonus') / 100);
+    // ---- Эффекты ----
 
-      let raw, softDef, hardDef;
-      if (magic) {
-        raw = r.int(opts.min, opts.max) + Math.floor(att.stats.wis / 2) + att.mdmg;
-        softDef = def.softMdef; hardDef = def.hardMdef;
-      } else {
-        const bonus = formulas.weaponBonus(att);
-        raw = (crit && !blocked) ? Math.round((att.weapon.max + bonus) * 1.5) : r.int(att.weapon.min, att.weapon.max) + bonus;
-        softDef = (crit && !blocked) || opts.ignoreDef ? 0 : def.softDef;
-        hardDef = opts.ignoreDef ? 0 : formulas.hardDef(def);
+    buff(f, eff) { this.addEffect(f, { kind: 'buff', ...eff }, f); }
+    debuff(f, source, eff) { this.addEffect(f, { kind: 'debuff', ...eff }, source); }
+
+    addEffect(f, eff, source) {
+      const existing = f.effects.find((e) => e.id === eff.id);
+      if (existing) Object.assign(existing, eff, { turns: Math.max(existing.turns, eff.turns) });
+      else f.effects.push({ ...eff, source: source && source.id });
+      if (eff.say !== false) {
+        const text = eff.kind === 'buff'
+          ? `{A} получает эффект «${eff.name}».`
+          : `{B} под действием эффекта «${eff.name}».`;
+        this.say('effect', this.fill(text, source || f, f));
       }
-      let dmg = (raw * mult - softDef) * (1 - hardDef / 100);
-      if (blocked && !crit) dmg /= 2;
-      dmg = Math.max(1, Math.round(dmg));
-
-      let kind, key;
-      if (magic) { kind = 'normal'; key = null; this.gainTactic(att, 'hit'); }
-      else if (crit && blocked) { kind = 'critblock'; key = 'critBlock'; this.gainTactic(att, 'hit'); this.gainTactic(def, 'block'); }
-      else if (crit) { kind = 'crit'; key = 'crit'; this.gainTactic(att, 'crit'); }
-      else if (blocked) { kind = 'block'; key = def.shield ? 'blockShield' : 'block'; this.gainTactic(def, 'block'); }
-      else { kind = 'normal'; key = 'hit'; this.gainTactic(att, 'hit'); }
-
-      this.damage(def, dmg);
-      const ctx = { dmg: this.dmgTag(dmg, kind), hp: this.hpTag(def), verb: opts.verb };
-      const text = opts.text ? this.fill(opts.text, att, def, ctx) : this.phrase(key, att, def, ctx);
-      this.say('damage', text, { type: 'damage', target: def.id, amount: dmg, kind });
-      this.checkDeath(def);
-      return { outcome: blocked && !crit ? 'block' : 'hit', crit, blocked, dmg };
     }
 
-    damage(f, n) { f.hp = Math.max(0, f.hp - n); }
-
-    heal(f, amount, text, A = f) {
-      const n = Math.min(amount, f.maxHp - f.hp);
-      f.hp += n;
-      this.say('heal', this.fill(text, A, f, { heal: `<dmg k="heal">+${n}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
+    applyStun(t, source, kind = 'stun') {
+      if (t.hp <= 0) return;
+      const freeze = kind === 'freeze';
+      this.addEffect(t, {
+        id: kind, name: freeze ? 'Заморозка' : 'Оглушение', kind: 'debuff', turns: 1, disable: true, say: false,
+      }, source);
+      this.say('effect', this.fill(freeze ? '{B} {b:скован|скована} льдом.' : '{B} {b:оглушён|оглушена}.', source, t));
     }
 
-    addEffect(f, effectId, source) {
-      const def = this.data.effects[effectId];
-      const existing = f.effects.find((e) => e.id === effectId);
-      if (existing) existing.turns = Math.max(existing.turns, def.turns);
-      else f.effects.push({ ...def, id: effectId, source: source && source.id });
-      if (def.applyText) this.say('effect', this.fill(def.applyText, source || f, f));
+    applyChill(t, source) {
+      if (t.hp <= 0) return;
+      this.addEffect(t, { id: 'chill', name: 'Озноб', kind: 'debuff', turns: 2, chilled: true, mods: { speedPct: -0.3 }, say: false }, source);
+      this.say('effect', this.fill('{B} {b:замедлен|замедлена} холодом.', source, t));
     }
+
+    // ratio — доля атаки (или маг. атаки) источника за ход
+    applyDot(t, source, kind, ratio, turns, magic) {
+      if (t.hp <= 0) return;
+      const power = magic ? this.matkOf(source) : this.atkOf(source);
+      const per = Math.max(1, Math.round(power * ratio * (1 + (source.s.dotPct || 0))));
+      const names = { poison: 'Яд', bleed: 'Кровотечение', burn: 'Горение' };
+      this.addEffect(t, { id: kind, name: names[kind], kind: 'debuff', turns, dot: { kind, per }, say: false }, source);
+      const texts = {
+        poison: '{B} {b:отравлен|отравлена}.',
+        bleed: 'У {B.gen} открылось кровотечение.',
+        burn: '{B} {b:охвачен|охвачена} пламенем.',
+      };
+      this.say('effect', this.fill(texts[kind], source, t));
+    }
+
+    addShield(f, amount, turns, name = 'Щит') {
+      this.addEffect(f, { id: 'shield', name, kind: 'buff', turns, shieldHp: amount, say: false }, f);
+      this.say('effect', this.fill(`{A} {a:окружил|окружила} себя щитом <dmg k="heal">${amount}</dmg>.`, f, f), { type: 'shield', target: f.id, amount });
+    }
+
+    shieldOf(f) { return f.effects.reduce((s, e) => s + (e.shieldHp || 0), 0); }
 
     isDisabled(f) { return f.effects.some((e) => e.disable); }
+
+    // ---- Эффективные характеристики ----
+
+    atkOf(f) { return f.s.atk * (1 + mod(f, 'atkPct')); }
+    matkOf(f) { return f.s.matk * (1 + mod(f, 'matkPct')); }
+    defOf(f) { return Math.max(0, f.s.def * (1 + mod(f, 'defPct'))); }
+    mdefOf(f) { return Math.max(0, f.s.mdef * (1 + mod(f, 'mdefPct'))); }
+    speedOf(f) { return Math.max(1, f.s.speed * (1 + mod(f, 'speedPct'))); }
+
+    hitChance(a, t) {
+      let p = clamp(0.85 + (a.s.acc - t.s.eva) * 0.002, 0.3, 0.99);
+      const dodge = t.effects.reduce((s, e) => s + (e.dodge || 0), 0);
+      return p * (1 - clamp(dodge, 0, 0.9));
+    }
+
+    // Множитель урона от всех бонусов атакующего и уязвимостей цели
+    damageMultiplier(a, t, opts) {
+      let m = 1 + (a.s.dmgPct || 0) + mod(a, 'dmgPct') + mod(t, 'dmgTakenPct');
+      if (t.kind) m += (a.s['vs' + t.kind[0].toUpperCase() + t.kind.slice(1)] || 0) / 100;
+      if (a.hp / a.maxHp < 0.5) m += a.s.lowHpDmg || 0;
+      const sid = opts.skillId || (this.current && this.current.actor === a ? this.current.skillId : null);
+      if (sid && a.s.skillDmg && a.s.skillDmg[sid]) m += a.s.skillDmg[sid];
+      if (a.legendary.has('execute') && t.hp / t.maxHp < 0.25) m += 0.6;
+      if (a.legendary.has('coldHeart') && t.effects.some((e) => e.chilled)) m += 0.3;
+      if (a.legendary.has('berserkBlood')) m += (1 - a.hp / a.maxHp) * 0.5;
+      return m;
+    }
+
+    // ---- Удары ----
+
+    // Физическая атака. opts: mult, sure (не промахнётся), forceCrit, unblockable, extra (доп. действие), noCounter
+    attack(a, t, opts = {}) {
+      if (a.hp <= 0 || t.hp <= 0) return { hit: false };
+      const r = this.rng;
+      a.attacksMade++;
+      if (!opts.sure && !r.chance(this.hitChance(a, t) * 100)) {
+        this.say('dodge', this.phrase('dodge', a, t), { type: 'miss', target: t.id });
+        this.maybeCounter(t, a, opts);
+        return { hit: false };
+      }
+
+      const nextCrit = a.effects.find((e) => e.nextCrit);
+      let crit = opts.forceCrit || !!nextCrit || r.chance(a.s.crit + mod(a, 'crit'));
+      if (a.legendary.has('firstBlood') && a.attacksMade === 1) crit = true;
+      if (nextCrit) nextCrit.nextCrit = false;
+      const blocked = !opts.unblockable && t.s.block > 0 && !this.isDisabled(t) && r.chance(t.s.block);
+
+      let dmg = (r.int(a.s.weaponMin, a.s.weaponMax) + this.atkOf(a)) * (opts.mult || 1) * this.damageMultiplier(a, t, opts);
+      if (crit) dmg *= a.s.critDmg / 100;
+      if (blocked) dmg *= 0.5;
+      dmg *= 100 / (100 + this.defOf(t));
+      dmg += this.elementalAddOn(a, t);
+      dmg *= 1 - (t.s.dmgReduce || 0) / 100;
+      dmg = Math.max(1, Math.round(dmg));
+
+      const kind = crit && blocked ? 'critblock' : crit ? 'crit' : blocked ? 'block' : 'normal';
+      const key = { critblock: 'critBlock', crit: 'crit', block: t.s.shield ? 'blockShield' : 'block', normal: 'hit' }[kind];
+      const dealt = this.damage(t, dmg);
+      const text = opts.text
+        ? this.fill(opts.text, a, t, { dmg: this.dmgTag(dmg, kind), hp: this.hpTag(t) })
+        : this.phrase(opts.extra ? 'extra' : key, a, t, { dmg: this.dmgTag(dmg, kind), hp: this.hpTag(t) });
+      this.say('damage', text, { type: 'damage', target: t.id, amount: dmg, kind });
+
+      this.afterHit(a, t, dealt, { melee: !RANGED[a.weaponType], blocked });
+      if (blocked) this.maybeCounter(t, a, opts);
+      this.checkDeath(t);
+      return { hit: true, dmg: dealt, crit, blocked };
+    }
+
+    // Заклинание: не промахивается и не блокируется, режется маг. защитой и сопротивлением стихии
+    spell(a, t, opts = {}) {
+      if (a.hp <= 0 || t.hp <= 0) return { dmg: 0 };
+      const r = this.rng;
+      const surge = a.effects.find((e) => e.nextSpell);
+      let dmg = this.matkOf(a) * (opts.mult || 1) * r.float(0.9, 1.1) * this.damageMultiplier(a, t, opts);
+      if (surge) { dmg *= 1 + surge.nextSpell; a.effects = a.effects.filter((e) => e !== surge); }
+      if (opts.element === 'fire') dmg *= 1 + (a.s.fireSpellPct || 0);
+      const crit = r.chance(a.s.crit + mod(a, 'crit'));
+      if (crit) dmg *= a.s.critDmg / 100;
+      dmg *= 100 / (100 + this.mdefOf(t));
+      const resKey = { fire: 'fireRes', cold: 'coldRes', poison: 'poisonRes' }[opts.element];
+      if (resKey) dmg *= 1 - (t.s[resKey] || 0) / 100;
+      dmg *= 1 - (t.s.dmgReduce || 0) / 100;
+      dmg = Math.max(1, Math.round(dmg));
+
+      const kind = crit ? 'crit' : (opts.element || 'magic');
+      const dealt = this.damage(t, dmg);
+      const tpl = opts.text || this.rng.pick(this.data.phrases.spells[opts.element || 'arcane']);
+      this.say('damage', this.fill(tpl, a, t, { dmg: this.dmgTag(dmg, kind), hp: this.hpTag(t) }), { type: 'damage', target: t.id, amount: dmg, kind });
+      this.afterHit(a, t, dealt, { melee: false, spell: true });
+      if (a.s.chillChance && t.hp > 0 && r.chance(a.s.chillChance)) this.applyChill(t, a);
+      this.checkDeath(t);
+      return { dmg: dealt, crit };
+    }
+
+    elementalAddOn(a, t) {
+      let extra = 0;
+      for (const [k, res] of [['fireDmg', 'fireRes'], ['coldDmg', 'coldRes'], ['poisonDmg', 'poisonRes']]) {
+        if (a.s[k]) extra += a.s[k] * (1 - (t.s[res] || 0) / 100);
+      }
+      return extra;
+    }
+
+    // Урон сначала съедает щиты. Возвращает урон, дошедший до здоровья.
+    damage(f, n) {
+      let left = n;
+      for (const e of f.effects) {
+        if (!e.shieldHp || left <= 0) continue;
+        const take = Math.min(e.shieldHp, left);
+        e.shieldHp -= take;
+        left -= take;
+      }
+      f.effects = f.effects.filter((e) => !('shieldHp' in e) || e.shieldHp > 0);
+      f.hp = Math.max(0, f.hp - left);
+      if (left > 0 && f.resource === 'rage') this.gainResource(f, this.data.resources.rage.onHurt);
+      if (f.hp > 0 && f.legendary.has('secondWind') && !f.secondWindUsed && f.hp / f.maxHp < 0.2) {
+        f.secondWindUsed = true;
+        this.heal(f, Math.round(f.maxHp * 0.3), '{A} {a:открыл|открыла} второе дыхание {heal} {hp}.');
+      }
+      return left;
+    }
+
+    selfDamage(f, n) {
+      f.hp = Math.max(1, f.hp - n);
+      this.say('damage', this.fill('{A} платит собственной кровью {dmg} {hp}.', f, f, { dmg: this.dmgTag(n, 'bleed'), hp: this.hpTag(f) }), { type: 'damage', target: f.id, amount: n, kind: 'bleed' });
+    }
+
+    afterHit(a, t, dealt, { melee, blocked }) {
+      const r = this.rng;
+      if (a.resource === 'rage') this.gainResource(a, this.data.resources.rage.onHit + (a.s.rageGain || 0));
+      let ls = (a.s.lifesteal || 0) + mod(a, 'lifesteal') * 100;
+      if (a.legendary.has('thirst') && a.hp / a.maxHp < 0.3) ls *= 2;
+      if (ls > 0 && dealt > 0 && a.hp > 0) this.heal(a, Math.max(1, Math.round(dealt * ls / 100)), null);
+
+      if (t.hp > 0 && dealt > 0) {
+        if (a.s.stunChance && r.chance(a.s.stunChance)) this.applyStun(t, a);
+        if (a.s.bleedChance && r.chance(a.s.bleedChance)) this.applyDot(t, a, 'bleed', 0.12, 3);
+        if (a.legendary.has('venomous')) this.applyDot(t, a, 'poison', 0.1, 3);
+        if (a.legendary.has('hunterMark') && !t.effects.some((e) => e.id === 'legend_mark')) {
+          this.debuff(t, a, { id: 'legend_mark', name: 'Метка добычи', turns: 99, mods: { dmgTakenPct: 0.2 } });
+        }
+        if (a.legendary.has('thunder') && r.chance(15)) {
+          const n = Math.max(1, Math.round(this.atkOf(a) * 0.8 * 100 / (100 + this.mdefOf(t))));
+          const d = this.damage(t, n);
+          this.say('damage', this.fill('С небес в {B.acc} бьёт молния {dmg} {hp}.', a, t, { dmg: this.dmgTag(n, 'lightning'), hp: this.hpTag(t) }), { type: 'damage', target: t.id, amount: d, kind: 'lightning' });
+        }
+      }
+      // Защитник: шипы и зеркальный щит
+      if (melee && a.hp > 0 && !blocked) {
+        const thorns = Math.round((t.s.thorns || 0) + this.defOf(t) * (t.s.thornsPct || 0));
+        if (thorns > 0) {
+          a.hp = Math.max(0, a.hp - thorns);
+          this.say('damage', this.fill('{A} {a:напоролся|напоролась} на шипы {dmg} {hp}.', a, t, { dmg: this.dmgTag(thorns, 'normal'), hp: this.hpTag(a) }), { type: 'damage', target: a.id, amount: thorns, kind: 'normal' });
+          this.checkDeath(a);
+        }
+      }
+      if (t.legendary.has('mirrorShield') && a.hp > 0 && dealt > 0 && r.chance(20)) {
+        const back = Math.max(1, Math.round(dealt * 0.5));
+        a.hp = Math.max(0, a.hp - back);
+        this.say('damage', this.fill('Зеркальный щит {B.gen} отражает удар {dmg} {hp}.', a, t, { dmg: this.dmgTag(back, 'magic'), hp: this.hpTag(a) }), { type: 'damage', target: a.id, amount: back, kind: 'magic' });
+        this.checkDeath(a);
+      }
+      // Возмездие: контратака на каждый полученный удар
+      const ret = t.effects.find((e) => e.counter);
+      if (ret && t.hp > 0 && a.hp > 0 && !this.inCounter) {
+        this.inCounter = true;
+        this.say('skill', this.fill('{B} {b:отвечает|отвечает} ударом на удар.', a, t));
+        this.attack(t, a, { mult: ret.counter, noCounter: true });
+        this.inCounter = false;
+      }
+    }
+
+    maybeCounter(def, att, opts) {
+      if (opts.noCounter || this.inCounter || def.hp <= 0 || att.hp <= 0) return;
+      if (!def.s.counterChance || !this.rng.chance(def.s.counterChance)) return;
+      this.inCounter = true;
+      this.say('skill', this.fill('{A} {a:тут же контратакует|тут же контратакует}!', def, att));
+      this.attack(def, att, { mult: 0.7, noCounter: true });
+      this.inCounter = false;
+    }
+
+    heal(f, amount, text) {
+      const n = Math.min(amount, f.maxHp - f.hp);
+      if (n <= 0) return;
+      f.hp += n;
+      if (text) this.say('heal', this.fill(text, f, f, { heal: `<dmg k="heal">+${n}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
+      else this.say('heal', this.fill('{A} {a:восстановил|восстановила} силы {heal} {hp}.', f, f, { heal: `<dmg k="heal">+${n}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
+    }
 
     checkDeath(f) {
       if (f.hp > 0 || f.dead) return;
@@ -258,7 +439,7 @@
       this.winner = killer;
     }
 
-    // ---- Использование расходников: не тратит ход, но не чаще раза за ход ----
+    // ---- Расходники: не тратят ход, но не чаще раза за ход ----
 
     canUseConsumable(f) { return !this.ended && f.usedConsumableTurn !== this.turn; }
 
@@ -268,86 +449,109 @@
       const def = this.data.consumables[itemId];
       item.count--;
       f.usedConsumableTurn = this.turn;
-      if (def.heal) this.heal(f, def.heal, def.text);
-      if (def.mana) {
-        const n = Math.min(def.mana, f.maxMana - f.mana);
-        f.mana += n;
+      if (def.healPct) this.heal(f, Math.round(f.maxHp * def.healPct), def.text);
+      if (def.resPct && f.resource) {
+        const n = Math.min(Math.round(f.resMax * def.resPct), f.resMax - f.res);
+        f.res += n;
         this.say('heal', this.fill(def.text, f, f, { heal: `<dmg k="mana">+${n}</dmg>` }), { type: 'mana', target: f.id, amount: n });
       }
       return true;
     }
 
-    // ---- ИИ монстра ----
+    // ---- Выбор действий ----
 
-    chooseAiAction(f) {
-      if (f.ai === 'idle') return { skillId: 'idle' };
-      const usable = f.skills.filter((id) => id !== 'basic' && this.skillState(f, id).usable);
-      const healing = usable.find((id) => this.data.skills[id].heals);
-      if (healing && f.hp / f.maxHp < 0.4) return { skillId: healing };
-      const attacks = usable.filter((id) => !this.data.skills[id].heals);
-      if (attacks.length && this.rng.chance(75)) {
-        // Предпочитает самый «дорогой» приём из доступных
-        const weight = (id) => Object.values(this.data.skills[id].cost || {}).reduce((a, b) => a + b, 0);
-        attacks.sort((a, b) => weight(b) - weight(a));
-        return { skillId: attacks[0] };
-      }
-      return { skillId: 'basic' };
+    // Автобой и монстры: первое готовое умение по порядку ячеек
+    autoAction(f) {
+      if (f.ai === 'idle') return 'idle';
+      if (f.isPlayer) return this.usableSkills(f)[0] || 'basic';
+      const ready = f.monsterSkills.filter((id) => !f.cooldowns[id]);
+      if (ready.length && this.rng.chance(55)) return this.rng.pick(ready);
+      return 'basic';
     }
 
-    // ---- Ход: оба выбирают действие, затем действия разыгрываются по инициативе ----
-
+    // Ход: оба выбирают действие, затем действия разыгрываются по скорости
     submit(skillId) {
       if (this.ended) return false;
-      const st = skillId === 'basic' ? { usable: true } : this.skillState(this.player, skillId);
-      if (!st.usable) return false;
+      if (skillId !== 'basic' && !this.player.skills.some((s) => s.id === skillId && this.skillState(this.player, s.id).usable)) return false;
       const actions = [
         { actor: this.player, skillId },
-        { actor: this.monster, ...this.chooseAiAction(this.monster) },
+        { actor: this.monster, skillId: this.autoAction(this.monster) },
       ];
-      for (const a of actions) a.init = a.actor.stats.agi + this.rng.int(0, 6);
+      for (const a of actions) a.init = this.speedOf(a.actor) * this.rng.float(0.9, 1.1);
       actions.sort((x, y) => y.init - x.init);
 
       for (const a of actions) {
         if (this.ended) break;
         this.perform(a.actor, a.skillId);
+        this.extraAction(a.actor);
       }
       if (!this.ended) this.endTurn();
       return true;
     }
 
+    // Сильный перевес в скорости даёт шанс ударить ещё раз
+    extraAction(f) {
+      if (this.ended || f.hp <= 0 || f.ai === 'idle' || this.isDisabled(f)) return;
+      const other = this.opponentOf(f);
+      const mine = this.speedOf(f), theirs = this.speedOf(other);
+      if (mine <= theirs) return;
+      const chance = Math.min(35, ((mine - theirs) / theirs) * 50);
+      if (this.rng.chance(chance)) this.attack(f, other, { extra: true });
+    }
+
     perform(actor, skillId) {
       const target = this.opponentOf(actor);
+      if (actor.hp <= 0) return;
       const disabler = actor.effects.find((e) => e.disable);
       if (disabler) {
-        this.say('passed', this.fill(disabler.skipText, actor, target));
+        const text = disabler.id === 'freeze' ? '{A} {a:скован|скована} льдом и не может пошевелиться.' : '{A} {a:оглушён|оглушена} и пропускает ход.';
+        this.say('passed', this.fill(text, actor, target));
         actor.effects = actor.effects.filter((e) => e !== disabler); // пропускает ровно одно действие
         return;
       }
-      const skill = this.data.skills[skillId];
-      if (skillId !== 'basic' && skillId !== 'idle' && !this.canAfford(actor, skill)) {
-        skillId = 'basic'; // тактики могли сгореть до его очереди — бьёт обычным ударом
-      }
-      const s = this.data.skills[skillId];
-      this.pay(actor, s);
-      if (s.announce) this.say('skill', this.fill(this.rng.pick(s.announce), actor, target, { skill: `<skill>${s.name}</skill>` }));
-      s.run(this, actor, target);
+      if (skillId === 'idle') { this.say('passed', this.fill(this.rng.pick(this.data.phrases.idle), actor, target)); return; }
+      if (skillId === 'basic') { this.attackBasic(actor, target); return; }
+
+      const def = this.skillDef(skillId);
+      const st = this.skillState(actor, skillId);
+      if (!def || !st.usable) { this.attackBasic(actor, target); return; }
+      actor.res -= st.cost;
+      this.setCooldown(actor, skillId);
+      this.say('skill', this.fill('{A} {a:применяет|применяет} {skill}.', actor, target, { skill: `<skill>${def.name}</skill>` }));
+      const lvl = actor.isPlayer ? (actor.skills.find((s) => s.id === skillId) || { lvl: 1 }).lvl : 1;
+      this.current = { actor, skillId };
+      def.run(this, actor, target, def.v ? def.v(lvl) : {});
+      this.current = null;
+    }
+
+    attackBasic(actor, target) {
+      if (actor.s.caster) this.spell(actor, target, { mult: 1, element: actor.s.element });
+      else this.attack(actor, target);
     }
 
     endTurn() {
       for (const f of this.fighters) {
+        if (this.ended) break;
         for (const e of f.effects) {
           if (e.dot && f.hp > 0 && !this.ended) {
-            const n = this.rng.int(e.dot[0], e.dot[1]);
-            this.damage(f, n);
-            const kind = e.dotKind || 'dot';
-            this.say('damage', this.fill(e.dotText, f, f, { dmg: this.dmgTag(n, kind), hp: this.hpTag(f) }), { type: 'damage', target: f.id, amount: n, kind });
+            let n = e.dot.per;
+            const resKey = { poison: 'poisonRes', burn: 'fireRes' }[e.dot.kind];
+            if (resKey) n = Math.max(1, Math.round(n * (1 - (f.s[resKey] || 0) / 100)));
+            const left = this.damage(f, n);
+            const texts = { poison: 'Яд разъедает {A.acc} {dmg} {hp}.', bleed: '{A} истекает кровью {dmg} {hp}.', burn: '{A} горит {dmg} {hp}.' };
+            this.say('damage', this.fill(texts[e.dot.kind], f, f, { dmg: this.dmgTag(n, e.dot.kind), hp: this.hpTag(f) }), { type: 'damage', target: f.id, amount: left, kind: e.dot.kind });
             this.checkDeath(f);
           }
           if (!e.disable) e.turns--;
         }
         f.effects = f.effects.filter((e) => e.disable || e.turns > 0);
         for (const k of Object.keys(f.cooldowns)) f.cooldowns[k] = Math.max(0, f.cooldowns[k] - 1);
-        f.mana = Math.min(f.maxMana, f.mana + 1 + Math.floor(f.stats.wis / 6));
+        if (f.hp > 0) {
+          const regen = Math.round((f.s.hpRegen || 0) + f.maxHp * (f.s.hpRegenPct || 0));
+          if (regen > 0 && f.hp < f.maxHp) f.hp = Math.min(f.maxHp, f.hp + regen);
+          if (f.resource === 'mana') this.gainResource(f, Math.round(f.s.mpRegen || 0));
+          if (f.resource === 'energy') this.gainResource(f, this.data.resources.energy.perTurn + (f.s.resPerTurn || 0));
+        }
       }
       if (this.ended) return;
       this.turn++;
@@ -360,8 +564,7 @@
 
   PC.Battle = Battle;
   PC.createFighter = createFighter;
-  PC.formulas = formulas;
   PC.makeRng = makeRng;
-  PC.TACTICS = TACTICS;
+  PC.clamp = clamp;
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

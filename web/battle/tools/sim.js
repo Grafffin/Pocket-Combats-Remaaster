@@ -1,155 +1,144 @@
-// Проверка баланса: node web/battle/tools/sim.js [боёв] [--career] [--log]
-// По умолчанию — таблица: персонаж каждого класса на уровне монстра (и на 1 выше) с типичной экипировкой.
-// --no-potions — без зелий, чтобы видеть «чистый» баланс.
-// --career — «прохождение»: новый персонаж бьёт подходящих монстров, надевает лут, продаёт остальное,
-//   докупает зелья на вырученное и раскидывает очки.
-// Игрок-бот играет «жадно»: самый дорогой доступный приём, зелье при HP < 35%.
-const PC = require('../js/engine.js');
-require('../js/data.js');
-require('../js/progression.js');
-require('../js/world-data.js');
-require('../js/economy.js');
-const { data, Battle, progression: P, economy: E, makeRng } = PC;
+// Проверка баланса: node web/battle/tools/sim.js [боёв] [--career] [--rarity=2] [--enhance=3] [--log]
+// По умолчанию — таблица: персонаж каждого класса на уровне монстра с типичной экипировкой зоны
+// (редкость --rarity, заточка --enhance) против каждого монстра каждой зоны.
+// --career — «прохождение» с нуля: бот охотится в подходящей зоне, надевает лучшее, точит, раскидывает очки.
+// Бот в бою жмёт первое готовое умение по порядку ячеек и пьёт зелье при здоровье ниже 35%.
+const path = require('path');
+const js = (f) => require(path.join(__dirname, '../js', f));
+['data.js', 'classes.js', 'stats.js', 'items-data.js', 'monsters.js', 'world-data.js',
+  'engine.js', 'items.js', 'progression.js', 'economy.js', 'world.js'].forEach(js);
+const PC = globalThis.PC;
+const { data, Battle, progression: P, items: I, makeRng } = PC;
 
-const N = Number(process.argv[2]) || 1000;
-const career = process.argv.includes('--career');
-const showLog = process.argv.includes('--log');
-const noPotions = process.argv.includes('--no-potions');
+const args = process.argv.slice(2);
+const N = Number(args.find((a) => /^\d+$/.test(a))) || 200;
+const opt = (k, d) => { const a = args.find((x) => x.startsWith(`--${k}=`)); return a ? Number(a.split('=')[1]) : d; };
+const career = args.includes('--career');
+const showLog = args.includes('--log');
+const RARITY = opt('rarity', 2);
+const ENHANCE = opt('enhance', 3);
 
-function playerChoice(b) {
+function fight(char, monsterId, level, seed) {
+  const b = new Battle({ player: P.toFighter(data, char), monster: PC.monsters.monsterAt(monsterId, level), seed, data });
   const p = b.player;
-  const has = (id) => p.consumables.find((c) => c.id === id && c.count > 0);
-  if (has('hp_potion') && p.hp / p.maxHp < 0.35) b.useConsumable(p, 'hp_potion');
-  else if (has('mp_potion') && p.maxMana && p.mana < 6) b.useConsumable(p, 'mp_potion');
-  const usable = p.skills.filter((id) => id !== 'basic' && b.skillState(p, id).usable);
-  const heal = usable.find((id) => data.skills[id].heals);
-  if (heal && p.hp / p.maxHp < 0.5) return heal;
-  const atk = usable.filter((id) => !data.skills[id].heals);
-  const w = (id) => Object.values(data.skills[id].cost || {}).reduce((a, x) => a + x, 0);
-  atk.sort((a, c) => w(c) - w(a));
-  return atk[0] || 'basic';
-}
-
-function fight(char, monId, seed) {
-  const b = new Battle({ player: P.toFighter(data, char), monster: data.monsters[monId], seed, data });
-  while (!b.ended && b.turn < 100) b.submit(playerChoice(b));
+  while (!b.ended && b.turn < 60) {
+    const pot = p.consumables.find((c) => c.id === 'hp_potion' && c.count > 0);
+    if (pot && p.hp / p.maxHp < 0.35) b.useConsumable(p, 'hp_potion');
+    b.submit(b.autoAction(p));
+  }
   return b;
 }
 
-function autoAllocate(char) {
-  const order = data.jobs[char.job].auto;
-  let i = char.level * 7;
-  while (char.statPoints > 0) { char.stats[order[i++ % order.length]]++; char.statPoints--; }
+function autoBuild(char) {
+  const cls = data.classes[char.job];
+  let i = 0;
+  while (char.statPoints > 0) { char.stats[cls.auto[i++ % cls.auto.length]]++; char.statPoints--; }
+  const actives = P.classSkills(data, char.job).filter((s) => s.unlock <= char.level);
+  const passives = P.classPassives(data, char.job).slice(0, 4);
+  for (const s of actives) if (!char.skills[s.id] && char.skillPoints > 0) P.learnSkill(data, char, s.id);
+  let k = 0;
+  while (char.skillPoints > 0 && k < 200) {
+    const pool = [...actives.slice(-2).map((s) => ['s', s.id]), ...passives.map((p) => ['p', p.id])];
+    const [kind, id] = pool[k++ % pool.length];
+    if (kind === 's') P.learnSkill(data, char, id); else P.learnPassive(data, char, id);
+  }
+  P.setSlots(data, char, actives.slice(-4).reverse().map((s) => s.id));
 }
 
-// Лучшая вещь в каждый слот среди доступных по уровню и классу (без случайных прибавок)
-function typicalGear(char) {
+// Лучшая база в каждый слот для класса на уровне L
+function typicalGear(char, rng) {
+  const tier = I.maxTierFor(data, char.level);
   char.equipment = {};
-  const bySlot = {};
-  for (const [id, it] of Object.entries(data.items)) {
-    if (it.level > char.level || (it.jobs && !it.jobs.includes(char.job))) continue;
-    if (!bySlot[it.slot] || it.level > data.items[bySlot[it.slot]].level) bySlot[it.slot] = id;
-  }
-  for (const [slot, id] of Object.entries(bySlot)) {
-    const w = bySlot.weapon && data.items[bySlot.weapon];
-    if (slot === 'shield' && w && w.twoHanded) continue;
-    char.equipment[slot] = P.makeItem(id);
+  for (const slot of Object.keys(data.slots)) {
+    const kind = data.slots[slot].kind;
+    const types = I.typesFor(data, kind, char.job);
+    if (!types.length) continue;
+    const w = char.equipment.weapon && data.types[char.equipment.weapon.type];
+    if (kind === 'offhand' && w && w.twoHanded) continue;
+    const item = I.generate(data, { ilvl: char.level, tier, type: types[0].id, cls: char.job, rarityFloor: RARITY }, rng);
+    while (item.affixes.length > data.rarities[RARITY].affixes) item.affixes.pop();
+    item.rarity = RARITY; item.legendary = []; item.quality = 50; item.enhance = Math.min(ENHANCE, 5);
+    char.equipment[slot] = item;
   }
 }
 
-function charAt(job, level) {
+function charAt(job, L, rng) {
   const c = P.newCharacter(data, { nick: 'Тест', gender: 'm', job });
-  c.level = level;
-  c.statPoints = (level - 1) * P.STAT_POINTS_PER_LEVEL;
-  autoAllocate(c);
-  typicalGear(c);
-  if (noPotions) c.potions = {};
+  c.level = L;
+  c.statPoints = (L - 1) * P.STAT_POINTS_PER_LEVEL;
+  c.skillPoints += (L - 1) * P.SKILL_POINTS_PER_LEVEL;
+  autoBuild(c);
+  typicalGear(c, rng);
+  c.materials.hp_potion = 3;
   return c;
 }
 
 if (!career) {
+  const rng = makeRng(7);
   const rows = [];
-  for (const job of Object.keys(data.jobs)) {
-    for (const [monId, m] of Object.entries(data.monsters)) {
-      if (m.ai === 'idle') continue;
-      const row = { job, monster: `${monId} (${m.level})` };
-      for (const delta of [0, 1]) {
-        const c = charAt(job, m.level + delta);
-        let wins = 0, turns = 0;
+  for (const [zoneId, zone] of Object.entries(data.locations)) {
+    if (zone.safe) continue;
+    const entries = [...zone.monsters, ...(zone.boss ? [[zone.boss[0], zone.boss[1], zone.boss[1]]] : [])];
+    for (const [monId, lo, hi] of entries) {
+      const L = Math.round((lo + hi) / 2);
+      const row = { zone: zoneId, monster: `${monId} ${L}` };
+      for (const job of Object.keys(data.classes)) {
+        const c = charAt(job, Math.min(L, P.MAX_LEVEL), rng);
+        let wins = 0, turns = 0, hpLeft = 0;
         for (let i = 0; i < N; i++) {
-          const b = fight(c, monId, i + 1);
-          if (b.winner === b.player) wins++;
+          const b = fight(c, monId, L, i + 1);
+          if (b.winner === b.player) { wins++; hpLeft += b.player.hp / b.player.maxHp; }
           turns += b.turn;
-          if (showLog && i === 0 && delta === 0) console.log(b.log.map((l) => l.text.replace(/<[^>]+>/g, '')).join('\n'), '\n');
+          if (showLog && i === 0) console.log(b.log.map((l) => l.text.replace(/<[^>]+>/g, '')).join('\n'), '\n');
         }
-        row[`lvl+${delta} win`] = `${Math.round(wins / N * 100)}%`;
-        row[`lvl+${delta} turns`] = (turns / N).toFixed(1);
+        row[job] = `${Math.round(wins / N * 100)}% ${(turns / N).toFixed(1)}х ${wins ? Math.round(hpLeft / wins * 100) : 0}♥`;
       }
       rows.push(row);
     }
   }
+  console.log(`Экипировка: редкость ${data.rarities[RARITY].name}, заточка +${Math.min(ENHANCE, 5)}. Ячейка: победы, ходов, остаток здоровья`);
   console.table(rows);
 } else {
-  // Прохождение до 8 уровня: бьём самого сильного монстра не выше своего уровня
+  // Прохождение: зона с монстрами не выше уровня+1, при двух поражениях подряд — зона ниже
   const rng = makeRng(42);
   const rows = [];
-  for (const job of Object.keys(data.jobs)) {
-    let totalBattles = 0, totalLosses = 0, totalItems = 0, totalGold = 0, totalPotions = 0;
-    const runs = Math.max(1, Math.floor(N / 50));
-    for (let run = 0; run < runs; run++) {
-      const c = P.newCharacter(data, { nick: 'Тест', gender: 'm', job });
-      let battles = 0, streak = 0, stepDown = 0;
-      while (c.level < 8 && battles < 2000) {
-        // Самый сильный монстр не выше своего уровня; после двух поражений подряд — пару боёв с кем полегче
-        const pool = Object.entries(data.monsters).filter(([, m]) => m.ai !== 'idle' && !m.boss && m.level <= c.level)
-          .sort((a, b) => b[1].level - a[1].level);
-        const [monId] = pool[Math.min(stepDown > 0 ? 1 : 0, pool.length - 1)];
-        if (stepDown > 0) stepDown--;
-        const b = fight(c, monId, rng.int(1, 1e9));
-        const res = P.applyBattleResult(data, c, b, monId, rng);
-        c.location = data.HOME; // в симуляции не ходим по карте
-        streak = res.win ? 0 : streak + 1;
-        if (streak >= 2) { stepDown = 3; streak = 0; }
-        battles++;
-        totalItems += res.loot.filter((d) => d.kind === 'item').length;
-        // Надеваем всё, что новее по уровню, остальное выбрасываем
-        for (const it of [...c.backpack]) {
-          const p = data.items[it.id];
-          const cur = c.equipment[p.slot];
-          if (P.canEquip(data, c, it).ok && (!cur || data.items[cur.id].level < p.level)) P.equip(data, c, it.uid);
-        }
-        for (const it of [...c.backpack]) E.sell(data, c, it.uid);
-        // Покупаем в лавке вещи посильнее надетых, затачиваем оружие до безопасного +4 — с запасом золота на зелья
-        for (const id of data.npcs.shop.stock) {
-          const it = data.items[id];
-          if (!it || !P.canEquip(data, c, { id }).ok) continue;
-          const cur = c.equipment[it.slot];
-          if (cur && data.items[cur.id].level >= it.level) continue;
-          if (c.gold < E.priceOf(data, id) + 40) continue;
-          E.buy(data, c, id);
-          P.equip(data, c, c.backpack[c.backpack.length - 1].uid);
-          for (const old of [...c.backpack]) E.sell(data, c, old.uid);
-        }
-        const w = c.equipment.weapon;
-        if (w) {
-          const info = E.refineInfo(data, w);
-          if (!info.maxed && !info.risky && c.gold >= info.cost + 40) E.refine(data, c, w.uid, rng);
-        }
-        // Докупаем зелья здоровья до трёх, если хватает золота
-        while (c.potions.hp_potion < 3 && E.buy(data, c, 'hp_potion').ok) totalPotions++;
-        autoAllocate(c);
+  for (const job of Object.keys(data.classes)) {
+    const c = P.newCharacter(data, { nick: 'Тест', gender: 'm', job });
+    const zones = Object.entries(data.locations).filter(([, z]) => !z.safe);
+    let battles = 0, streak = 0, penalty = 0;
+    const levelAt = {};
+    while (c.level < 30 && battles < 6000) {
+      const ok = zones.filter(([, z]) => z.levels[0] <= c.level + 1);
+      const [zoneId, zone] = ok[Math.max(0, ok.length - 1 - penalty)];
+      c.location = zoneId;
+      // Босс необязателен: бот идёт на него, только если дорос до его уровня
+      const bossOk = zone.boss && PC.world.bossReady(data, c) && c.level >= zone.boss[1] - 1 && rng.chance(30);
+      const entry = bossOk ? [zone.boss[0], zone.boss[1], zone.boss[1]] : rng.pick(zone.monsters);
+      const level = rng.int(entry[1], entry[2]);
+      const b = fight(c, entry[0], level, rng.int(1, 1e9));
+      const res = P.applyBattleResult(data, c, b, { monsterId: entry[0], level }, rng);
+      battles++;
+      streak = res.win ? 0 : streak + 1;
+      if (streak >= 2) { penalty = Math.min(penalty + 1, ok.length - 1); streak = 0; } else if (res.win && penalty && rng.chance(10)) penalty--;
+      // Надеваем то, что сильнее надетого, остальное разбираем; точим оружие до +5
+      for (let i = 0; i < c.bag.length; i++) {
+        const it = c.bag[i];
+        if (!it) continue;
+        const slot = I.slotsFor(data, it).find((s) => !c.equipment[s]) || I.slotsFor(data, it)[0];
+        const cur = c.equipment[slot];
+        if (I.canEquip(data, c, it, slot).ok && (!cur || I.power(data, it) > I.power(data, cur))) I.equip(data, c, i, slot);
       }
-      totalBattles += battles;
-      totalLosses += c.losses;
-      totalGold += c.gold;
+      for (const it of [...c.bag]) if (it) I.salvage(data, c, it.uid, rng);
+      for (const it of Object.values(c.equipment)) {
+        const info = I.enhanceInfo(data, it);
+        if (!info.capped && !info.maxed && info.next <= 5 && c.materials.stone1 > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
+      }
+      while ((c.materials.hp_potion || 0) < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion').ok);
+      autoBuild(c);
+      for (const L of [5, 10, 15, 20, 25, 30]) if (c.level >= L && !levelAt[L]) levelAt[L] = battles;
     }
-    rows.push({
-      job, 'боёв до 8 ур.': (totalBattles / runs).toFixed(0),
-      'поражений': `${Math.round(totalLosses / totalBattles * 100)}%`,
-      'вещей выпало': (totalItems / runs).toFixed(1),
-      'зелий куплено': (totalPotions / runs).toFixed(0),
-      'золота на 8 ур.': (totalGold / runs).toFixed(0),
-    });
+    rows.push({ job, ...Object.fromEntries(Object.entries(levelAt).map(([k, v]) => [`ур.${k}`, v])), 'поражений': `${Math.round(c.losses / battles * 100)}%`, золото: c.gold });
   }
+  console.log('Боёв до уровня:');
   console.table(rows);
 }
