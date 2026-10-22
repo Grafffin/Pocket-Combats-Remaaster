@@ -1,0 +1,123 @@
+e: account_info cookie error player_info session_token success 
+a61: has_enchanted_hammer 
+al: auth_error auth_token character_error player_info 
+aq0: action_submitted next_turn_time server_time statuses turn_duration turn_number 
+ax0: description expiration_date icon name start_time 
+bc: counter description expiration_turn_number icon id name permanent positive 
+bl: disarmed frozen muted silenced stoned stunned 
+cx0: player_info 
+dd: exp rewards victory 
+de0: error_message item_id location_info success 
+di: items position total_count 
+dz: error_message success 
+ee0: armor bleed_immune bleed_res blind_immune blind_res bonus_agi bonus_bleed_chance bonus_blind_chance bonus_block bonus_burn_chance bonus_crit_dmg bonus_crit_rate bonus_curse_chance bonus_dex bonus_dmg_percent bonus_exp_gain bonus_flee_rate bonus_freeze_chance bonus_hit_rate bonus_hp bonus_hp_percent bonus_hp_regen_range bonus_luk bonus_magic_dmg bonus_magic_dmg_percent bonus_magic_dmg_percent_range bonus_magic_dmg_range bonus_mana bonus_mana_percent bonus_mana_regen_range bonus_player_dmg bonus_poison_chance bonus_ranged_dmg_percent bonus_silence_chance bonus_stone_chance bonus_str bonus_stun_chance bonus_vit bonus_wis curse_immune curse_res description dmg dmg_range durability earth_res fire_res freeze_immune freeze_res granted_skill_description holy_res icon id magic_def min_agi min_dex min_level min_luk min_str min_vit min_wis modifier name player_damage_res poison_immune poison_res projectile_res random_properties rare_find reject_job required_job silence_immune silence_res sockets stone_immune stone_res stun_immune stun_res type undead_res water_res weight wind_res 
+ei: items_count player_info 
+ei0: can_join id team_a team_b 
+ez: description dmg_reduction entrance_fee flee_reduction min_level permitted 
+f11: player_info 
+f61: auth_token error_message player_info success 
+fd: icon_url id item item_type name 
+fi0: icon id nick npc 
+fm1: error_message success summary 
+fz: equipment_items hide_premium_status player_info warnings 
+gc: player_info 
+ge0: brief_message persistent_message player_backpack success 
+gf: content insurance message refine_success success 
+gg1: items position total_count 
+gi0: location_id 
+gm: error_message messages success 
+gm1: disable_reason enabled player_info 
+gz: applicable_slots equippable equipped_slots item 
+h10: button_text text 
+he0: message success tradable_items trade_summary 
+hx0: id selected skill_definition 
+ic1: money_earned new_money success total_items_count 
+ie1: cast_time cooldown description icon id initial_cooldown locked primary_jobs required_player_level required_tactics selectable title usable 
+il1: battle_start entrance_fee joinable participants registration_close registration_open server_time 
+im1: confirmed error partner_info receiving_items transferring_items 
+in1: has_keys team_info teams 
+ix0: arsenal available_skills levels_till_next_points player_info selected_skills skill_points skill_slots 
+jk: chat_channel 
+jl1: error_message success tournament_info 
+k61: cost description submit_enabled 
+kd: action_order cooldown cooldown_until description icon id required_tactics target title 
+kd0: bleed_immune bleed_res blind_immune blind_res bonus_agi bonus_armor bonus_bleed_chance bonus_blind_chance bonus_block_chance bonus_burn_chance bonus_crit_dmg bonus_crit_rate bonus_crit_res bonus_curse_chance bonus_dex bonus_dmg_percent bonus_earth_dmg bonus_exp_gain bonus_fire_dmg bonus_flee_rate bonus_freeze_chance bonus_hit_rate bonus_holy_dmg bonus_hp bonus_hp_percent bonus_hp_regen bonus_luk bonus_magic_def bonus_magic_dmg bonus_magic_dmg_percent bonus_mana bonus_mana_percent bonus_mana_regen bonus_player_dmg bonus_poison_chance bonus_poison_dmg bonus_ranged_dmg_percent bonus_silence_chance bonus_stone_chance bonus_str bonus_stun_chance bonus_undead_dmg bonus_vit bonus_water_dmg bonus_wind_dmg bonus_wis breakable count curse_immune curse_res description dmg_reduce_percent durability duration_minutes earth_res ephemeral expiration_date_string fire_res freeze_immune freeze_res gift granted_skill_description holy_res icon id legacy loot max_dmg max_durability max_stack min_dmg modifier name player_damage_res poison_immune poison_res projectile_res quest_item rare_find reject_job required_agi required_dex required_job required_level required_luk required_str required_vit required_wis runes sell_price silence_immune silence_res sockets stone_immune stone_res stun_immune stun_res total_bonus_armor total_max_dmg total_min_dmg type undead_res upgradable upgrade_level usable version water_res weight wind_res 
+kd1: items player_info 
+kk: chat_channel 
+km1: player_state server_time trade_info 
+l2: turn_number 
+ld: available_skills 
+lg1: can_pick_up stash transfer_time 
+m60: disable_reason enabled player_info 
+m61: error_message player_info rename_details 
+m70: greeting_options greeting_text leaving_text 
+md: statuses turn_number 
+mf0: description entries 
+mk: armor avatar boots committed_action current_hp current_opponent_id gloves head icon id level low_head max_hp nick npc shield tactics team_id version weapon 
+n41: message success 
+na: items player_info weight 
+nc0: has_keys team_info teams 
+nd: id start_time team_a team_b 
+nd0: error_message friends_info success 
+nd1: cost hide_stats purchases_left remaining_sale_seconds stacks 
+nj1: block_count crit_count dodge_count hit_count mana 
+nl1: error items 
+nn1: message success 
+o41: max_value min_value 
+o61: repair_cost 
+o80: message shop_content success 
+oc: characters logs 
+od0: error_message friends_info success 
+og1: backpack_capacity backpack_weight error money stash_capacity stash_money stash_weight success 
+oi0: battles description dropped_items id in_transit location_monsters name npcs player_info players pvp_enabled routes selected_route_id server_time threatening_until trade_enabled transit_began transit_finished version 
+or0: access_token expires_in scope 
+oz0: available description icon name sku subscription 
+p61: content error_message item item_destroyed max_durability_lost money_spent success 
+pc: action_submitted allies available_consumables available_skills character_id current_opponent_id effects ended foes id logs next_turn server_time statuses tactics_info team_id turn_duration turn_number type 
+pc0: id joinable key_info members owner 
+pi0: aggressive avatar current_hp exp gender hard_def hard_mag_def icon in_battle level max_dmg max_hp min_dmg monster_id name rule_id soft_def soft_mag_def version 
+pn1: id joinable members owner 
+q90: heal_amount new_hp_value target_id target_team_id 
+qc0: message success summary 
+qd1: arena_killer champion gender icon id job level musician premium username 
+qe: items player_info 
+qg1: backpack_capacity backpack_weight money player_info stash_capacity stash_money stash_weight 
+qi0: activated id name npc_title 
+qn1: message success summary 
+qw: drop_time owner_id share_time 
+r91: items message success 
+ri0: location_id 
+rl1: awaiting_confirmation error trade_completed 
+s60: friends_limit offline_friends online_friends received_requests sent_requests 
+s91: item_ids reward skill_reset 
+sc: battle_id error_message player_info success 
+se: items player_info steel 
+si0: duration_seconds id name 
+sw: points_earned success total_items_count total_points 
+sz0: message shop_content success 
+tb: action_committed battle_find_error error_message success 
+tn0: battle_id error_message player_info success 
+tw: arena_points items_count player_info 
+u1: character_slots characters tos_accepted 
+ub: name stats value 
+uc: id message source_id target_ids turn_number type 
+ue: content enchant_success message success 
+ul: author channel_id deleted id location_id mention_ids text time type 
+un0: aggressive agi assist_group avatar block_chance boss dex drop_rules earth_res exp fire_res flee95 gender hard_def hard_mag_def hit100 holy_res hp hyperactive id level luk max_dmg min_dmg name poison_res projectile_res soft_def soft_mag_def str undead_res vit water_res wind_res wis 
+uw: items position total_count 
+ve: items player_info steel 
+vm: choice_options text 
+wk: account_info auth_error error_message success 
+wp: count icon id max_stack name 
+wt0: location_name player_info 
+wy: enchant_cost steel_requirement success_chance 
+x01: description title 
+xn0: percent_chance 
+xs: damage id new_hp_value target_id target_team_id 
+y01: cancel confirm items limit selection_mode text 
+y81: error_message location_info success 
+yc: icon id level nick npc player_id 
+z51: refine_cost steel_requirement success_chance 
+zc: allies foes 
+zl1: id initiator invitee stage version 
+zw0: equipped_slots 

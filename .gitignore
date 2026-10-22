@@ -1,0 +1,14 @@
+# Оригинальный APK — чужой и тяжёлый, в репозиторий не кладём
+*.apk
+
+# Скачанные с CDN оригинала файлы: тяжёлые и чужие. Манифест (archive/cdn/manifest.*) коммитим.
+archive/cdn/files/
+archive/cdn/tmp/
+
+# Локальные настройки Claude Code, кроме launch.json
+.claude/*
+!.claude/launch.json
+
+node_modules/
+.DS_Store
+Thumbs.db

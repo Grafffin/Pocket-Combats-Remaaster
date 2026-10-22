@@ -1,0 +1,11 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    {
+      "name": "battle-prototype",
+      "runtimeExecutable": "C:\\Users\\Garik\\AppData\\Local\\Programs\\Python\\Python312\\python.exe",
+      "runtimeArgs": ["-m", "http.server", "8137", "--directory", "C:\\Users\\Garik\\Desktop\\Pocker Combat Remaster\\web\\battle"],
+      "port": 8137
+    }
+  ]
+}
