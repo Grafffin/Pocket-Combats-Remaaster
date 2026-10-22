@@ -181,8 +181,9 @@
           <div class="progress thin"><div style="width:${(kills / data.BOSS_KILLS) * 100}%"></div></div></div>` : '';
 
     root.innerHTML = `
-      <div class="banner">${art(loc.art, '')}<div class="title"><b>${loc.name}</b><span>${loc.levels ? `${loc.levels[0]}–${loc.levels[1]} уровень · тир вещей ${loc.tier}` : 'Безопасная зона'}</span></div></div>
+      <div class="banner">${art(loc.art, '')}<div class="title"><b>${loc.name}</b><span>${loc.levels ? `${loc.levels[0]}–${loc.levels[1]} уровень · тир вещей ${loc.tier}${W.diffOf(c, c.location) ? ` · <i style="color:${data.difficulties[W.diffOf(c, c.location)].color};font-style:normal">${data.difficulties[W.diffOf(c, c.location)].name}</i>` : ''}` : 'Безопасная зона'}</span></div></div>
       <div class="card section"><h3>Переходы</h3>${routes}</div>
+      ${loc.safe ? '' : diffBlock(c)}
       ${npcs ? `<div class="card section"><h3>Жители</h3><div class="npc-grid">${npcs}</div></div>` : ''}
       <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Монстры'}
           <span class="note" id="rest-note">${rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`}</span></h3>
@@ -194,11 +195,25 @@
       <div class="card section"><p class="loc-desc">${loc.desc}</p></div>`;
   }
 
+  // Сложность зоны: ступени, открытые убийством босса на предыдущей
+  function diffBlock(c) {
+    const cur = W.diffOf(c, c.location);
+    const open = W.diffUnlocked(c, c.location);
+    const dd = data.difficulties[cur];
+    const chips = data.difficulties.map((d) => `<button class="diff-chip ${d.id === cur ? 'on' : ''}" data-diff="${d.id}" ${d.id > open ? 'disabled' : ''}
+        style="--dc:${d.color}" title="${d.id > open ? 'Откроется после победы над боссом зоны на предыдущей сложности' : d.name}">${d.id > open ? '🔒 ' : ''}${d.short}</button>`).join('');
+    const perks = cur ? `Монстры ×${dd.mult} (здоровье и атака) · опыт и золото ×${dd.exp} · находка +${dd.mf}% · уровень вещей +${dd.ilvl}${dd.stone3 ? ` · камни III ${dd.stone3}%` : ''}`
+      : 'Базовая сложность. Убейте босса зоны, чтобы открыть «Кошмар».';
+    return `<div class="card section"><h3>Сложность<span class="note" style="color:${dd.color}">${dd.name}</span></h3>
+      <div class="diff-row">${chips}</div><p class="hint" style="margin-bottom:0">${perks}</p></div>`;
+  }
+
   function mobRow(m, now, rest) {
     const c = state.char;
     const def = data.monsters[m.id];
     const dead = m.deadUntil != null;
-    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level));
+    const dd = data.difficulties[W.diffOf(c, c.location)];
+    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level) * dd.exp);
     let status = '';
     if (dead) status = `<span class="mob-status">возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с</span>`;
     else if (m.busy) status = '<span class="mob-status">в бою</span>';
@@ -226,6 +241,15 @@
       render();
       return;
     }
+    const df = e.target.closest('[data-diff]');
+    if (df) {
+      if (df.disabled) return toast(df.title, 'bad');
+      const r = W.setDiff(data, c, c.location, Number(df.dataset.diff));
+      if (!r.ok) return toast(r.reason, 'bad');
+      app.save();
+      state.worldSig = null;
+      return render();
+    }
     const act = e.target.closest('[data-act]');
     if (!act) return;
     if (act.dataset.act === 'cancel-travel') { W.cancelTravel(c); app.save(); render(); }
@@ -248,16 +272,18 @@
     const m = W.findMob(data, c, uid);
     if (!m) return;
     const def = data.monsters[m.id];
-    const t = M.monsterAt(m.id, m.level);
+    const D = W.diffOf(c, c.location);
+    const dd = data.difficulties[D];
+    const t = M.monsterAt(m.id, m.level, D);
     const s = t.stats;
     const fmt = PC.fmtBig;
     const loc = W.here(data, c);
-    const tier = I.maxTierFor(data, m.level);
-    const [g0, g1] = M.rewards.gold(m.id, m.level);
-    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level));
+    const tier = I.maxTierFor(data, m.level + dd.ilvl);
+    const [g0, g1] = M.rewards.gold(m.id, m.level).map((g) => Math.round(g * dd.gold));
+    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level) * dd.exp);
     const res = [['fireRes', '🔥'], ['coldRes', '❄'], ['poisonRes', '☠']].filter(([k]) => s[k]).map(([k, i]) => `${i} ${s[k] > 0 ? '' : '−'}${Math.abs(s[k])}%`).join(' ');
     const skills = (def.skills || []).map((id) => data.monsterSkills[id].name).join(', ');
-    const D = P.DROP;
+    const DR = P.DROP;
     const mats = (loc.mats || []).map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('');
     const rows = [
       ['hp', 'Здоровье', fmt(s.maxHp)],
@@ -267,7 +293,7 @@
       ['speed', 'Скорость', `${s.speed} (у вас ${S.compute(data, c).speed})`],
       ...(s.block ? [['block', 'Блок', `${s.block}%`]] : []),
     ].map(([ic, k, v]) => `<div class="kv"><span>${art(`stats/${ic}`, '', 'stat-ico')}${k}</span><b>${v}</b></div>`).join('');
-    openModal(`${def.name} · ${m.level} ур.`, `
+    openModal(`${def.name} · ${m.level} ур.${D ? ` · <span style="color:${dd.color}">${dd.name}</span>` : ''}`, `
       <div class="row" style="align-items:flex-start;gap:12px;margin-bottom:10px">${avatar(def, 72)}<div><span class="tag kind">${KIND_NAME[def.kind] || ''}</span>${def.boss ? '<span class="tag boss">босс</span>' : ''}
         <p class="meta" style="margin:6px 0 0">${def.blurb}</p></div></div>
       ${rows}
@@ -277,7 +303,7 @@
       <div class="kv"><span>Опыт</span><b>≈${fmt(exp)}</b></div>
       <div class="kv"><span>Золото</span><b>${g0}–${g1}</b></div>
       ${def.ai === 'idle' ? '' : `<div class="props-label">Возможная добыча</div>
-      <p class="meta">${def.boss ? `Гарантированно ${D.bossItems} вещи не ниже «Редкой»` : `Вещь — шанс ${D.item}%`}, тир T${tier} (с ${data.TIER_LEVEL[tier]} ур.), любой редкости. 80% вещей — для вашего класса.</p>
+      <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[dd.floor].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
       <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
       ${m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
@@ -322,7 +348,8 @@
     const res = W.engage(data, c, uid, Date.now());
     if (!res.ok) { toast(res.reason, 'bad'); return false; }
     const mob = res.mob;
-    state.fight = { uid, monsterId: mob.id, level: mob.level };
+    const D = W.diffOf(c, c.location);
+    state.fight = { uid, monsterId: mob.id, level: mob.level, diff: D };
     app.save();
     $('#result').hidden = true;
     closeSheet();
@@ -330,7 +357,7 @@
     show('battle');
     PC.battleUI.start({
       player: P.toFighter(data, c),
-      monster: M.monsterAt(mob.id, mob.level),
+      monster: M.monsterAt(mob.id, mob.level, D),
       settings: c.settings,
       onSettings: () => app.save(),
       onEnd: (battle, { fled }) => {
@@ -377,6 +404,7 @@
         <p class="meta">${c.level} уровень · ${fmtNum(c.exp)} / ${fmtNum(need)}</p>`;
       if (sum.levelsUp.length) html += `<p class="levelup">Новый уровень: ${c.level}! Очки ждут во вкладке «Герой».</p>`;
       for (const id of sum.newSkills) html += `<p class="levelup">Открыто умение «${data.skills[id].name}»</p>`;
+      if (sum.unlocked) html += `<p class="levelup">Открыта сложность «${sum.unlocked}» для этой зоны!</p>`;
       if (sum.items.length) html += `<div class="loot-grid">${sum.items.map((it) => tile(it, { attrs: `data-loot="${it.uid}"`, can: I.canEquip(data, c, it).ok })).join('')}</div>`;
       const mats = Object.entries(sum.materials);
       if (mats.length) html += `<div class="cost" style="justify-content:center">${mats.map(([k, n]) => `<span class="info-link" data-info="${k}">${art(data.materials[k].art, '•')}+${n}</span>`).join('')}</div>`;

@@ -127,6 +127,8 @@
       if (best) add(sum, sets[best]);
     }
     for (const id of Object.keys(char.buffs || {})) if (data.elixirs[id]) add(sum, data.elixirs[id].mods);
+    const cls = data.classes[char.job];
+    if (cls && cls.innate) add(sum, cls.innate);
     for (const [id, rank] of Object.entries(char.passives || {})) {
       const ps = data.passives[id];
       if (ps && rank > 0) add(sum, ps.mods(rank));

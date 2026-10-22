@@ -162,10 +162,12 @@ for (const [boss, level] of BOSSES) {
     }
     const kp = breakpoint([perfect], boss, level);
     const kr = breakpoint(randoms, boss, level);
-    rows.push({ босс: `${data.monsters[boss].name} (${level})`, класс: job, 'идеальный ×': kp.toFixed(1), 'случайный ×': kr.toFixed(1), разница: `в ${(kp / kr).toFixed(1)} раза` });
+    // Самая высокая сложность зоны, на которой герой ещё побеждает в половине боёв
+    const maxDiff = (k) => data.difficulties.filter((d) => d.mult <= k).pop().name;
+    rows.push({ босс: `${data.monsters[boss].name} (${level})`, класс: job, 'идеальный ×': `${kp.toFixed(1)} · ${maxDiff(kp)}`, 'случайный ×': `${kr.toFixed(1)} · ${maxDiff(kr)}`, разница: `в ${(kp / kr).toFixed(1)} раза` });
   }
 }
 console.log('Характеристики (Лич, уровень 36; тир вещей по уровню героя):');
 console.table(sheets);
-console.log('Во сколько раз можно усилить босса (здоровье и атаку), чтобы герой побеждал в половине боёв:');
+console.log('Во сколько раз можно усилить босса (здоровье и атаку), чтобы герой побеждал в половине боёв, и какая это сложность зоны:');
 console.table(rows);

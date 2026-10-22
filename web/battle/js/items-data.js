@@ -136,7 +136,8 @@
     atk: { stat: 'atk', slots: ['weapon', 'hands', ...JEWEL], cls: ['warrior', 'berserker', 'hunter'], t: ATK, w: 10, group: 'attack' },
     atkPct: { stat: 'atkPct', pct: true, slots: ['weapon', ...JEWEL], cls: ['warrior', 'berserker', 'hunter'], t: PCT_BIG, w: 7, group: 'attack' },
     matk: { stat: 'matk', slots: ['weapon', 'offhand', 'head', ...JEWEL], cls: ['mage'], t: ATK, w: 10, group: 'attack' },
-    matkPct: { stat: 'matkPct', pct: true, slots: ['weapon', 'offhand', ...JEWEL], cls: ['mage'], t: PCT_BIG, w: 7, group: 'attack' },
+    // На сфере нет «+% маг. атаки»: иначе у мага на одно процентное свойство больше, чем у остальных
+    matkPct: { stat: 'matkPct', pct: true, slots: ['weapon', ...JEWEL], cls: ['mage'], t: PCT_BIG, w: 7, group: 'attack' },
     crit: { stat: 'crit', slots: ['weapon', 'head', 'hands', ...JEWEL], t: R([1, 2], [2, 3], [3, 4], [4, 5], [5, 6], [6, 8], [8, 10]), w: 8, group: 'attack' },
     critDmg: { stat: 'critDmg', slots: ['weapon', 'hands', ...JEWEL], t: R([5, 8], [8, 12], [12, 16], [16, 21], [21, 27], [27, 34], [34, 42]), w: 7, group: 'attack' },
     acc: { stat: 'acc', slots: ['weapon', 'head', 'hands', 'ring'], cls: ['warrior', 'berserker', 'hunter'], t: RATING, w: 6, group: 'attack' },

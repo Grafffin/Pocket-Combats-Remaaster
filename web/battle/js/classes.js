@@ -39,6 +39,8 @@
       resource: 'mana', primary: 'int',
       stats: { str: 1, agi: 3, int: 10, vit: 4, luk: 2 },
       weapons: ['staff', 'wand'], offhand: ['orb'], armor: 'cloth',
+      // Врождённое: маг носит ткань и не блокирует — немного живучести, чтобы не рассыпаться о тяжёлых боссов
+      innate: { hpPct: 0.15, mdefPct: 0.2 },
       startGear: ['staff', 'robe'],
       auto: ['int', 'int', 'vit', 'int', 'agi', 'luk'],
     },

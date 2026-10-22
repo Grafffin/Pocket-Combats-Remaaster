@@ -194,17 +194,19 @@
   const MONSTER_GROWTH_POW = 0.93;
 
   // Шаблон бойца для движка: монстр на конкретном уровне
-  function monsterAt(id, L) {
+  // D — сложность зоны: монстр сильнее в difficulties[D].mult раз (здоровье, атака, защита)
+  function monsterAt(id, L, D = 0) {
     const m = monsters[id];
     const k = (key) => (m.m && m.m[key] != null ? m.m[key] : 1) * (m.boss && BOSS[key] ? BOSS[key] : 1);
-    const SC = Math.pow(PC.stats.growth(L), MONSTER_GROWTH_POW);
+    const dm = (data.difficulties && data.difficulties[D] ? data.difficulties[D].mult : 1);
+    const SC = Math.pow(PC.stats.growth(L), MONSTER_GROWTH_POW) * dm;
     const atk = curve.atk(L) * k('atk') * SC;
     const stats = {
       level: L,
       maxHp: Math.round(curve.hp(L) * k('hp') * SC),
       atk: Math.round(atk), matk: Math.round(atk * 0.9),
       weaponMin: 0, weaponMax: Math.round(atk * 0.3),
-      def: Math.round(curve.def(L) * k('def') * SC), mdef: Math.round(curve.mdef(L) * k('mdef') * SC),
+      def: Math.round(curve.def(L) * k('def') * SC / dm), mdef: Math.round(curve.mdef(L) * k('mdef') * SC / dm),
       acc: Math.round(curve.acc(L)), eva: Math.round(curve.eva(L) * k('eva')),
       speed: Math.round(curve.speed(L) * k('speed')),
       crit: 5 * k('crit'), critDmg: 150,
@@ -213,7 +215,7 @@
       ...(m.m.res || {}),
     };
     return {
-      name: m.name, forms: m.forms, gender: m.gender, kind: m.kind, boss: !!m.boss,
+      name: m.name, forms: m.forms, gender: m.gender, kind: m.kind, boss: !!m.boss, diff: D,
       art: m.art, emoji: m.emoji, verbs: m.verbs, ai: m.ai, weaponType: m.weaponType || (m.caster ? 'staff' : 'fist'),
       monsterSkills: m.skills || [], stats,
     };

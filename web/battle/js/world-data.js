@@ -60,6 +60,21 @@
     },
   };
 
+  // Сложности зон (по мотивам Torment в EHT). Открываются по зонам: убить босса зоны на текущей сложности.
+  // mult — во сколько раз сильнее монстры (здоровье и атака; защита прежняя); награды растут вместе с ними.
+  // ilvl — прибавка к уровню выпавших вещей (сильнее база и плоские свойства), mf — к находке,
+  // rare — множитель шанса героических и выше, floor — минимальная редкость добычи боссов.
+  const difficulties = [
+    { id: 0, name: 'Обычная', short: 'Обычн.', mult: 1, exp: 1, gold: 1, ilvl: 0, mf: 0, rare: 1, floor: 2, stone3: 0, color: '#8b93a7' },
+    { id: 1, name: 'Кошмар', short: 'Кошмар', mult: 2, exp: 1.6, gold: 1.6, ilvl: 4, mf: 40, rare: 1.6, floor: 2, stone3: 3, color: '#b27bff' },
+    { id: 2, name: 'Ад', short: 'Ад', mult: 4, exp: 2.4, gold: 2.4, ilvl: 8, mf: 80, rare: 2.4, floor: 3, stone3: 6, color: '#ff9f3d' },
+    { id: 3, name: 'Пытка I', short: 'П I', mult: 7, exp: 3.4, gold: 3.4, ilvl: 12, mf: 130, rare: 3.4, floor: 3, stone3: 10, color: '#ff4d5e' },
+    { id: 4, name: 'Пытка II', short: 'П II', mult: 12, exp: 4.6, gold: 4.6, ilvl: 16, mf: 190, rare: 4.6, floor: 4, stone3: 15, color: '#ff4d5e' },
+    { id: 5, name: 'Пытка III', short: 'П III', mult: 20, exp: 6, gold: 6, ilvl: 20, mf: 260, rare: 6, floor: 4, stone3: 20, color: '#ff4d5e' },
+    { id: 6, name: 'Пытка IV', short: 'П IV', mult: 32, exp: 8, gold: 8, ilvl: 24, mf: 340, rare: 8, floor: 5, stone3: 28, color: '#3fe0d0' },
+    { id: 7, name: 'Пытка V', short: 'П V', mult: 50, exp: 10, gold: 10, ilvl: 28, mf: 430, rare: 10, floor: 5, stone3: 36, color: '#3fe0d0' },
+  ];
+
   const BOSS_KILLS = 10;           // побед в зоне до появления босса
   const DEATH_GOLD_LOSS = 0.1;     // поражение стоит 10% золота и возвращает в деревню
 
@@ -72,6 +87,6 @@
     enchanter: { name: 'Чародейка Велена', art: 'npcs/enchanter', emoji: '🔮', desc: 'Перековка свойств вещей.', greeting: 'Свойства вещи — как нити. Потяну за одну, и узор сложится иначе.' },
   };
 
-  Object.assign(data, { HOME, locations, npcs, BOSS_KILLS, DEATH_GOLD_LOSS });
+  Object.assign(data, { HOME, locations, npcs, difficulties, BOSS_KILLS, DEATH_GOLD_LOSS });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

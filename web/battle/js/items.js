@@ -24,6 +24,8 @@
   };
 
   const qualityMult = (q) => 0.8 + 0.4 * q / 100;
+  // Вещь, выпавшая выше уровня своего тира (поздние уровни зоны, сложности), сильнее: +4% базы за уровень
+  const ilvlBonus = (data, item) => 1 + 0.04 * Math.max(0, (item.ilvl || 0) - data.TIER_LEVEL[item.tier]);
   const qualityName = (data, q) => data.qualities.filter((x) => q >= x.min).pop().name;
 
   // ---------- Генерация ----------
@@ -146,7 +148,7 @@
     const type = data.types[item.type];
     const raw = type.base(item.tier);
     const mult = qualityMult(item.quality) * (1 + item.enhance * data.enhance.perLevel) * (1 + item.rank * data.rank.perRank);
-    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]);
+    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]) * ilvlBonus(data, item);
     const sc = (k) => (PC.stats.SCALED.has(k) ? S : 1);
     const out = {};
     for (const [k, v] of Object.entries(raw)) {

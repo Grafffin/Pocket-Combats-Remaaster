@@ -52,6 +52,7 @@
       level: st.level,
       kind: tpl.kind || null,
       boss: !!tpl.boss,
+      diff: tpl.diff || 0,
       art: tpl.art || null, emoji: tpl.emoji || null,
       weaponType: tpl.weaponType || 'fist',
       verbs: tpl.verbs || null,

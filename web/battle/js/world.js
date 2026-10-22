@@ -117,6 +117,17 @@
     return rng.pick(same.length ? same : alive);
   }
 
+  // ---------- Сложность зон ----------
+  const diffOf = (char, locId) => (char.diff && char.diff[locId]) || 0;
+  const diffUnlocked = (char, locId) => (char.zoneDiff && char.zoneDiff[locId]) || 0;
+  function setDiff(data, char, locId, D) {
+    if (D < 0 || D >= data.difficulties.length) return { ok: false, reason: 'Нет такой сложности' };
+    if (D > diffUnlocked(char, locId)) return { ok: false, reason: `Откроется после победы над боссом зоны на «${data.difficulties[D - 1].name}»` };
+    char.diff = char.diff || {};
+    char.diff[locId] = D;
+    return { ok: true };
+  }
+
   // ---------- Переходы ----------
 
   function startTravel(data, char, to, now) {
@@ -145,7 +156,7 @@
   }
 
   PC.world = {
-    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, tickOf, tickStart, msToNextTick,
+    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, tickOf, tickStart, msToNextTick,
     here, monsterLevel, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };

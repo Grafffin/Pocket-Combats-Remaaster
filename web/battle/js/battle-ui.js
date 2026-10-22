@@ -123,7 +123,7 @@
   function fighterHtml(f) {
     const res = f.resource ? data.resources[f.resource] : null;
     return `<div class="head">${avatar(f)}<div style="min-width:0">
-        <div class="name">${f.name}</div><div class="lvl">${f.boss ? 'Босс · ' : ''}${f.level} ур. · скорость ${Math.round(f.s.speed)}</div></div></div>
+        <div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур. · скорость ${Math.round(f.s.speed)}</div></div></div>
       <div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div></div><div class="num"><span>HP</span><span class="v"></span></div></div>
       ${res ? `<div class="meter res"><div class="track"><div class="fill" style="background:${res.color}"></div></div><div class="num"><span>${res.name}</span><span class="v"></span></div></div>` : ''}
       <div class="effects"></div>`;
