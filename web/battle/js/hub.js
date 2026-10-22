@@ -105,8 +105,31 @@
 
   $('#tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]');
-    if (b) setTab(b.dataset.tab);
+    if (!b) return;
+    if (b.dataset.tab === 'menu') return openMenu();
+    setTab(b.dataset.tab);
   });
+
+  // Дополнительное меню (☰): разделы, которым не нужно место на нижней панели
+  function openMenu() {
+    const village = app.inVillage();
+    const item = (id, icon, title, note, on) => `<button class="menu-item" data-menu="${id}" ${on ? '' : 'disabled'}>
+      <span class="menu-ico">${art(icon, '•')}</span><span><b>${title}</b><small class="meta">${note}</small></span></button>`;
+    openModal('Меню', `<div class="menu-list">
+      ${item('forge', 'npcs/blacksmith', 'Кузница', village ? 'Заточка, ранги, перенос, перековка, ковка' : 'Только в деревне', village)}
+      ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
+      ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
+      ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
+      ${item('settings', 'ui/gear', 'Настройки', 'Скоро', false)}
+    </div>`, (e) => {
+      const b = e.target.closest('[data-menu]');
+      if (!b || b.disabled) return;
+      closeModal();
+      if (b.dataset.menu === 'forge') setTab('forge');
+      if (b.dataset.menu === 'alchemist') openAlchemist();
+      if (b.dataset.menu === 'stash') PC.bagUI.openStash();
+    });
+  }
 
   // ---------- Мир ----------
 
@@ -164,7 +187,7 @@
       <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Монстры'}
           <span class="note" id="rest-note">${rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`}</span></h3>
         <div class="list">${mobs}</div>${bossNote}
-        ${loc.safe ? '' : `<p class="hint">Монстров на локации ${st.mobs.length}. Убитые возрождаются через ${W.RESPAWN_TICKS * W.TICK_MS / 1000} с, после боя — передышка до следующего тика (${W.TICK_MS / 1000} с).</p>`}
+        ${loc.safe ? '' : `<p class="hint">Монстров на локации ${st.mobs.length} (в ММО их число будет расти с числом игроков). Убитые возрождаются на следующем тике, после боя — передышка до тика. Тик — ${W.TICK_MS / 1000} с. Нажмите на монстра — его характеристики и добыча.</p>`}
         ${loc.safe ? '' : `<div class="row-actions"><button class="btn ${c.settings.autoHunt ? 'primary' : ''}" data-act="hunt">${c.settings.autoHunt ? 'Автоохота включена' : 'Начать автоохоту'}</button>
           <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
@@ -179,17 +202,19 @@
     let status = '';
     if (dead) status = `<span class="mob-status">возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с</span>`;
     else if (m.busy) status = '<span class="mob-status">в бою</span>';
-    return `<button class="mob ${m.boss ? 'boss' : ''} ${dead ? 'dead' : ''}" data-mob="${m.uid}" ${dead || m.busy ? 'disabled' : ''}>
-      <div class="ava" style="width:52px;height:52px">${art(def.art, def.emoji)}</div>
+    return `<div class="mob ${m.boss ? 'boss' : ''} ${dead ? 'dead' : ''}" data-mob="${m.uid}" data-mobinfo="${m.uid}">
+      <div class="ava mob-ava" style="width:52px;height:52px">${art(def.art, def.emoji)}<span class="lvl-badge ${levelClass(m.level - c.level)}">${m.level}</span></div>
       <div class="txt"><b>${def.name}</b>${m.boss ? '<span class="tag boss">босс</span>' : ''}<span class="tag kind">${KIND_NAME[def.kind] || ''}</span>
-        <div class="meta">${dead ? '' : def.blurb}</div>${def.ai === 'idle' ? '' : `<div class="meta">≈${exp} опыта</div>`}${status}</div>
-      <span class="lvl-badge ${levelClass(m.level - c.level)}">${m.level}</span></button>`;
+        ${def.ai === 'idle' ? '' : `<div class="meta">≈${fmtNum(exp)} опыта</div>`}${status}</div>
+      <button class="attack-btn" data-attack="${m.uid}" ${dead || m.busy ? 'disabled' : ''} title="Напасть" aria-label="Напасть">${SWORDS}</button></div>`;
   }
 
   $('#tab-world').addEventListener('click', (e) => {
     const c = state.char;
-    const m = e.target.closest('[data-mob]');
-    if (m && !m.disabled) return startFight(m.dataset.mob);
+    const atk = e.target.closest('[data-attack]');
+    if (atk) { if (!atk.disabled) startFight(atk.dataset.attack); return; }
+    const info = e.target.closest('[data-mobinfo]');
+    if (info) return openMonsterInfo(info.dataset.mobinfo);
     const n = e.target.closest('[data-npc]');
     if (n) return openNpc(n.dataset.npc);
     const r = e.target.closest('[data-route]');
@@ -213,6 +238,51 @@
       if (c.settings.autoHunt) scheduleHunt();
     }
   });
+
+  // Скрещённые мечи для кнопки атаки
+  const SWORDS = `<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 2l7.5 7.5-1.6 1.6L2.4 3.6V2zM20 2h1.6v1.6L9.6 15.6l1.9 1.9-1.4 1.4-1.6-1.6-3.1 3.1.5.5-1.4 1.4-2.8-2.8 1.4-1.4.5.5 3.1-3.1-1.6-1.6 1.4-1.4 1.9 1.9zM14.1 13.2l1.4-1.4 1.9 1.9 1.4-1.4 1.4 1.4-1.4 1.4 1.6 1.6 1.9-.4.4 2-2.8 2.8-2-.4.4-1.9-1.6-1.6-1.4 1.4-1.4-1.4 1.4-1.4z"/></svg>`;
+
+  // Карточка монстра: характеристики на его уровне, умения, сопротивления, награда и возможная добыча
+  function openMonsterInfo(uid) {
+    const c = state.char;
+    const m = W.findMob(data, c, uid);
+    if (!m) return;
+    const def = data.monsters[m.id];
+    const t = M.monsterAt(m.id, m.level);
+    const s = t.stats;
+    const fmt = PC.fmtBig;
+    const loc = W.here(data, c);
+    const tier = I.maxTierFor(data, m.level);
+    const [g0, g1] = M.rewards.gold(m.id, m.level);
+    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level));
+    const res = [['fireRes', '🔥'], ['coldRes', '❄'], ['poisonRes', '☠']].filter(([k]) => s[k]).map(([k, i]) => `${i} ${s[k] > 0 ? '' : '−'}${Math.abs(s[k])}%`).join(' ');
+    const skills = (def.skills || []).map((id) => data.monsterSkills[id].name).join(', ');
+    const D = P.DROP;
+    const mats = (loc.mats || []).map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('');
+    const rows = [
+      ['hp', 'Здоровье', fmt(s.maxHp)],
+      [def.caster ? 'matk' : 'atk', def.caster ? 'Магическая атака' : 'Атака', fmt(def.caster ? s.matk : s.atk)],
+      ['def', 'Защита / маг.', `${fmt(s.def)} / ${fmt(s.mdef)}`],
+      ['accuracy', 'Точность / уклонение', `${s.acc} / ${s.eva}`],
+      ['speed', 'Скорость', `${s.speed} (у вас ${S.compute(data, c).speed})`],
+      ...(s.block ? [['block', 'Блок', `${s.block}%`]] : []),
+    ].map(([ic, k, v]) => `<div class="kv"><span>${art(`stats/${ic}`, '', 'stat-ico')}${k}</span><b>${v}</b></div>`).join('');
+    openModal(`${def.name} · ${m.level} ур.`, `
+      <div class="row" style="align-items:flex-start;gap:12px;margin-bottom:10px">${avatar(def, 72)}<div><span class="tag kind">${KIND_NAME[def.kind] || ''}</span>${def.boss ? '<span class="tag boss">босс</span>' : ''}
+        <p class="meta" style="margin:6px 0 0">${def.blurb}</p></div></div>
+      ${rows}
+      ${skills ? `<div class="kv"><span>Умения</span><b>${skills}</b></div>` : ''}
+      ${res ? `<div class="kv"><span>Сопротивления</span><b>${res}</b></div>` : ''}
+      <div class="props-label">Награда</div>
+      <div class="kv"><span>Опыт</span><b>≈${fmt(exp)}</b></div>
+      <div class="kv"><span>Золото</span><b>${g0}–${g1}</b></div>
+      ${def.ai === 'idle' ? '' : `<div class="props-label">Возможная добыча</div>
+      <p class="meta">${def.boss ? `Гарантированно ${D.bossItems} вещи не ниже «Редкой»` : `Вещь — шанс ${D.item}%`}, тир T${tier} (с ${data.TIER_LEVEL[tier]} ур.), любой редкости. 80% вещей — для вашего класса.</p>
+      <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
+      ${m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
+      if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
+    });
+  }
 
   // Часы мира на экране локации: переходы, возрождение, передышка
   function worldTick() {
@@ -449,11 +519,11 @@
     const res = data.resources[s.resource];
 
     const combat = [
-      ['hp', 'Здоровье', Math.round(s.maxHp)],
+      ['hp', 'Здоровье', PC.fmtBig(s.maxHp)],
       ['mp', res.name, s.resMax],
-      ...(s.caster ? [['matk', 'Магическая атака', s.matk]] : [['atk', 'Атака', `${s.atk} + ${s.weaponMin}–${s.weaponMax}`]]),
-      ['def', 'Защита', `${s.def} (−${Math.round(100 - 10000 / (100 + s.def))}%)`],
-      ['mdef', 'Маг. защита', `${s.mdef} (−${Math.round(100 - 10000 / (100 + s.mdef))}%)`],
+      ...(s.caster ? [['matk', 'Магическая атака', PC.fmtBig(s.matk)]] : [['atk', 'Атака', `${PC.fmtBig(s.atk)} + ${PC.fmtBig(s.weaponMin)}–${PC.fmtBig(s.weaponMax)}`]]),
+      ['def', 'Защита', `${PC.fmtBig(s.def)} (−${Math.round(100 - 100 * S.DEF_K / (S.DEF_K + s.def))}%)`],
+      ['mdef', 'Маг. защита', `${PC.fmtBig(s.mdef)} (−${Math.round(100 - 100 * S.DEF_K / (S.DEF_K + s.mdef))}%)`],
       ['crit', 'Крит', `${Math.round(s.crit)}% · ×${Math.round(s.critDmg)}%`],
       ['accuracy', 'Точность / уклонение', `${s.acc} / ${s.eva}`],
       ['speed', 'Скорость', s.speed],
@@ -568,6 +638,8 @@
 
   window.addEventListener('DOMContentLoaded', () => {
     if (state.char) {
+      W.releaseAll(state.char);
+      app.save();
       setTab('world');
       if (state.char.settings.autoHunt) scheduleHunt();
     } else {

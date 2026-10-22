@@ -195,13 +195,14 @@
   function monsterAt(id, L) {
     const m = monsters[id];
     const k = (key) => (m.m && m.m[key] != null ? m.m[key] : 1) * (m.boss && BOSS[key] ? BOSS[key] : 1);
-    const atk = curve.atk(L) * k('atk');
+    const SC = PC.stats.SCALE;
+    const atk = curve.atk(L) * k('atk') * SC;
     const stats = {
       level: L,
-      maxHp: Math.round(curve.hp(L) * k('hp')),
+      maxHp: Math.round(curve.hp(L) * k('hp') * SC),
       atk: Math.round(atk), matk: Math.round(atk * 0.9),
       weaponMin: 0, weaponMax: Math.round(atk * 0.3),
-      def: Math.round(curve.def(L) * k('def')), mdef: Math.round(curve.mdef(L) * k('mdef')),
+      def: Math.round(curve.def(L) * k('def') * SC), mdef: Math.round(curve.mdef(L) * k('mdef') * SC),
       acc: Math.round(curve.acc(L)), eva: Math.round(curve.eva(L) * k('eva')),
       speed: Math.round(curve.speed(L) * k('speed')),
       crit: 5 * k('crit'), critDmg: 150,

@@ -47,11 +47,13 @@
       const [lo, hi] = a.t[af.tier - 1];
       const pct = hi > lo ? Math.round(af.roll * 100) : 100;
       const unit = a.pct || (data.statDefs[a.stat] && data.statDefs[a.stat].fmt(1).endsWith('%')) ? '%' : '';
-      const range = lens ? ` <span class="range">[${af.neg ? '−' : ''}${af.neg ? Math.round(hi * data.NEGATIVE.scale) : lo}–${af.neg ? Math.round(lo * data.NEGATIVE.scale) || 1 : hi}${unit}]</span>` : '';
+      const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.SCALE : 1;
+      const f = (v) => (unit ? v : PC.fmtBig(v * k));
+      const range = lens ? ` <span class="range">[${af.neg ? `−${f(Math.round(hi * data.NEGATIVE.scale))}–${f(Math.max(1, Math.round(lo * data.NEGATIVE.scale)))}` : `${f(lo)}–${f(hi)}`}${unit}]</span>` : '';
       return `<li class="${af.neg ? 'neg' : 'affix'}"><span class="t t${af.tier}" data-info="affixTier">T${af.tier}</span><span class="txt">${I.affixText(data, af)}${range}</span>
         <span class="roll" title="${pct}% от максимума тира"><div style="width:${pct}%"></div></span></li>`;
     }).join('');
-    return `<ul class="props">${base}${aff}</ul>`;
+    return `<ul class="props">${base}</ul>${aff ? `<div class="props-label">Свойства</div><ul class="props">${aff}</ul>` : ''}`;
   }
 
   function legendHtml(item) {
@@ -76,7 +78,7 @@
     const parts = DIFF_KEYS.map(([k, label]) => {
       const d = Math.round((after[k] || 0) - (before[k] || 0));
       if (!d) return '';
-      return `<span class="${d > 0 ? 'up' : 'down'}">${label} ${d > 0 ? '+' : '−'}${Math.abs(d)}</span>`;
+      return `<span class="${d > 0 ? 'up' : 'down'}">${label} ${d > 0 ? '+' : '−'}${PC.fmtBig(Math.abs(d))}</span>`;
     }).filter(Boolean);
     const cur = char.equipment[slot];
     return `<div class="compare"><h4>${cur ? `Вместо: ${nameHtml(cur)}` : 'Слот пуст'}</h4>
@@ -96,7 +98,7 @@
     const check = I.canEquip(data, char, item);
     const virtue = item.virtue ? `<span class="virtue-chip info-link" data-info="virtue" style="color:${data.virtues[item.virtue].color}"><i></i>Знак: ${data.virtues[item.virtue].name}</span>` : '';
     return `<div class="item-card">
-      <div class="item-head">${tile(item)}<div><div class="item-name">${nameHtml(item)}</div><div class="item-sub">${subline(item)}</div></div></div>
+      <div class="item-head">${tile(item).replace('</div>', item.rarity >= 4 ? '<span class="sparks"><i></i><i></i><i></i><i></i></span></div>' : '</div>')}<div><div class="item-name">${nameHtml(item)}</div><div class="item-sub">${subline(item)}</div></div></div>
       ${propsHtml(item)}
       ${legendHtml(item)}
       ${virtue}
@@ -112,7 +114,7 @@
     const tools = () => `
       <button class="icon-btn tool ${prefs.lens ? 'on' : ''}" data-tool="lens" title="Лупа: показать диапазоны значений">${art('ui/lens', '🔍')}</button>
       <button class="icon-btn tool ${item.locked ? 'on' : ''}" data-tool="lock" title="${item.locked ? 'Снять замок' : 'Запереть: не продавать и не разбирать'}">${art(item.locked ? 'ui/lock' : 'ui/unlock', item.locked ? '🔒' : '🔓')}</button>`;
-    const render = () => openModal(nameHtml(item), `${cardHtml(char, item, where)}${actions ? `<div class="row-actions">${actions}</div>` : ''}`, handler, { tools: tools() });
+    const render = () => openModal(nameHtml(item), `${cardHtml(char, item, where)}${actions ? `<div class="row-actions">${actions}</div>` : ''}`, handler, { tools: tools(), cls: item.rarity >= 3 ? `rar-${item.rarity}` : '' });
     const handler = (e) => {
       const t = e.target.closest('[data-tool]');
       if (t) {

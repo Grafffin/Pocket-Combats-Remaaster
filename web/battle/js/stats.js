@@ -8,8 +8,25 @@
 
   const PRIMARY = ['str', 'agi', 'int', 'vit', 'luk'];
 
+  // Масштаб «силовых» чисел: здоровье, атака, защита, урон — ×100, чтобы проценты от них были ощутимы.
+  // Рейтинги (точность, уклонение, скорость), шансы и ресурс не масштабируются.
+  const SCALE = 100;
+  const SCALED = new Set(['atk', 'matk', 'def', 'mdef', 'hp', 'thorns', 'hpRegen', 'fireDmg', 'coldDmg', 'poisonDmg', 'dmg']);
+  // Константа защиты: множитель урона = K / (K + защита)
+  const DEF_K = 100 * SCALE;
+
+  // 1234 → «1 234», 12 345 → «12.3к», 1 234 567 → «1.23кк», 1.2e9 → «1.2млрд»
+  function fmtBig(n) {
+    const a = Math.abs(n), sign = n < 0 ? '−' : '';
+    const cut = (v) => (v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
+    if (a >= 1e9) return `${sign}${cut(a / 1e9)}млрд`;
+    if (a >= 1e6) return `${sign}${cut(a / 1e6)}кк`;
+    if (a >= 1e4) return `${sign}${cut(a / 1e3)}к`;
+    return `${sign}${Math.round(a).toLocaleString('ru-RU')}`;
+  }
+
   // name — для интерфейса и текста аффиксов; fmt — как показать значение; icon — assets/stats/<icon>.svg
-  const n = (v) => `${Math.round(v)}`;
+  const n = (v) => fmtBig(v);
   const p = (v) => `${Math.round(v)}%`;
   const fp = (v) => `${Math.round(v * 1000) / 10}%`;
   const defs = {
@@ -126,13 +143,13 @@
     const s = {
       level: L,
       ...prim,
-      weaponMin: wb ? wb.min : 1,
-      weaponMax: wb ? wb.max : 3,
-      atk: (v('atk') + (usesAgi ? prim.agi : prim.str) * 2) * (1 + v('atkPct')),
-      matk: (v('matk') + prim.int * 2.5) * (1 + v('matkPct')),
-      def: (v('def') + prim.vit) * (1 + v('defPct')),
-      mdef: (v('mdef') + (prim.int + prim.vit) * 0.5 + L) * (1 + v('mdefPct')),
-      maxHp: (40 + L * 8 + prim.vit * 12 + v('hp')) * (1 + v('hpPct')),
+      weaponMin: wb ? wb.min : 1 * SCALE,
+      weaponMax: wb ? wb.max : 3 * SCALE,
+      atk: (v('atk') + (usesAgi ? prim.agi : prim.str) * 2 * SCALE) * (1 + v('atkPct')),
+      matk: (v('matk') + prim.int * 2.5 * SCALE) * (1 + v('matkPct')),
+      def: (v('def') + prim.vit * SCALE) * (1 + v('defPct')),
+      mdef: (v('mdef') + ((prim.int + prim.vit) * 0.5 + L) * SCALE) * (1 + v('mdefPct')),
+      maxHp: ((40 + L * 8 + prim.vit * 12) * SCALE + v('hp')) * (1 + v('hpPct')),
       crit: 3 + prim.luk * 0.3 + v('crit'),
       critDmg: 150 + prim.str * 0.5 + v('critDmg'),
       acc: (80 + L * 2 + prim.agi * 3 + prim.luk + v('acc')) * (1 + v('accPct')),
@@ -180,7 +197,8 @@
     return base + (stats.allSkills || 0) + ((stats.skillLvl && stats.skillLvl[id]) || 0);
   }
 
-  PC.stats = { PRIMARY, defs, caps, add, gather, compute, skillLevel };
+  PC.stats = { PRIMARY, SCALE, SCALED, DEF_K, fmtBig, defs, caps, add, gather, compute, skillLevel };
+  PC.fmtBig = fmtBig;
   data.statDefs = defs;
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

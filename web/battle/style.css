@@ -213,7 +213,7 @@ input[type="text"], #nick {
 .tile .tier { position: absolute; top: 2px; right: 4px; font-size: 9px; font-weight: 700; color: var(--muted); }
 .tile .virtue { position: absolute; bottom: 3px; right: 3px; width: 8px; height: 8px; border-radius: 50%; box-shadow: 0 0 6px currentColor; background: currentColor; }
 .tile.cant::after { content: ""; position: absolute; inset: 0; background: rgba(229, 72, 77, .18); }
-.tile.new::before { content: ""; position: absolute; top: 3px; right: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--accent-2); }
+.tile.new { box-shadow: 0 0 0 2px rgba(240, 196, 106, .55); }
 .tile.empty { border: 1px dashed #2c3142; background: #151821; }
 .tile.empty img { width: 60%; height: 60%; opacity: .22; filter: grayscale(1) brightness(2); }
 .tile.drop-ok { outline: 2px solid var(--good); outline-offset: 1px; }
@@ -482,3 +482,94 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .mode-seg button { flex: 1; }
 .lock-row .t { font-size: 10px; font-weight: 800; padding: 1px 5px; border-radius: 5px; background: #262b3a; color: var(--muted); }
 .lock-row.sel { background: rgba(217, 164, 65, .08); border-radius: 8px; }
+
+/* ---------- Без стандартных полос прокрутки ---------- */
+* { scrollbar-width: none; }
+*::-webkit-scrollbar { width: 0; height: 0; display: none; }
+
+/* ---------- Окна: красный крестик, поверх экрана победы ---------- */
+.modal-wrap { z-index: 45; }
+.sheet-wrap.over-modal { z-index: 55; }
+.modal-x { width: 34px; height: 34px; border-radius: 10px; background: #b8323c; border: 1px solid #e0505a; box-shadow: 0 2px 8px rgba(184, 50, 60, .45); }
+.modal-x:hover { background: #d23b46; }
+.modal-x img { filter: brightness(0) invert(1) !important; width: 16px !important; height: 16px !important; }
+.props-label { margin: 14px 0 6px; padding-top: 10px; border-top: 1px dashed #2e3344; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); }
+.cost.drops span { font-weight: 500; }
+
+/* ---------- Нижнее меню ---------- */
+.menu-btn .burger { display: flex; flex-direction: column; gap: 4px; width: 22px; height: 24px; justify-content: center; }
+.menu-btn .burger i { display: block; height: 2px; border-radius: 1px; background: currentColor; }
+.menu-list { display: flex; flex-direction: column; gap: 8px; }
+.menu-item { display: flex; align-items: center; gap: 12px; text-align: left; padding: 10px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); }
+.menu-item:disabled { opacity: .45; cursor: default; }
+.menu-item b { display: block; }
+.menu-ico { width: 44px; height: 44px; border-radius: 10px; background: radial-gradient(circle at 50% 35%, #2b3144, #171a23); display: grid; place-items: center; overflow: hidden; }
+.menu-ico img { width: 90%; height: 90%; }
+
+/* ---------- Монстры: уровень на иконке, кнопка атаки ---------- */
+.mob { cursor: pointer; }
+.mob-ava { position: relative; overflow: visible; }
+.mob-ava .lvl-badge { position: absolute; left: -6px; top: -6px; min-width: 24px; padding: 2px 5px; font-size: 11px; border-radius: 8px; box-shadow: 0 2px 6px rgba(0, 0, 0, .5); }
+.attack-btn {
+  flex: none; width: 48px; height: 48px; border-radius: 12px; border: 1px solid #6b3b1f;
+  background: linear-gradient(180deg, #c0522e, #8f3418); color: #fff; display: grid; place-items: center;
+  box-shadow: 0 3px 10px rgba(192, 82, 46, .35);
+}
+.attack-btn svg { width: 26px; height: 26px; fill: currentColor; }
+.attack-btn:hover:not(:disabled) { background: linear-gradient(180deg, #d9653c, #a33d1c); }
+.attack-btn:disabled { background: #262b3a; border-color: var(--line); color: var(--dim); box-shadow: none; cursor: default; }
+
+/* ---------- Полоса хода в бою ---------- */
+.turnbar { position: relative; height: 26px; margin: 0 12px 8px; border-radius: 13px; background: #1b1e27; border: 1px solid var(--line); overflow: hidden; }
+.turnbar .fill { position: absolute; inset: 0 auto 0 0; width: 0; background: linear-gradient(90deg, rgba(217, 164, 65, .35), rgba(240, 196, 106, .55)); transition: width .1s linear; }
+.turnbar .fill.low { background: linear-gradient(90deg, rgba(229, 72, 77, .35), rgba(255, 93, 108, .6)); }
+.turnbar .mark { position: absolute; top: 2px; bottom: 2px; width: 4px; margin-left: -2px; border-radius: 2px; background: var(--foe); box-shadow: 0 0 6px var(--foe); }
+.turnbar .mark.done { background: #5d6478; box-shadow: none; }
+.turnbar .txt { position: absolute; inset: 0; display: grid; place-items: center; font-size: 12px; font-weight: 700; color: var(--text); text-shadow: 0 1px 2px #000; }
+
+/* ---------- Эффекты редкостей: героическая и выше ---------- */
+@property --spin { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
+@keyframes spin { to { --spin: 360deg; } }
+@keyframes pulse3 { 50% { box-shadow: 0 0 14px rgba(178, 123, 255, .55), 0 0 6px rgba(178, 123, 255, .5) inset; } }
+@keyframes sweep { from { background-position: -150% 0, 0 0; } to { background-position: 250% 0, 0 0; } }
+@keyframes rise { 0% { transform: translateY(6px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-22px); opacity: 0; } }
+
+/* Героическая: мягкое фиолетовое дыхание */
+.tile.r3 { animation: pulse3 2.6s ease-in-out infinite; }
+/* Легендарная и выше: бегущий огонёк по рамке */
+.tile.r4, .tile.r5, .tile.r6 { border-color: transparent; }
+.tile.r4::before, .tile.r5::before, .tile.r6::before {
+  content: ""; position: absolute; inset: -2px; border-radius: 10px; padding: 2px; pointer-events: none;
+  background: conic-gradient(from var(--spin), var(--rc) 0deg, rgba(255, 255, 255, .9) 40deg, var(--rc) 80deg, var(--rc) 360deg);
+  -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
+  animation: spin 3s linear infinite;
+}
+.tile.r5::before { animation-duration: 2.2s; background: conic-gradient(from var(--spin), var(--rc) 0deg, #ffd0d4 30deg, var(--rc) 70deg, #6b0f18 180deg, var(--rc) 250deg, #ffd0d4 290deg, var(--rc) 330deg); }
+.tile.r6::before { animation-duration: 1.8s; background: conic-gradient(from var(--spin), #3fe0d0, #f0c46a, #b27bff, #3fe0d0, #f0c46a, #b27bff, #3fe0d0); }
+/* Мифическая и древняя: блик, пробегающий по предмету */
+.tile.r5 { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%), radial-gradient(circle at 50% 40%, #2b2433, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 3.2s ease-in-out infinite; }
+.tile.r6 { background-image: linear-gradient(110deg, transparent 30%, rgba(63, 224, 208, .22) 45%, rgba(240, 196, 106, .22) 55%, transparent 70%), radial-gradient(circle at 50% 40%, #173236, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 2.4s ease-in-out infinite; }
+
+/* Окно предмета: рамка и имя по редкости */
+.modal.rar-3 { border-color: #6b4aa8; box-shadow: 0 0 0 1px rgba(178, 123, 255, .25), 0 0 40px rgba(178, 123, 255, .18), 0 24px 60px rgba(0, 0, 0, .65); }
+.modal.rar-4 { border-color: #a8641f; box-shadow: 0 0 0 1px rgba(255, 159, 61, .35), 0 0 50px rgba(255, 159, 61, .22), 0 24px 60px rgba(0, 0, 0, .65); }
+.modal.rar-5 { border-color: #a82a36; box-shadow: 0 0 0 1px rgba(255, 77, 94, .4), 0 0 60px rgba(255, 77, 94, .28), 0 24px 60px rgba(0, 0, 0, .65); }
+.modal.rar-6 { border-color: #2aa89c; box-shadow: 0 0 0 1px rgba(63, 224, 208, .45), 0 0 70px rgba(63, 224, 208, .3), 0 24px 60px rgba(0, 0, 0, .65); }
+.rc3 { text-shadow: 0 0 10px rgba(178, 123, 255, .45); }
+.rc4 { text-shadow: 0 0 12px rgba(255, 159, 61, .55); }
+.rc5 { text-shadow: 0 0 14px rgba(255, 77, 94, .6); }
+.item-name .rc6, .modal-head .rc6 {
+  background: linear-gradient(90deg, #3fe0d0, #f0c46a, #b27bff, #3fe0d0); background-size: 300% 100%;
+  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; animation: sweep 4s linear infinite;
+}
+/* Искры над легендарными и выше в окне предмета */
+.item-head .tile { overflow: visible; }
+.sparks { position: absolute; inset: 0; pointer-events: none; }
+.sparks i { position: absolute; bottom: 4px; width: 4px; height: 4px; border-radius: 50%; background: var(--rc); box-shadow: 0 0 6px var(--rc); animation: rise 1.8s ease-out infinite; }
+.sparks i:nth-child(1) { left: 12%; }
+.sparks i:nth-child(2) { left: 34%; animation-delay: .5s; }
+.sparks i:nth-child(3) { left: 60%; animation-delay: 1s; }
+.sparks i:nth-child(4) { left: 82%; animation-delay: 1.4s; }
+/* Добыча высокой редкости на экране победы появляется со вспышкой */
+@keyframes lootIn { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
+.loot-grid .tile.r3, .loot-grid .tile.r4, .loot-grid .tile.r5, .loot-grid .tile.r6 { animation: lootIn .6s ease-out; }

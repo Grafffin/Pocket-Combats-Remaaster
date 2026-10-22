@@ -125,7 +125,8 @@
   function affixValue(data, af) {
     const a = data.affixes[af.id];
     const [lo, hi] = a.t[af.tier - 1];
-    const v = Math.round(lo + (hi - lo) * af.roll);
+    const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.SCALE : 1;
+    const v = Math.round((lo + (hi - lo) * af.roll) * k);
     return af.neg ? -Math.max(1, Math.round(v * data.NEGATIVE.scale)) : v;
   }
 
@@ -136,7 +137,7 @@
     if (af.id === 'skillDmg') return `+${v}% урона умения «${data.skills[af.param].name}»`;
     const def = data.statDefs[a.stat];
     const unit = a.pct || def.fmt(1).endsWith('%') ? '%' : '';
-    return `${v < 0 ? '−' : '+'}${Math.abs(v)}${unit} ${def.name.toLowerCase()}`;
+    return `${v < 0 ? '−' : '+'}${unit ? Math.abs(v) : PC.fmtBig(Math.abs(v))}${unit} ${def.name.toLowerCase()}`;
   }
 
   // Неотъемлемые характеристики с учётом качества, заточки и ранга
@@ -144,10 +145,12 @@
     const type = data.types[item.type];
     const raw = type.base(item.tier);
     const mult = qualityMult(item.quality) * (1 + item.enhance * data.enhance.perLevel) * (1 + item.rank * data.rank.perRank);
+    const S = PC.stats.SCALE;
+    const sc = (k) => (PC.stats.SCALED.has(k) ? S : 1);
     const out = {};
     for (const [k, v] of Object.entries(raw)) {
-      if (k === 'dmg') out.dmg = [Math.max(1, Math.round(v[0] * mult)), Math.max(1, Math.round(v[1] * mult))];
-      else out[k] = SCALING.has(k) ? Math.round(v * mult) : v;
+      if (k === 'dmg') out.dmg = [Math.max(1, Math.round(v[0] * mult * S)), Math.max(1, Math.round(v[1] * mult * S))];
+      else out[k] = SCALING.has(k) ? Math.round(v * mult * sc(k)) : v * sc(k);
     }
     return out;
   }
@@ -191,7 +194,7 @@
   function baseLines(data, item) {
     const b = baseStats(data, item);
     const lines = [];
-    if (b.dmg) lines.push({ key: 'atk', text: `Урон ${b.dmg[0]}–${b.dmg[1]}` });
+    if (b.dmg) lines.push({ key: 'atk', text: `Урон ${PC.fmtBig(b.dmg[0])}–${PC.fmtBig(b.dmg[1])}` });
     for (const [k, v] of Object.entries(b)) {
       if (k === 'dmg') continue;
       const def = data.statDefs[k];
@@ -204,9 +207,10 @@
   function power(data, item) {
     const t = totals(data, item);
     const dmg = weaponDamage(data, item);
+    const S = PC.stats.SCALE;
     let p = 0;
-    if (dmg) p += (dmg.min + dmg.max) * 1.2;
-    const w = { atk: 2, matk: 2, def: 1.2, mdef: 0.8, hp: 0.25, mp: 0.3, eva: 0.6, acc: 0.4, crit: 6, critDmg: 1.5, speed: 3, block: 4, lifesteal: 6, hpRegen: 2, dmgReduce: 8 };
+    if (dmg) p += (dmg.min + dmg.max) * 1.2 / S;
+    const w = { atk: 2 / S, matk: 2 / S, def: 1.2 / S, mdef: 0.8 / S, hp: 0.25 / S, mp: 0.3, eva: 0.6, acc: 0.4, crit: 6, critDmg: 1.5, speed: 3, block: 4, lifesteal: 6, hpRegen: 2 / S, dmgReduce: 8, thorns: 1.5 / S, fireDmg: 1.5 / S, coldDmg: 1.5 / S, poisonDmg: 1.5 / S };
     for (const [k, v] of Object.entries(t)) {
       if (typeof v !== 'number') continue;
       if (w[k]) p += v * w[k];

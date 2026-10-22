@@ -10,7 +10,8 @@
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
 
-  const expToNext = (level) => Math.round(52 * Math.pow(level, 1.7) + 26);
+  // Опыт до следующего уровня: плавно до 20, дальше каждый уровень дороже предыдущего на 14% сверху
+  const expToNext = (level) => Math.round((62 * Math.pow(level, 1.75) + 30) * Math.pow(1.14, Math.max(0, level - 19)));
 
   function newCharacter(data, { nick, gender, job }) {
     const cls = data.classes[job];

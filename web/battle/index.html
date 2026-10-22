@@ -43,7 +43,7 @@
         <button data-tab="world"><img src="assets/ui/slots/feet.svg" alt="" onerror="this.remove()"><span>Мир</span></button>
         <button data-tab="hero"><img src="assets/ui/slots/head.svg" alt="" onerror="this.remove()"><span>Герой</span><i class="dot-badge" id="badge-hero" hidden></i></button>
         <button data-tab="bag"><img src="assets/ui/slots/body.svg" alt="" onerror="this.remove()"><span>Сумка</span><i class="dot-badge" id="badge-bag" hidden></i></button>
-        <button data-tab="forge"><img src="assets/ui/slots/weapon.svg" alt="" onerror="this.remove()"><span>Кузница</span></button>
+        <button data-tab="menu" class="menu-btn"><span class="burger"><i></i><i></i><i></i></span><span>Меню</span></button>
       </nav>
     </section>
 
@@ -57,7 +57,6 @@
           <button class="chip-btn" id="auto-btn" title="Автобой">Автобой</button>
           <button class="chip-btn icon" id="auto-settings" title="Настройки автобоя и охоты"><img src="assets/ui/gear.svg" alt="" onerror="this.outerHTML='⚙'"></button>
         </div>
-        <div class="timer"><div id="timer-fill"></div></div>
       </header>
       <div class="arena" id="arena">
         <div class="fighter ally" id="f-p"></div>
@@ -65,6 +64,7 @@
         <div class="fighter foe" id="f-m"></div>
       </div>
       <div class="log" id="log" aria-live="polite"></div>
+      <div class="turnbar" id="turnbar"><div class="fill" id="turn-fill"></div><i class="mark" id="turn-mark" title="Здесь ударит противник"></i><span class="txt" id="turn-txt"></span></div>
       <footer class="skillbar" id="skillbar"></footer>
     </section>
   </div>

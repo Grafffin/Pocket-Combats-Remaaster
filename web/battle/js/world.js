@@ -5,9 +5,14 @@
   const PC = root.PC || (root.PC = {});
 
   // Единые часы мира: всё происходит на границах тиков — ходы в бою, возрождение монстров, конец передышки
-  const TICK_MS = 5000;
-  const RESPAWN_TICKS = 2;      // убитый монстр возвращается через 2 тика (10 с)
-  const POOL_SIZE = 6;          // сколько монстров одновременно живёт на локации
+  const TICK_MS = 10000;
+  const RESPAWN_TICKS = 1;      // убитый монстр возвращается на следующем тике
+  const BUSY_TICKS = 12;        // «в бою» дольше 2 минут — бой брошен (перезагрузка страницы), монстр освобождается
+
+  // Сколько монстров живёт на локации. В ММО будет зависеть от числа игроков на ней.
+  const POOL_BASE = 6;
+  const POOL_PER_PLAYER = 2;
+  const poolSize = (loc, players = 1) => (loc.pool || POOL_BASE) + POOL_PER_PLAYER * Math.max(0, players - 1);
 
   const tickOf = (now) => Math.floor(now / TICK_MS);
   const tickStart = (tick) => tick * TICK_MS;
@@ -31,7 +36,7 @@
     const loc = data.locations[locId];
     let st = char.world[locId];
     if (!st) {
-      const size = loc.safe ? loc.monsters.length : (loc.pool || POOL_SIZE);
+      const size = loc.safe ? loc.monsters.length : poolSize(loc);
       st = char.world[locId] = { mobs: [] };
       for (let i = 0; i < size; i++) st.mobs.push(loc.safe ? { uid: newUid(), id: loc.monsters[i][0], level: loc.monsters[i][1], deadUntil: null } : rollMob(loc, rng));
     }
@@ -43,10 +48,15 @@
     const tick = tickOf(now);
     const loc = here(data, char);
     const st = locState(data, char, char.location, rng);
+    // Защита от сохранений с другой длиной тика: ничего не может ждать дольше положенного
+    if ((char.restTick || 0) > tick + 1) char.restTick = tick + 1;
+    for (const m of st.mobs) if (m.deadUntil != null && m.deadUntil > tick + RESPAWN_TICKS) m.deadUntil = tick + RESPAWN_TICKS;
     for (let i = 0; i < st.mobs.length; i++) {
       const m = st.mobs[i];
       if (m.deadUntil != null && tick >= m.deadUntil) st.mobs[i] = loc.safe ? { ...m, deadUntil: null } : rollMob(loc, rng);
+      else if (m.busy && (m.busySince == null || tick - m.busySince > BUSY_TICKS)) m.busy = false;
     }
+    if (st.boss && st.boss.busy && (st.boss.busySince == null || tick - st.boss.busySince > BUSY_TICKS)) st.boss.busy = false;
     // Босс появляется после BOSS_KILLS побед в зоне и живёт, пока его не убьют
     if (loc.boss && !st.boss && (char.zoneKills[char.location] || 0) >= data.BOSS_KILLS) {
       st.boss = { uid: newUid(), id: loc.boss[0], level: loc.boss[1], deadUntil: null, boss: true };
@@ -54,7 +64,7 @@
     return st;
   }
 
-  const restLeft = (char, now) => Math.max(0, tickStart(char.restTick || 0) - now);
+  const restLeft = (char, now) => Math.max(0, Math.min(TICK_MS, tickStart(char.restTick || 0) - now));
   const canAttack = (char, now) => restLeft(char, now) <= 0;
 
   // Найти монстра по uid на текущей локации
@@ -69,12 +79,21 @@
     return st.mobs.filter((m) => m.deadUntil == null && !m.busy);
   }
 
+  // Освободить всех монстров, «застрявших» в бою (например, бой оборван перезагрузкой страницы)
+  function releaseAll(char) {
+    for (const st of Object.values(char.world || {})) {
+      for (const m of st.mobs) m.busy = false;
+      if (st.boss) st.boss.busy = false;
+    }
+  }
+
   // Начало боя: монстр занят, иначе нельзя
   function engage(data, char, uid, now) {
     if (!canAttack(char, now)) return { ok: false, reason: `Передышка: ${Math.ceil(restLeft(char, now) / 1000)} с` };
     const m = findMob(data, char, uid);
     if (!m || m.deadUntil != null) return { ok: false, reason: 'Этого монстра уже нет — дождитесь возрождения' };
     m.busy = true;
+    m.busySince = tickOf(now);
     return { ok: true, mob: m };
   }
 
@@ -126,7 +145,7 @@
   }
 
   PC.world = {
-    TICK_MS, RESPAWN_TICKS, POOL_SIZE, tickOf, tickStart, msToNextTick,
+    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, tickOf, tickStart, msToNextTick,
     here, monsterLevel, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };

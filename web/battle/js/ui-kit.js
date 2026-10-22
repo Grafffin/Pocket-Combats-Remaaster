@@ -64,7 +64,8 @@
   // tools — html кнопок в шапке рядом с крестиком.
   let modalHandler = null;
   let modalOnClose = null;
-  function openModal(title, html, onClick, { tools = '', onClose = null } = {}) {
+  function openModal(title, html, onClick, { tools = '', onClose = null, cls = '' } = {}) {
+    $('#modal .modal').className = `modal ${cls}`;
     $('#modal-title').innerHTML = title;
     $('#modal-tools').innerHTML = tools;
     $('#modal-body').innerHTML = html;

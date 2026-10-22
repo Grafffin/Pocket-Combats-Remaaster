@@ -144,8 +144,8 @@
     }
 
     phrase(key, A, B, ctx) { return this.fill(this.rng.pick(this.data.phrases[key]), A, B, ctx); }
-    hpTag(f) { return `<hp>[${f.hp}/${f.maxHp}]</hp>`; }
-    dmgTag(n, kind) { return `<dmg k="${kind}">-${n}</dmg>`; }
+    hpTag(f) { return `<hp>[${PC.fmtBig(f.hp)}/${PC.fmtBig(f.maxHp)}]</hp>`; }
+    dmgTag(n, kind) { return `<dmg k="${kind}">-${PC.fmtBig(n)}</dmg>`; }
 
     // ---- Умения и ресурс ----
 
@@ -235,7 +235,7 @@
 
     addShield(f, amount, turns, name = 'Щит') {
       this.addEffect(f, { id: 'shield', name, kind: 'buff', turns, shieldHp: amount, say: false }, f);
-      this.say('effect', this.fill(`{A} {a:окружил|окружила} себя щитом <dmg k="heal">${amount}</dmg>.`, f, f), { type: 'shield', target: f.id, amount });
+      this.say('effect', this.fill(`{A} {a:окружил|окружила} себя щитом <dmg k="heal">${PC.fmtBig(amount)}</dmg>.`, f, f), { type: 'shield', target: f.id, amount });
     }
 
     shieldOf(f) { return f.effects.reduce((s, e) => s + (e.shieldHp || 0), 0); }
@@ -291,7 +291,7 @@
       let dmg = (r.int(a.s.weaponMin, a.s.weaponMax) + this.atkOf(a)) * (opts.mult || 1) * this.damageMultiplier(a, t, opts);
       if (crit) dmg *= a.s.critDmg / 100;
       if (blocked) dmg *= 0.5;
-      dmg *= 100 / (100 + this.defOf(t));
+      dmg *= PC.stats.DEF_K / (PC.stats.DEF_K + this.defOf(t));
       dmg += this.elementalAddOn(a, t);
       dmg *= 1 - (t.s.dmgReduce || 0) / 100;
       dmg = Math.max(1, Math.round(dmg));
@@ -320,7 +320,7 @@
       if (opts.element === 'fire') dmg *= 1 + (a.s.fireSpellPct || 0);
       const crit = r.chance(a.s.crit + mod(a, 'crit'));
       if (crit) dmg *= a.s.critDmg / 100;
-      dmg *= 100 / (100 + this.mdefOf(t));
+      dmg *= PC.stats.DEF_K / (PC.stats.DEF_K + this.mdefOf(t));
       const resKey = { fire: 'fireRes', cold: 'coldRes', poison: 'poisonRes' }[opts.element];
       if (resKey) dmg *= 1 - (t.s[resKey] || 0) / 100;
       dmg *= 1 - (t.s.dmgReduce || 0) / 100;
@@ -383,7 +383,7 @@
           this.debuff(t, a, { id: 'legend_mark', name: 'Метка добычи', turns: 99, mods: { dmgTakenPct: 0.2 } });
         }
         if (a.legendary.has('thunder') && r.chance(15)) {
-          const n = Math.max(1, Math.round(this.atkOf(a) * 0.8 * 100 / (100 + this.mdefOf(t))));
+          const n = Math.max(1, Math.round(this.atkOf(a) * 0.8 * PC.stats.DEF_K / (PC.stats.DEF_K + this.mdefOf(t))));
           const d = this.damage(t, n);
           this.say('damage', this.fill('С небес в {B.acc} бьёт молния {dmg} {hp}.', a, t, { dmg: this.dmgTag(n, 'lightning'), hp: this.hpTag(t) }), { type: 'damage', target: t.id, amount: d, kind: 'lightning' });
         }
@@ -426,8 +426,8 @@
       const n = Math.min(amount, f.maxHp - f.hp);
       if (n <= 0) return;
       f.hp += n;
-      if (text) this.say('heal', this.fill(text, f, f, { heal: `<dmg k="heal">+${n}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
-      else this.say('heal', this.fill('{A} {a:восстановил|восстановила} силы {heal} {hp}.', f, f, { heal: `<dmg k="heal">+${n}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
+      if (text) this.say('heal', this.fill(text, f, f, { heal: `<dmg k="heal">+${PC.fmtBig(n)}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
+      else this.say('heal', this.fill('{A} {a:восстановил|восстановила} силы {heal} {hp}.', f, f, { heal: `<dmg k="heal">+${PC.fmtBig(n)}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
     }
 
     checkDeath(f) {
@@ -489,6 +489,29 @@
       }
       if (!this.ended) this.endTurn();
       return true;
+    }
+
+    // ---- Бой в реальном времени тика ----
+    // Ход = один тик. Игрок действует, когда нажмёт; монстр — в момент, зависящий от соотношения скоростей.
+    // Возвращает долю тика (0…1), когда действует боец f: чем он быстрее соперника, тем раньше.
+    actionMoment(f) {
+      const ratio = this.speedOf(this.opponentOf(f)) / this.speedOf(f);
+      return clamp(0.35 * ratio, 0.12, 0.85);
+    }
+
+    // Одно действие бойца в текущем ходу (умение или обычный удар) и, возможно, доп. удар за счёт скорости
+    act(actor, skillId) {
+      if (this.ended || actor.hp <= 0) return false;
+      if (skillId !== 'basic' && skillId !== 'idle' && actor.isPlayer && !actor.skills.some((s) => s.id === skillId && this.skillState(actor, s.id).usable)) skillId = 'basic';
+      this.perform(actor, skillId);
+      this.extraAction(actor);
+      return true;
+    }
+
+    // Игрок не успел действовать за тик
+    skip(actor) {
+      if (this.ended || actor.hp <= 0) return;
+      this.say('passed', this.fill('{A} {a:замешкался|замешкалась} и {a:упустил|упустила} момент.', actor, this.opponentOf(actor)));
     }
 
     // Сильный перевес в скорости даёт шанс ударить ещё раз
