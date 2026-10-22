@@ -72,6 +72,40 @@
       <p class="meta">Падает: ${boss.name}${u.minDiff ? `, с «${data.difficulties[u.minDiff].name}»` : ''}</p>`;
   }
 
+  // Образец уника без случайных свойств — для справки (иконка, база при заданном качестве)
+  function uniqueSample(id, ilvl, quality) {
+    const u = data.uniques[id];
+    const type = data.types[u.type];
+    const lv = Math.max(ilvl || 1, data.TIER_LEVEL[u.tier]);
+    return {
+      uid: `preview-${id}`, type: u.type, tier: Math.max(u.tier, I.maxTierFor(data, lv)), ilvl: lv,
+      rarity: data.rarities.findIndex((r) => r.id === 'unique'), quality, cls: type.cls ? type.cls[0] : null,
+      affixes: [], legendary: [], enhance: 0, rank: 0, unique: id,
+    };
+  }
+
+  // Справка по унику: база с разбросом от худшего до лучшего качества, фиксированные свойства, эффект
+  function openUnique(id, ilvl, onBack) {
+    const lo = uniqueSample(id, ilvl, 0), hi = uniqueSample(id, ilvl, 100);
+    const a = I.baseStats(data, lo), b = I.baseStats(data, hi);
+    const f = PC.fmtBig;
+    const base = Object.keys(a).map((k) => {
+      if (k === 'dmg') return `<li class="base">${statIcon('atk')}<span class="txt">Урон ${f(a.dmg[0])}–${f(a.dmg[1])} <span class="range">… ${f(b.dmg[0])}–${f(b.dmg[1])}</span></span></li>`;
+      const d = data.statDefs[k];
+      const same = a[k] === b[k];
+      return `<li class="base">${statIcon(k)}<span class="txt">${d.name} +${d.fmt(a[k])}${same ? '' : `<span class="range"> – ${d.fmt(b[k])}</span>`}</span></li>`;
+    }).join('');
+    openModal(nameHtml(lo), `<div class="item-card">
+      <div class="item-head">${tile(lo).replace('</div>', '<span class="sparks"><i></i><i></i><i></i><i></i></span></div>')}<div><div class="item-name">${nameHtml(lo)}</div>
+        <div class="item-sub"><span class="rc7">Уникальный</span> · T${lo.tier} · ур. ${lo.ilvl}<br>Нужен ${I.reqLevel(data, lo)} уровень</div></div></div>
+      ${uniqueHtml(lo)}
+      <div class="props-label">База (качество 0% … 100%)</div><ul class="props">${base}</ul>
+      <div class="props-label">Случайные свойства</div>
+      <p class="meta">+${data.rarities[lo.rarity].affixes} случайных свойства, как у героической вещи, без повтора свойств уника. Тиры свойств зависят от уровня предмета. Заточка и ранги — как у обычных вещей.</p>
+      <p class="meta">Тир и уровень показаны для текущей сложности: на более высокой уник падает сильнее.</p>
+    </div>`, null, { cls: 'rar-7', onClose: onBack ? () => setTimeout(onBack) : null });
+  }
+
   function legendHtml(item) {
     return item.legendary.map((id) => {
       const l = data.legendaries[id];
@@ -227,6 +261,6 @@
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
 
-  PC.itemUI = { KIND_EMOJI, tile, emptyTile, nameHtml, cardHtml, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
+  PC.itemUI = { KIND_EMOJI, tile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
   void closeModal;
 })();

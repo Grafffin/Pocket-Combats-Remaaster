@@ -318,28 +318,24 @@
       <div class="kv"><span>Опыт</span><b>≈${fmt(exp)}</b></div>
       <div class="kv"><span>Золото</span><b>${g0}–${g1}</b></div>
       ${def.ai === 'idle' ? '' : `<div class="props-label">Возможная добыча</div>
-      <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[dd.floor].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
-      ${def.boss ? uniqueDrops(m.id, D) : ''}
+      <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[2].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
+      ${def.boss ? uniqueDrops(m.id, D, m.level + dd.ilvl) : ''}
       <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
       ${m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
       const un = e.target.closest('[data-unique]');
-      if (un) {
-        const sample = I.generateUnique(data, un.dataset.unique, { ilvl: m.level + dd.ilvl }, rng);
-        sample.quality = 50;
-        PC.itemUI.openItem(c, sample, 'loot');
-      }
+      if (un) PC.itemUI.openUnique(un.dataset.unique, m.level + dd.ilvl, () => openMonsterInfo(uid));
     });
   }
 
   // Уники, которые может уронить босс (на текущей сложности и выше)
-  function uniqueDrops(bossId, D) {
+  function uniqueDrops(bossId, D, ilvl) {
     const list = Object.values(data.uniques).filter((u) => u.boss === bossId);
     if (!list.length) return '';
-    return `<p class="meta">Уникальные вещи (шанс ${data.UNIQUE_CHANCE}% каждая, растёт с находкой):</p><div class="list uniq-list">${list.map((u) => {
-      const open = u.minDiff <= D;
-      return `<button class="uniq-row ${open ? '' : 'locked'}" data-unique="${u.id}">${PC.itemUI.KIND_EMOJI[data.types[u.type].kind]} <b class="rc7">${u.name}</b>
-        <small class="meta">${open ? u.role : `с «${data.difficulties[u.minDiff].name}»`}</small></button>`;
+    return `<div class="props-label">Уникальные вещи</div><p class="meta">Шанс ${data.UNIQUE_CHANCE}% на каждую, растёт с находкой. Тап — характеристики с разбросом.</p><div class="list uniq-list">${list.map((u) => {
+      const open = (u.minDiff || 0) <= D;
+      return `<button class="uniq-row ${open ? '' : 'locked'}" data-unique="${u.id}">${PC.itemUI.tile(PC.itemUI.uniqueSample(u.id, ilvl, 50))}
+        <span class="txt"><b class="rc7">${u.name}</b><small class="meta">${open ? u.role : `🔒 падает с «${data.difficulties[u.minDiff].name}»`}</small></span></button>`;
     }).join('')}</div>`;
   }
 
