@@ -29,7 +29,9 @@
     "buyer": "npcs/buyer.svg",
     "blacksmith": "npcs/blacksmith.svg",
     "enchanter": "npcs/enchanter.svg",
-    "elder": "npcs/elder.svg"
+    "elder": "npcs/elder.svg",
+    "alchemist": "npcs/alchemist.svg",
+    "chest": "npcs/chest.svg"
   },
   "locations": {
     "village": "locations/village.svg",
@@ -80,7 +82,27 @@
     "reroll_scroll": "materials/reroll_scroll.svg",
     "protect_scroll": "materials/protect_scroll.svg",
     "gem": "materials/gem.svg",
-    "chest": "materials/chest.svg"
+    "chest": "materials/chest.svg",
+    "herb_stjohn": "materials/herb_stjohn.svg",
+    "spider_gland": "materials/spider_gland.svg",
+    "wolf_pelt": "materials/wolf_pelt.svg",
+    "spirit_moss": "materials/spirit_moss.svg",
+    "goblin_brew": "materials/goblin_brew.svg",
+    "shaman_root": "materials/shaman_root.svg",
+    "harpy_feather": "materials/harpy_feather.svg",
+    "stolen_spices": "materials/stolen_spices.svg",
+    "rune_dust": "materials/rune_dust.svg",
+    "golem_heart": "materials/golem_heart.svg",
+    "bone_meal": "materials/bone_meal.svg",
+    "ectoplasm": "materials/ectoplasm.svg",
+    "potion_hp_1": "materials/potion_hp_1.svg",
+    "potion_hp_2": "materials/potion_hp_2.svg",
+    "potion_hp_3": "materials/potion_hp_3.svg",
+    "potion_mp_1": "materials/potion_mp_1.svg",
+    "potion_mp_2": "materials/potion_mp_2.svg",
+    "potion_mp_3": "materials/potion_mp_3.svg",
+    "elixir_power": "materials/elixir_power.svg",
+    "elixir_fortune": "materials/elixir_fortune.svg"
   },
   "stats": {
     "atk": "stats/atk.svg",
@@ -117,6 +139,16 @@
     "slots_belt": "ui/slots/belt.svg",
     "slots_ring": "ui/slots/ring.svg",
     "slots_amulet": "ui/slots/amulet.svg",
-    "slots_earring": "ui/slots/earring.svg"
+    "slots_earring": "ui/slots/earring.svg",
+    "lens": "ui/lens.svg",
+    "lock": "ui/lock.svg",
+    "unlock": "ui/unlock.svg",
+    "gear": "ui/gear.svg",
+    "clock": "ui/clock.svg",
+    "check": "ui/check.svg",
+    "close": "ui/close.svg",
+    "info": "ui/info.svg",
+    "chest": "ui/chest.svg",
+    "flask": "ui/flask.svg"
   }
 }

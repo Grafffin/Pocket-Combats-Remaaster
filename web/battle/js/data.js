@@ -4,11 +4,18 @@
   const PC = root.PC || (root.PC = {});
   const data = PC.data || (PC.data = {});
 
-  // Зелья: healPct / resPct — доля от максимума
+  // Зелья трёх размеров: healPct / resPct — доля от максимума. В бою после зелья — откат POTION_CD ходов.
+  const hpText = '{A} {a:выпил|выпила} зелье здоровья {heal} {hp}.';
+  const mpText = '{A} {a:выпил|выпила} бодрящее зелье {heal}.';
   const consumables = {
-    hp_potion: { name: 'Зелье здоровья', desc: '+35% здоровья', healPct: 0.35, art: 'materials/potion_hp', text: '{A} {a:выпил|выпила} зелье здоровья {heal} {hp}.' },
-    mp_potion: { name: 'Зелье ресурса', desc: '+50% маны, ярости или энергии', resPct: 0.5, art: 'materials/potion_mp', text: '{A} {a:выпил|выпила} бодрящее зелье {heal}.' },
+    hp_potion_1: { name: 'Малое зелье здоровья', desc: '+15% здоровья', healPct: 0.15, art: 'materials/potion_hp_1', text: hpText },
+    hp_potion_2: { name: 'Зелье здоровья', desc: '+25% здоровья', healPct: 0.25, art: 'materials/potion_hp_2', text: hpText },
+    hp_potion_3: { name: 'Большое зелье здоровья', desc: '+40% здоровья', healPct: 0.4, art: 'materials/potion_hp_3', text: hpText },
+    mp_potion_1: { name: 'Малое зелье ресурса', desc: '+25% маны, ярости или энергии', resPct: 0.25, art: 'materials/potion_mp_1', text: mpText },
+    mp_potion_2: { name: 'Зелье ресурса', desc: '+40% маны, ярости или энергии', resPct: 0.4, art: 'materials/potion_mp_2', text: mpText },
+    mp_potion_3: { name: 'Большое зелье ресурса', desc: '+60% маны, ярости или энергии', resPct: 0.6, art: 'materials/potion_mp_3', text: mpText },
   };
+  const POTION_CD = 3;
 
   // ---------- Тексты лога ----------
   const phrases = {
@@ -97,6 +104,6 @@
     'Тень от клинка\nдлиннее, чем сам клинок.\nВечер близко.',
   ];
 
-  Object.assign(data, { consumables, phrases, haiku });
+  Object.assign(data, { consumables, POTION_CD, phrases, haiku });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

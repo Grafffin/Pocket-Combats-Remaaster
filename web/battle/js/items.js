@@ -314,6 +314,7 @@
   function salvage(data, char, uid, rng) {
     const found = findItem(char, uid);
     if (!found || found.slot) return { ok: false, reason: 'Сначала снимите вещь' };
+    if (found.item.locked) return { ok: false, reason: 'Вещь под замком' };
     const y = salvageYield(data, found.item);
     const got = { ...y.sure };
     for (const [m, pct] of y.chance) if (rng.chance(pct)) got[m] = (got[m] || 0) + 1;
@@ -387,9 +388,13 @@
 
   // ---------- Ранги ----------
 
+  // Копия для ранга: та же база и тир, редкость не ниже, ранг не ниже (текущий − 1), не под замком
+  const isFodder = (item, x) => x && x.uid !== item.uid && !x.locked && x.type === item.type && x.tier === item.tier &&
+    x.rarity >= item.rarity && x.rank >= item.rank - 1;
+
   function rankInfo(data, char, item) {
     if (item.rank >= data.rank.max) return { maxed: true };
-    const fodder = char.bag.filter((x) => x && x.uid !== item.uid && x.type === item.type && x.tier === item.tier);
+    const fodder = char.bag.filter((x) => isFodder(item, x));
     return { essence: data.rank.essence(item), gold: data.rank.gold(item), fodder };
   }
 
@@ -400,7 +405,7 @@
     const info = rankInfo(data, char, item);
     if (info.maxed) return { ok: false, reason: 'Ранг максимальный' };
     const f = info.fodder.find((x) => x.uid === fodderUid);
-    if (!f) return { ok: false, reason: 'Нужна копия: та же база и тир' };
+    if (!f) return { ok: false, reason: 'Нужна копия: та же база и тир, редкость не ниже, ранг не ниже ★' + Math.max(0, item.rank - 1) };
     if ((char.materials.essence || 0) < info.essence) return { ok: false, reason: 'Не хватает эссенции' };
     if (char.gold < info.gold) return { ok: false, reason: 'Не хватает золота' };
     char.materials.essence -= info.essence;
@@ -475,6 +480,22 @@
     return { ok: true, before, after: found.item.quality };
   }
 
+  // ---------- Перековка знака (у кузнеца, с VIRTUE_REROLL_LEVEL уровня) ----------
+
+  const VIRTUE_REROLL_LEVEL = 30;
+  const virtueRerollCost = (data, item) => ({ reroll: 3, essence: 15 * item.tier, gold: 1500 * item.tier });
+
+  function rerollVirtue(data, char, uid, rng) {
+    if (char.level < VIRTUE_REROLL_LEVEL) return { ok: false, reason: `Откроется на ${VIRTUE_REROLL_LEVEL} уровне` };
+    const found = findItem(char, uid);
+    if (!found || !found.item.virtue) return { ok: false, reason: 'У вещи нет знака' };
+    if (!pay(char, virtueRerollCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    const before = found.item.virtue;
+    const others = Object.keys(data.virtues).filter((v) => v !== before);
+    found.item.virtue = rng.pick(others);
+    return { ok: true, before, after: found.item.virtue };
+  }
+
   // ---------- Наследование ----------
 
   function inheritCost(data, target) { return { gold: data.inherit.gold(target), essence: data.inherit.essence(target) }; }
@@ -532,6 +553,7 @@
     enhanceInfo, enhance, rankInfo, rankUp,
     rerollValueCost, rerollAffixesCost, rerollValue, rerollAffixes,
     craftCost, craft, typesFor, requalityCost, requality, inheritCost, inheritCheck, inherit,
+    VIRTUE_REROLL_LEVEL, virtueRerollCost, rerollVirtue, isFodder,
   };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

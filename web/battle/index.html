@@ -52,10 +52,10 @@
       <header class="topbar">
         <button class="icon-btn" id="leave" title="Сбежать" aria-label="Сбежать из боя">←</button>
         <h1 id="turn-title">Ход 1</h1>
+        <span class="tick-label" id="tick-label"></span>
         <div class="battle-toggles">
-          <button class="chip-btn" id="auto-btn" title="Автобой">Авто</button>
-          <button class="chip-btn" id="speed-btn" title="Скорость">×1</button>
-          <button class="chip-btn" id="loop-btn" title="Охотиться без остановки">Охота</button>
+          <button class="chip-btn" id="auto-btn" title="Автобой">Автобой</button>
+          <button class="chip-btn icon" id="auto-settings" title="Настройки автобоя и охоты"><img src="assets/ui/gear.svg" alt="" onerror="this.outerHTML='⚙'"></button>
         </div>
         <div class="timer"><div id="timer-fill"></div></div>
       </header>
@@ -76,6 +76,16 @@
       <div class="sheet-grip"></div>
       <h2 id="sheet-title"></h2>
       <div id="sheet-body"></div>
+    </div>
+  </div>
+
+  <!-- Окно по центру экрана: предметы, ресурсы, подтверждения -->
+  <div class="modal-wrap" id="modal" hidden>
+    <div class="modal-backdrop" data-mclose></div>
+    <div class="modal" role="dialog" aria-modal="true">
+      <div class="modal-head"><h2 id="modal-title"></h2><div class="modal-tools" id="modal-tools"></div>
+        <button class="icon-btn modal-x" data-mclose aria-label="Закрыть"><img src="assets/ui/close.svg" alt="" onerror="this.outerHTML='✕'"></button></div>
+      <div class="modal-body" id="modal-body"></div>
     </div>
   </div>
 

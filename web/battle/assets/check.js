@@ -1,11 +1,11 @@
 // Validates the asset set: index.json paths exist, every SVG is well-formed XML,
-// root <svg> has xmlns + viewBox and no width/height, size limits, stat icons are currentColor-only.
+// root <svg> has xmlns + viewBox and no width/height, size limits, stat and ui/* icons (except ui/slots, ui/logo) are currentColor-only.
 // Usage: node check.js
 const fs = require('fs');
 const path = require('path');
 const ROOT = __dirname;
 const index = JSON.parse(fs.readFileSync(path.join(ROOT, 'index.json'), 'utf8'));
-const VIEWBOX = { classes: '0 0 128 128', monsters: '0 0 128 128', npcs: '0 0 128 128', locations: '0 0 640 240', items: '0 0 64 64', materials: '0 0 64 64', stats: '0 0 24 24' };
+const VIEWBOX = { classes: '0 0 128 128', monsters: '0 0 128 128', npcs: '0 0 128 128', locations: '0 0 640 240', items: '0 0 64 64', materials: '0 0 64 64', stats: '0 0 24 24', ui: '0 0 24 24' };
 let errors = 0, total = 0, count = 0;
 const err = (f, m) => { errors++; console.log(`FAIL ${f}: ${m}`); };
 
@@ -71,6 +71,10 @@ for (const [grp, entries] of Object.entries(index)) {
     for (const m of src.matchAll(/url\(#([^)]+)\)/g)) if (!ids.has(m[1])) err(rel, 'undefined reference #' + m[1]);
     if (grp === 'stats') {
       if (/stroke|Gradient|<image|<text/.test(src)) err(rel, 'stat icon must be fill-only, no gradients/strokes/text');
+      for (const m of src.matchAll(/fill="([^"]+)"/g)) if (m[1] !== 'currentColor') err(rel, 'non-currentColor fill ' + m[1]);
+    }
+    if (grp === 'ui' && !rel.startsWith('ui/slots/') && rel !== 'ui/logo.svg') {
+      if (/stroke|Gradient|<image|<text/.test(src)) err(rel, 'ui icon must be fill-only, no gradients/strokes/text');
       for (const m of src.matchAll(/fill="([^"]+)"/g)) if (m[1] !== 'currentColor') err(rel, 'non-currentColor fill ' + m[1]);
     }
     if (rel.startsWith('ui/slots/')) {

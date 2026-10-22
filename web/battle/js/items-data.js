@@ -264,11 +264,51 @@
     stone3: { name: 'Камень заточки III', art: 'materials/enhance_stone_3', price: 1500, desc: 'Для заточки с +11 до +15.' },
     protect: { name: 'Свиток защиты', art: 'materials/protect_scroll', price: 900, desc: 'Спасает вещь от поломки при заточке.' },
     reroll: { name: 'Свиток перековки', art: 'materials/reroll_scroll', price: 120, desc: 'Нужен чародейке для перековки свойств.' },
-    hp_potion: { name: 'Зелье здоровья', art: 'materials/potion_hp', price: 12 },
-    mp_potion: { name: 'Зелье ресурса', art: 'materials/potion_mp', price: 15 },
+    // Зелья (действие — в data.consumables)
+    hp_potion_1: { name: 'Малое зелье здоровья', art: 'materials/potion_hp_1', price: 30, kind: 'potion', desc: '+15% здоровья в бою.' },
+    hp_potion_2: { name: 'Зелье здоровья', art: 'materials/potion_hp_2', price: 0, kind: 'potion', desc: '+25% здоровья в бою. Варит алхимик.' },
+    hp_potion_3: { name: 'Большое зелье здоровья', art: 'materials/potion_hp_3', price: 0, kind: 'potion', desc: '+40% здоровья в бою. Варит алхимик.' },
+    mp_potion_1: { name: 'Малое зелье ресурса', art: 'materials/potion_mp_1', price: 35, kind: 'potion', desc: '+25% ресурса в бою.' },
+    mp_potion_2: { name: 'Зелье ресурса', art: 'materials/potion_mp_2', price: 0, kind: 'potion', desc: '+40% ресурса в бою. Варит алхимик.' },
+    mp_potion_3: { name: 'Большое зелье ресурса', art: 'materials/potion_mp_3', price: 0, kind: 'potion', desc: '+60% ресурса в бою. Варит алхимик.' },
+    // Эликсиры: действуют несколько побед подряд
+    elixir_power: { name: 'Эликсир силы', art: 'materials/elixir_power', price: 0, kind: 'elixir', desc: '+12% всего урона на 8 побед.' },
+    elixir_fortune: { name: 'Эликсир удачи', art: 'materials/elixir_fortune', price: 0, kind: 'elixir', desc: '+30% находки и +25% золота на 8 побед.' },
+    // Материалы зон — для алхимии
+    herb_stjohn: { name: 'Зверобой', art: 'materials/herb_stjohn', price: 3, kind: 'herb', desc: 'Растёт на Лесной опушке.' },
+    spider_gland: { name: 'Паучья железа', art: 'materials/spider_gland', price: 3, kind: 'herb', desc: 'Лесная опушка.' },
+    wolf_pelt: { name: 'Волчья шкура', art: 'materials/wolf_pelt', price: 6, kind: 'herb', desc: 'Глухой лес.' },
+    spirit_moss: { name: 'Мох лесного духа', art: 'materials/spirit_moss', price: 6, kind: 'herb', desc: 'Глухой лес.' },
+    goblin_brew: { name: 'Гоблинское варево', art: 'materials/goblin_brew', price: 9, kind: 'herb', desc: 'Гоблинская стоянка.' },
+    shaman_root: { name: 'Шаманский корень', art: 'materials/shaman_root', price: 9, kind: 'herb', desc: 'Гоблинская стоянка.' },
+    harpy_feather: { name: 'Перо гарпии', art: 'materials/harpy_feather', price: 12, kind: 'herb', desc: 'Старый тракт.' },
+    stolen_spices: { name: 'Краденые специи', art: 'materials/stolen_spices', price: 12, kind: 'herb', desc: 'Старый тракт.' },
+    rune_dust: { name: 'Рунная пыль', art: 'materials/rune_dust', price: 16, kind: 'herb', desc: 'Каменные холмы.' },
+    golem_heart: { name: 'Сердце голема', art: 'materials/golem_heart', price: 16, kind: 'herb', desc: 'Каменные холмы.' },
+    bone_meal: { name: 'Костная мука', art: 'materials/bone_meal', price: 20, kind: 'herb', desc: 'Затопленный склеп.' },
+    ectoplasm: { name: 'Эктоплазма', art: 'materials/ectoplasm', price: 20, kind: 'herb', desc: 'Затопленный склеп.' },
   };
 
-  const shopStock = ['hp_potion', 'mp_potion', 'stone1', 'stone2', 'reroll', 'protect'];
+  // В лавке только малые зелья — остальные варит алхимик
+  const shopStock = ['hp_potion_1', 'mp_potion_1', 'stone1', 'stone2', 'reroll', 'protect'];
+
+  // Рецепты алхимика: out — что получится, n — сколько, need — материалы, gold — плата
+  const recipes = [
+    { out: 'hp_potion_1', n: 2, need: { herb_stjohn: 2 }, gold: 5 },
+    { out: 'mp_potion_1', n: 2, need: { spider_gland: 2 }, gold: 5 },
+    { out: 'hp_potion_2', n: 2, need: { spirit_moss: 2, wolf_pelt: 1 }, gold: 25 },
+    { out: 'mp_potion_2', n: 2, need: { shaman_root: 2, goblin_brew: 1 }, gold: 25 },
+    { out: 'hp_potion_3', n: 2, need: { golem_heart: 1, ectoplasm: 2 }, gold: 80 },
+    { out: 'mp_potion_3', n: 2, need: { rune_dust: 2, bone_meal: 1 }, gold: 80 },
+    { out: 'elixir_power', n: 1, need: { harpy_feather: 2, wolf_pelt: 2, goblin_brew: 1 }, gold: 120 },
+    { out: 'elixir_fortune', n: 1, need: { stolen_spices: 2, rune_dust: 1, herb_stjohn: 3 }, gold: 150 },
+  ];
+
+  // Действие эликсиров: прибавки к статам и сколько побед длится
+  const elixirs = {
+    elixir_power: { battles: 8, mods: { dmgPct: 0.12 } },
+    elixir_fortune: { battles: 8, mods: { mf: 30, goldPct: 0.25 } },
+  };
 
   // Перековка у чародейки
   const reroll = {
@@ -291,7 +331,7 @@
 
   Object.assign(data, {
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, rarities, qualities, affixes, TIER_FALLOFF,
-    legendaries, enhance, rank, materials: materials2, shopStock, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
+    legendaries, enhance, rank, materials: materials2, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -5,12 +5,12 @@
   const PC = root.PC || (root.PC = {});
   const I = () => PC.items;
 
-  const CHAR_VERSION = 3;
+  const CHAR_VERSION = 4;
   const STAT_POINTS_PER_LEVEL = 3;
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
 
-  const expToNext = (level) => Math.round(40 * Math.pow(level, 1.7) + 20);
+  const expToNext = (level) => Math.round(52 * Math.pow(level, 1.7) + 26);
 
   function newCharacter(data, { nick, gender, job }) {
     const cls = data.classes[job];
@@ -21,11 +21,12 @@
       skills: {}, slots: [], passives: {},
       equipment: {},
       bag: new Array(I().BAG_SIZE).fill(null),
-      materials: { hp_potion: 5, mp_potion: 2, stone1: 3 },
+      materials: { hp_potion_1: 5, mp_potion_1: 2, stone1: 3 },
       gold: 50,
       location: data.HOME, transit: null,
       zoneKills: {}, maxTier: 1,
-      settings: { autoSalvage: -1, timer: false, autoBattle: false, speed: 1 },
+      world: {}, restTick: 0, buffs: {},
+      settings: { autoSalvage: -1, autoBattle: false, autoHunt: false, potionAt: 35 },
       wins: 0, losses: 0,
     };
     // Первое умение класса выучено сразу
@@ -42,9 +43,18 @@
     return char;
   }
 
-  // Сохранения старых версий несовместимы с новой системой предметов — начинаем заново
+  // Версии до 3 несовместимы с системой предметов — начинаем заново. 3 → 4: зелья трёх размеров, тик мира.
   function migrate(data, char) {
-    if (!char || (char.version || 1) < CHAR_VERSION) return null;
+    if (!char || (char.version || 1) < 3) return null;
+    if (char.version === 3) {
+      const m = char.materials;
+      m.hp_potion_1 = (m.hp_potion_1 || 0) + (m.hp_potion || 0);
+      m.mp_potion_1 = (m.mp_potion_1 || 0) + (m.mp_potion || 0);
+      delete m.hp_potion; delete m.mp_potion;
+      char.world = {}; char.restTick = 0; char.buffs = {};
+      char.settings = { autoSalvage: char.settings.autoSalvage ?? -1, autoBattle: !!char.settings.autoBattle, autoHunt: false, potionAt: 35 };
+      char.version = 4;
+    }
     return char;
   }
 
@@ -99,7 +109,7 @@
       stats: s,
       weaponType: weapon ? weapon.type : 'fist',
       skills: char.slots.map((id) => ({ id, lvl: PC.stats.skillLevel(s, char, id) })),
-      consumables: ['hp_potion', 'mp_potion'].map((id) => ({ id, count: char.materials[id] || 0 })),
+      consumables: Object.keys(data.consumables).map((id) => ({ id, count: char.materials[id] || 0 })).filter((c) => c.count > 0),
     };
   }
 
@@ -131,7 +141,7 @@
   // ---------- Добыча ----------
 
   // Шансы выпадения за обычного монстра (босс — гарантированные вещи)
-  const DROP = { item: 32, bossItems: 3, potion: 10, stone1: 8, stone2: 3, essence: 12, main: 40 };
+  const DROP = { item: 32, bossItems: 3, potion: 5, stone1: 8, stone2: 3, essence: 12, main: 35, zoneMat: 45 };
 
   function rollDrops(data, char, monsterId, level, stats, rng) {
     const m = data.monsters[monsterId];
@@ -149,7 +159,9 @@
     if (rng.chance(DROP.essence)) addMat('essence', rng.int(1, tier));
     if (rng.chance(DROP.stone1)) addMat('stone1', 1);
     if (tier >= 3 && rng.chance(DROP.stone2)) addMat('stone2', 1);
-    if (rng.chance(DROP.potion)) addMat('hp_potion', 1);
+    if (rng.chance(DROP.potion)) addMat('hp_potion_1', 1);
+    const zone = data.locations[char.location];
+    if (zone && zone.mats && rng.chance(DROP.zoneMat)) addMat(rng.pick(zone.mats), rng.int(1, 2));
     if (m.boss) { addMat('stone2', 1); if (tier >= 5 && rng.chance(30)) addMat('stone3', 1); addMat('reroll', 1); }
     return drops;
   }
@@ -172,6 +184,8 @@
     }
     char.wins++;
     const stats = PC.stats.compute(data, char);
+    // Эликсиры действуют ограниченное число побед
+    for (const id of Object.keys(char.buffs || {})) if (--char.buffs[id] <= 0) delete char.buffs[id];
     const m = data.monsters[monsterId];
     const loc = data.locations[char.location];
     if (!loc.safe) {
@@ -203,7 +217,7 @@
   PC.progression = {
     CHAR_VERSION, STAT_POINTS_PER_LEVEL, SKILL_POINTS_PER_LEVEL, MAX_LEVEL,
     expToNext, expMultiplier, newCharacter, migrate, classSkills, classPassives,
-    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult,
+    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP,
   };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

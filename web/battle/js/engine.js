@@ -439,9 +439,10 @@
       this.winner = killer;
     }
 
-    // ---- Расходники: не тратят ход, но не чаще раза за ход ----
+    // ---- Зелья: не тратят ход; одно за ход и затем откат POTION_CD ходов ----
 
-    canUseConsumable(f) { return !this.ended && f.usedConsumableTurn !== this.turn; }
+    potionCooldown(f) { return Math.max(0, (f.potionReadyTurn || 0) - this.turn); }
+    canUseConsumable(f) { return !this.ended && f.usedConsumableTurn !== this.turn && this.potionCooldown(f) === 0; }
 
     useConsumable(f, itemId) {
       const item = f.consumables.find((c) => c.id === itemId);
@@ -449,6 +450,7 @@
       const def = this.data.consumables[itemId];
       item.count--;
       f.usedConsumableTurn = this.turn;
+      f.potionReadyTurn = this.turn + (this.data.POTION_CD || 0);
       if (def.healPct) this.heal(f, Math.round(f.maxHp * def.healPct), def.text);
       if (def.resPct && f.resource) {
         const n = Math.min(Math.round(f.resMax * def.resPct), f.resMax - f.res);

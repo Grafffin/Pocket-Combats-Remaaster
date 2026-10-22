@@ -2,14 +2,19 @@
 (function () {
   'use strict';
   const { data, items: I, progression: P } = PC;
-  const { $, art, openSheet, toast, plural, fmtNum } = PC.kit;
+  const { $, art, toast, plural, fmtNum, openModal } = PC.kit;
   const { tile, cardHtml, nameHtml, costHtml } = PC.itemUI;
   const app = PC.app;
 
+  // Режимы: id, название, иконка, кто делает, что делает (одной строкой)
   const SUBS = [
-    ['enhance', 'Заточка'], ['rank', 'Ранг ★'], ['inherit', 'Перенос'], ['reroll', 'Перековка'], ['craft', 'Ковка'],
+    ['enhance', 'Заточка', 'stats/atk', 'Кузнец Тарас', 'Камнями поднимает +N: больше базовых характеристик, вехи на +5/+10/+15.'],
+    ['rank', 'Ранг ★', 'stats/exp', 'Кузнец Тарас', 'Скармливает копию вещи: +10% базовых, выше потолок заточки, на ★3 — знак.'],
+    ['inherit', 'Перенос', 'stats/speed', 'Кузнец Тарас', 'Переносит заточку, ранг и знак с одной вещи на другую того же вида.'],
+    ['reroll', 'Перековка', 'stats/matk', 'Чародейка Велена', 'Меняет случайные свойства вещи: числа, строки, качество или знак.'],
+    ['craft', 'Ковка', 'stats/def', 'Кузнец Тарас', 'Выковывает новую вещь нужной базы и тира.'],
   ];
-  const f = { sub: 'enhance', uid: null, locks: new Set(), protect: false, fodder: null, donor: null, craftType: null, craftTier: 1, flash: null };
+  const f = { sub: 'enhance', mode: 'values', valueIdx: 0, uid: null, locks: new Set(), protect: false, fodder: null, donor: null, craftType: null, craftTier: 1, flash: null };
 
   function allItems(c) {
     return [...Object.values(c.equipment).filter(Boolean).map((it) => ({ it, worn: true })), ...c.bag.filter(Boolean).map((it) => ({ it, worn: false }))];
@@ -24,7 +29,17 @@
     const items = allItems(c);
     if (!f.uid && items.length && f.sub !== 'craft') f.uid = (items.find((x) => x.worn && x.it.type === (c.equipment.weapon || {}).type) || items[0]).it.uid;
 
+    // Кузница и чародейка работают только в деревне
+    if (!app.inVillage()) {
+      root.innerHTML = `<div class="card section"><h3>Кузница</h3>
+        <p>Кузнец Тарас и чародейка Велена принимают только в деревне ${data.locations[data.HOME].name}.</p>
+        <p class="meta">Вернитесь туда через переходы на экране «Мир».</p>
+        <div class="row-actions"><button class="btn primary" data-act="to-world">К переходам</button></div></div>`;
+      return;
+    }
     const tabs = SUBS.map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
+    const sub = SUBS.find((s) => s[0] === f.sub);
+    const modeHead = `<div class="mode-head">${art(sub[2], '')}<div><b>${sub[1]}</b><span class="meta">${sub[3]} · ${sub[4]}</span></div></div>`;
     const picker = f.sub === 'craft' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'чародейка Велена' : 'кузнец Тарас'}</span></h3>
       <div class="picker">${items.map(({ it, worn }) => tile(it, { attrs: `data-pick="${it.uid}" title="${worn ? 'надето' : 'в сумке'}"`, cls: it.uid === f.uid ? 'sel' : '' })).join('')}</div>
       <p class="meta" style="margin-top:6px">Сначала надетые, затем вещи из сумки.</p></div>`;
@@ -32,7 +47,7 @@
     f.flash = null;
 
     const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel }[f.sub](c);
-    root.innerHTML = `<div class="forge-tabs">${tabs}</div>${flash}${body}${picker}
+    root.innerHTML = `<div class="forge-tabs">${tabs}</div>${modeHead}${flash}${body}${picker}
       <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', 'ore', 'leather'].map((k) => [k, null])))}</div>`;
   }
   app.tabs.forge = render;
@@ -107,29 +122,44 @@
   }
 
   // ---------- Перековка ----------
+  // Четыре явных режима: числа (значение одного свойства), строки (замена свойств), качество, знак
+  const MODES = [['values', 'Числа'], ['lines', 'Строки'], ['quality', 'Качество'], ['virtue', 'Знак']];
+
   function rerollPanel(c) {
     const s = selected(c);
     if (!s) return none;
     const item = s.item;
     for (const i of [...f.locks]) if (i >= item.affixes.length) f.locks.delete(i);
-    const rows = item.affixes.map((af, i) => `<div class="lock-row">
-        <input type="checkbox" data-lock="${i}" ${f.locks.has(i) ? 'checked' : ''} title="Замок">
-        <span class="t t${af.tier}" style="font-size:10px;font-weight:800;padding:1px 5px;border-radius:5px;background:#262b3a">T${af.tier}</span>
-        <span class="txt ${af.neg ? 'req' : ''}">${I.affixText(data, af)}</span>
-        <button class="btn small" data-value="${i}" title="Перебросить значение">🎲</button></div>`).join('');
-    return `<div class="card section"><h3>Перековка свойств</h3>${head(item)}
-      ${item.affixes.length ? `
-        <p class="meta" style="margin-top:10px">🎲 — перебросить значение свойства в пределах его тира: ${costHtml(I.rerollValueCost(data, item))}</p>
-        <div>${rows}</div>
-        <p class="meta">Замкнутые свойства сохранятся, остальные заменятся случайными. Каждый замок удваивает цену.</p>
+    if (f.valueIdx >= item.affixes.length) f.valueIdx = 0;
+    const modes = `<div class="seg mode-seg">${MODES.map(([id, name]) => `<button class="${f.mode === id ? 'on' : ''}" data-mode="${id}">${name}</button>`).join('')}</div>`;
+    const noAffixes = '<p class="hint">У обычных вещей нет случайных свойств — перековывать нечего.</p>';
+    let body = '';
+    if (f.mode === 'values') {
+      body = item.affixes.length ? `<p class="meta">Выберите свойство: его значение перебросится в пределах тира, само свойство останется.</p>
+        <div>${item.affixes.map((af, i) => `<label class="lock-row ${f.valueIdx === i ? 'sel' : ''}"><input type="radio" name="val" data-val="${i}" ${f.valueIdx === i ? 'checked' : ''}>
+          <span class="t t${af.tier}">T${af.tier}</span><span class="txt ${af.neg ? 'req' : ''}">${I.affixText(data, af)}</span></label>`).join('')}</div>
+        ${costHtml(I.rerollValueCost(data, item))}
+        <div class="row-actions"><button class="btn primary" data-act="value">Перебросить число</button></div>` : noAffixes;
+    } else if (f.mode === 'lines') {
+      body = item.affixes.length ? `<p class="meta">Отметьте замком свойства, которые нужно сохранить. Остальные заменятся случайными другими. Каждый замок удваивает цену.</p>
+        <div>${item.affixes.map((af, i) => `<label class="lock-row"><input type="checkbox" data-lock="${i}" ${f.locks.has(i) ? 'checked' : ''}>
+          <span class="t t${af.tier}">T${af.tier}</span><span class="txt ${af.neg ? 'req' : ''}">${I.affixText(data, af)}</span>${f.locks.has(i) ? '🔒' : ''}</label>`).join('')}</div>
         ${costHtml(I.rerollAffixesCost(data, item, f.locks.size))}
-        <div class="row-actions"><button class="btn primary" data-act="reroll" ${f.locks.size >= item.affixes.length ? 'disabled' : ''}>Перековать незамкнутые</button></div>`
-        : '<p class="hint">У обычных вещей нет случайных свойств — перековывать нечего.</p>'}
-      </div>
-      <div class="card section"><h3>Качество: ${item.quality}%</h3>
-        <p class="meta">Новое случайное качество (×0.80…×1.20 к базовым характеристикам). Может выйти хуже!</p>
+        <div class="row-actions"><button class="btn primary" data-act="reroll" ${f.locks.size >= item.affixes.length ? 'disabled' : ''}>Заменить незамкнутые строки</button></div>` : noAffixes;
+    } else if (f.mode === 'quality') {
+      body = `<p>Сейчас: <b>${item.quality}%</b> (×${I.qualityMult(item.quality).toFixed(2)} к базовым характеристикам)</p>
+        <p class="meta">Новое случайное качество. Может выйти хуже!</p>
         ${costHtml(I.requalityCost(data, item))}
-        <div class="row-actions"><button class="btn" data-act="requality">Перековать качество</button></div></div>`;
+        <div class="row-actions"><button class="btn primary" data-act="requality">Перековать качество</button></div>`;
+    } else {
+      const open = c.level >= I.VIRTUE_REROLL_LEVEL;
+      body = !item.virtue ? '<p class="hint">У вещи нет знака — он появляется на ранге ★3.</p>'
+        : !open ? `<p class="hint">Перековка знака откроется на ${I.VIRTUE_REROLL_LEVEL} уровне.</p>`
+          : `<p>Знак: <b style="color:${data.virtues[item.virtue].color}">${data.virtues[item.virtue].name}</b>. Перековка даст другой случайный знак.</p>
+            ${costHtml(I.virtueRerollCost(data, item))}
+            <div class="row-actions"><button class="btn primary" data-act="virtue">Перековать знак</button></div>`;
+    }
+    return `<div class="card section"><h3>Перековка</h3>${head(item)}${modes}${body}</div>`;
   }
 
   // ---------- Ковка ----------
@@ -164,22 +194,28 @@
     const c = app.state.char;
     const sub = e.target.closest('[data-sub]');
     if (sub) { f.sub = sub.dataset.sub; return app.render(); }
+    const mode = e.target.closest('[data-mode]');
+    if (mode) { f.mode = mode.dataset.mode; return app.render(); }
     const pick = e.target.closest('[data-pick]');
     if (pick) { f.uid = pick.dataset.pick; f.locks.clear(); f.fodder = null; f.donor = null; return app.render(); }
     const fod = e.target.closest('[data-fodder]');
     if (fod) { f.fodder = fod.dataset.fodder; return app.render(); }
     const don = e.target.closest('[data-donor]');
     if (don) { f.donor = don.dataset.donor; return app.render(); }
-    const val = e.target.closest('[data-value]');
-    if (val) {
-      const r = I.rerollValue(data, c, f.uid, Number(val.dataset.value), app.rng);
-      return done(r, r.ok ? `Значение: ${r.before} → ${r.after}` : '', r.ok && r.after >= r.before ? 'good' : 'neutral');
-    }
     const act = e.target.closest('[data-act]');
     if (!act || act.disabled) return;
     const a = act.dataset.act;
     const s = selected(c);
-    if (a === 'card' && s) return openSheet('Свойства', cardHtml(c, s.item, s.slot ? 'equipped' : 'bag'));
+    if (a === 'card' && s) return PC.itemUI.openItem(c, s.item, s.slot ? 'equipped' : 'bag');
+    if (a === 'to-world') return app.setTab('world');
+    if (a === 'value') {
+      const r = I.rerollValue(data, c, f.uid, f.valueIdx, app.rng);
+      return done(r, r.ok ? `Значение: ${r.before} → ${r.after}` : '', r.ok && r.after >= r.before ? 'good' : 'neutral');
+    }
+    if (a === 'virtue') {
+      const r = I.rerollVirtue(data, c, f.uid, app.rng);
+      return done(r, r.ok ? `Знак: ${data.virtues[r.before].name} → ${data.virtues[r.after].name}` : '');
+    }
     if (a === 'enhance') {
       const info = I.enhanceInfo(data, s.item);
       if (info.fail === 'break' && !f.protect && !confirm('Без свитка защиты вещь может сломаться. Точить?')) return;
@@ -219,7 +255,7 @@
       if (!r.ok) return done(r);
       r.item.fresh = true;
       done(r, `Выковано: ${nameHtml(r.item)}`);
-      openSheet('Выковано', cardHtml(c, r.item, 'bag'));
+      PC.itemUI.openItem(c, r.item, 'bag');
     }
   });
 
@@ -230,6 +266,7 @@
       return app.render();
     }
     if (e.target.matches('[data-protect]')) { f.protect = e.target.checked; return; }
+    if (e.target.matches('[data-val]')) { f.valueIdx = Number(e.target.dataset.val); return app.render(); }
     if (e.target.matches('[data-craft-type]')) { f.craftType = e.target.value; return app.render(); }
     if (e.target.matches('[data-craft-tier]')) { f.craftTier = Number(e.target.value); return app.render(); }
   });

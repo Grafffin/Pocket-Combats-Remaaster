@@ -1,10 +1,10 @@
-// Приложение: состояние и сохранение, создание персонажа, шапка, вкладки «Мир» и «Герой», торговля, итог боя.
-// Вкладки «Сумка» и «Кузница» — bag-ui.js и forge-ui.js, они регистрируются в PC.app.tabs.
+// Приложение: состояние и сохранение, создание персонажа, шапка, вкладки «Мир» и «Герой», бой и автоохота,
+// лавка и алхимик. «Сумка», скупщик и сундук — bag-ui.js, «Кузница» — forge-ui.js (регистрируются в PC.app.tabs).
 (function () {
   'use strict';
   const { data, progression: P, economy: E, world: W, items: I, stats: S, monsters: M } = PC;
-  const { $, $$, art, statIcon, avatar, escapeHtml, plural, fmtNum, openSheet, closeSheet, toast, storage } = PC.kit;
-  const { tile, cardHtml, costHtml, matChip } = PC.itemUI;
+  const { $, $$, art, statIcon, avatar, escapeHtml, plural, fmtNum, openSheet, closeSheet, openModal, closeModal, prefs, savePrefs, toast, storage } = PC.kit;
+  const { tile, costHtml } = PC.itemUI;
 
   const charStore = storage('pc-character-v3', null);
   const rng = PC.makeRng(Date.now());
@@ -13,9 +13,9 @@
     char: P.migrate(data, charStore.load()),
     tab: 'world',
     pending: {},          // очки характеристик, расставленные, но ещё не сохранённые
-    fight: null,          // текущий бой: { monsterId, entry, level }
-    loopTimer: null,
-    travelTimer: null,
+    fight: null,          // текущий бой: { uid, monsterId, level }
+    huntTimer: null,
+    worldTimer: null,
     create: { nick: '', gender: 'm', job: 'warrior' },
   };
 
@@ -26,7 +26,7 @@
     render,
     setTab,
     toast,
-    startFight,
+    inVillage: () => !!state.char && state.char.location === data.HOME && !state.char.transit,
   };
   PC.app = app;
 
@@ -76,12 +76,12 @@
     show('hub');
     render();
     $('#hub-body').scrollTop = 0;
-    watchTravel();
   }
 
   function render() {
     const c = state.char;
     if (!c) return;
+    W.update(data, c, Date.now(), rng);
     renderHeroBar();
     for (const b of $$('#tabs button')) b.classList.toggle('on', b.dataset.tab === state.tab);
     $('#badge-hero').hidden = !(c.statPoints || c.skillPoints);
@@ -94,12 +94,13 @@
   function renderHeroBar() {
     const c = state.char;
     const need = P.expToNext(c.level);
+    const buffs = Object.entries(c.buffs || {}).map(([id, n]) => `<span class="buff info-link" data-info="${id}" title="${data.materials[id].name}: ещё ${n} побед">${art(data.materials[id].art, '✦')}${n}</span>`).join('');
     $('#hero-bar').innerHTML = `
       <div class="portrait">${art(`classes/${c.job}`, data.classes[c.job].title.charAt(0))}</div>
       <div class="who"><b>${escapeHtml(c.nick)}</b>
         <div class="bar-line"><span class="meta">${data.classes[c.job].title} · ${c.level} ур.</span>
           <div class="progress thin" style="flex:1"><div style="width:${c.level >= P.MAX_LEVEL ? 100 : (c.exp / need) * 100}%"></div></div></div></div>
-      <div class="wallet"><span>${art('materials/gold', '💰')}${fmtNum(c.gold)}</span><span class="meta">${fmtNum(c.exp)} / ${fmtNum(need)}</span></div>`;
+      <div class="wallet"><span class="info-link" data-info="gold">${art('materials/gold', '💰')}${fmtNum(c.gold)}</span><span class="meta">${buffs || `${fmtNum(c.exp)} / ${fmtNum(need)}`}</span></div>`;
   }
 
   $('#tabs').addEventListener('click', (e) => {
@@ -120,7 +121,8 @@
 
   function renderWorld(root) {
     const c = state.char;
-    const t = W.travelProgress(c, Date.now());
+    const now = Date.now();
+    const t = W.travelProgress(c, now);
     if (t) {
       const from = data.locations[t.from], to = data.locations[t.to];
       root.innerHTML = `
@@ -134,25 +136,7 @@
       return;
     }
     const loc = W.here(data, c);
-    const s = c.settings;
-
-    const mobs = loc.monsters.map((entry) => mobRow(entry, false)).join('');
-    let boss = '';
-    if (loc.boss) {
-      const ready = W.bossReady(data, c);
-      const kills = c.zoneKills[c.location] || 0;
-      boss = ready ? mobRow([loc.boss[0], loc.boss[1], loc.boss[1]], true)
-        : `<div class="mob boss" style="opacity:.6"><div class="ava" style="width:52px;height:52px">${art(data.monsters[loc.boss[0]].art, '👑')}</div>
-            <div class="txt"><b>${data.monsters[loc.boss[0]].name}</b><span class="tag boss">босс</span>
-            <div class="meta">Появится после ${data.BOSS_KILLS} побед в зоне</div>
-            <div class="progress thin" style="margin-top:6px"><div style="width:${(kills / data.BOSS_KILLS) * 100}%"></div></div></div>
-            <span class="lvl-badge ${levelClass(loc.boss[1] - c.level)}">${loc.boss[1]}</span></div>`;
-    }
-
-    const npcs = (loc.npcs || []).map((id) => {
-      const n = data.npcs[id];
-      return `<button class="npc" data-npc="${id}">${avatar(n, 44)}<div><b>${n.name}</b><span>${n.desc}</span></div></button>`;
-    }).join('');
+    const st = W.update(data, c, now, rng);
 
     const routes = Object.entries(loc.routes).map(([id, sec]) => {
       const to = data.locations[id];
@@ -161,112 +145,153 @@
         <span class="route-meta"><span class="dot ${cls}"></span>${to.levels ? `${to.levels[0]}–${to.levels[1]} ур.` : 'безопасно'} · ${sec} с</span></button>`;
     }).join('');
 
-    const salvageOpts = [-1, 0, 1, 2, 3].map((r) => `<option value="${r}" ${s.autoSalvage === r ? 'selected' : ''}>${r < 0 ? 'выключен' : `до «${data.rarities[r].name}» включительно`}</option>`).join('');
+    const npcs = (loc.npcs || []).map((id) => {
+      const n = data.npcs[id];
+      return `<button class="npc" data-npc="${id}">${avatar(n, 44)}<div><b>${n.name}</b><span>${n.desc}</span></div></button>`;
+    }).join('');
+
+    const rest = W.restLeft(c, now);
+    const mobs = [st.boss, ...st.mobs].filter(Boolean).map((m) => mobRow(m, now, rest)).join('');
+    const kills = c.zoneKills[c.location] || 0;
+    const bossNote = loc.boss && !st.boss
+      ? `<div class="boss-progress"><span class="meta">${data.monsters[loc.boss[0]].name} появится после ${data.BOSS_KILLS} побед</span>
+          <div class="progress thin"><div style="width:${(kills / data.BOSS_KILLS) * 100}%"></div></div></div>` : '';
 
     root.innerHTML = `
       <div class="banner">${art(loc.art, '')}<div class="title"><b>${loc.name}</b><span>${loc.levels ? `${loc.levels[0]}–${loc.levels[1]} уровень · тир вещей ${loc.tier}` : 'Безопасная зона'}</span></div></div>
-      <div class="card section"><p class="loc-desc">${loc.desc}</p></div>
+      <div class="card section"><h3>Переходы</h3>${routes}</div>
       ${npcs ? `<div class="card section"><h3>Жители</h3><div class="npc-grid">${npcs}</div></div>` : ''}
-      <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Охота'}<span class="note">${loc.safe ? '' : `побед: ${c.zoneKills[c.location] || 0}`}</span></h3>
-        <div class="list">${mobs}${boss}</div></div>
-      <div class="card section"><h3>Настройки охоты</h3>
-        <div class="toggle"><span>Автобой</span><button class="chip-btn ${s.autoBattle ? 'on' : ''}" data-set="autoBattle">${s.autoBattle ? 'вкл' : 'выкл'}</button></div>
-        <div class="toggle"><span>Охота без остановки</span><button class="chip-btn ${s.loop ? 'on' : ''}" data-set="loop">${s.loop ? 'вкл' : 'выкл'}</button></div>
-        <div class="toggle"><span>Скорость боя</span><button class="chip-btn ${s.speed > 1 ? 'on' : ''}" data-set="speed">×${s.speed || 1}</button></div>
-        <div class="toggle"><span>Авторазбор добычи</span><select id="auto-salvage">${salvageOpts}</select></div>
-        <p class="hint">Зелья: здоровья ×${c.materials.hp_potion || 0}, ресурса ×${c.materials.mp_potion || 0}. Здоровье восстанавливается после каждого боя.
-          Поражение возвращает в ${data.locations[data.HOME].name} и стоит ${Math.round(data.DEATH_GOLD_LOSS * 100)}% золота.</p>
+      <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Монстры'}
+          <span class="note" id="rest-note">${rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`}</span></h3>
+        <div class="list">${mobs}</div>${bossNote}
+        ${loc.safe ? '' : `<p class="hint">Монстров на локации ${st.mobs.length}. Убитые возрождаются через ${W.RESPAWN_TICKS * W.TICK_MS / 1000} с, после боя — передышка до следующего тика (${W.TICK_MS / 1000} с).</p>`}
+        ${loc.safe ? '' : `<div class="row-actions"><button class="btn ${c.settings.autoHunt ? 'primary' : ''}" data-act="hunt">${c.settings.autoHunt ? 'Автоохота включена' : 'Начать автоохоту'}</button>
+          <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
-      <div class="card section"><h3>Переходы</h3>${routes}</div>`;
+      <div class="card section"><p class="loc-desc">${loc.desc}</p></div>`;
   }
 
-  function mobRow([id, lo, hi], isBoss) {
+  function mobRow(m, now, rest) {
     const c = state.char;
-    const m = data.monsters[id];
-    const mid = Math.round((lo + hi) / 2);
-    const exp = Math.round(M.rewards.exp(id, mid) * P.expMultiplier(c.level, mid));
-    return `<button class="mob ${isBoss ? 'boss' : ''}" data-mon="${id}" data-lo="${lo}" data-hi="${hi}">
-      <div class="ava" style="width:52px;height:52px">${art(m.art, m.emoji)}</div>
-      <div class="txt"><b>${m.name}</b>${isBoss ? '<span class="tag boss">босс</span>' : ''}<span class="tag kind">${KIND_NAME[m.kind] || ''}</span>
-        <div class="meta">${m.blurb}</div>${m.ai === 'idle' ? '' : `<div class="meta">≈${exp} опыта</div>`}</div>
-      <span class="lvl-badge ${levelClass(mid - c.level)}">${lo === hi ? lo : `${lo}–${hi}`}</span></button>`;
+    const def = data.monsters[m.id];
+    const dead = m.deadUntil != null;
+    const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level));
+    let status = '';
+    if (dead) status = `<span class="mob-status">возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с</span>`;
+    else if (m.busy) status = '<span class="mob-status">в бою</span>';
+    return `<button class="mob ${m.boss ? 'boss' : ''} ${dead ? 'dead' : ''}" data-mob="${m.uid}" ${dead || m.busy ? 'disabled' : ''}>
+      <div class="ava" style="width:52px;height:52px">${art(def.art, def.emoji)}</div>
+      <div class="txt"><b>${def.name}</b>${m.boss ? '<span class="tag boss">босс</span>' : ''}<span class="tag kind">${KIND_NAME[def.kind] || ''}</span>
+        <div class="meta">${dead ? '' : def.blurb}</div>${def.ai === 'idle' ? '' : `<div class="meta">≈${exp} опыта</div>`}${status}</div>
+      <span class="lvl-badge ${levelClass(m.level - c.level)}">${m.level}</span></button>`;
   }
 
   $('#tab-world').addEventListener('click', (e) => {
     const c = state.char;
-    const m = e.target.closest('[data-mon]');
-    if (m) return startFight(m.dataset.mon, [m.dataset.mon, +m.dataset.lo, +m.dataset.hi]);
+    const m = e.target.closest('[data-mob]');
+    if (m && !m.disabled) return startFight(m.dataset.mob);
     const n = e.target.closest('[data-npc]');
     if (n) return openNpc(n.dataset.npc);
     const r = e.target.closest('[data-route]');
     if (r) {
+      if (c.settings.autoHunt) { c.settings.autoHunt = false; }
       const res = W.startTravel(data, c, r.dataset.route, Date.now());
       if (!res.ok) return toast(res.reason, 'bad');
       app.save();
       render();
-      watchTravel();
       return;
     }
-    const set = e.target.closest('[data-set]');
-    if (set) {
-      const k = set.dataset.set;
-      if (k === 'speed') c.settings.speed = { 1: 2, 2: 4, 4: 1 }[c.settings.speed || 1];
-      else c.settings[k] = !c.settings[k];
-      if (k === 'loop' && c.settings.loop) c.settings.autoBattle = true;
+    const act = e.target.closest('[data-act]');
+    if (!act) return;
+    if (act.dataset.act === 'cancel-travel') { W.cancelTravel(c); app.save(); render(); }
+    if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { Object.assign(c.settings, patch); app.save(); render(); });
+    if (act.dataset.act === 'hunt') {
+      c.settings.autoHunt = !c.settings.autoHunt;
+      if (c.settings.autoHunt) c.settings.autoBattle = true;
       app.save();
       render();
-      return;
+      if (c.settings.autoHunt) scheduleHunt();
     }
-    if (e.target.closest('[data-act="cancel-travel"]')) { W.cancelTravel(c); app.save(); render(); }
-  });
-  $('#tab-world').addEventListener('change', (e) => {
-    if (e.target.id === 'auto-salvage') { state.char.settings.autoSalvage = Number(e.target.value); app.save(); }
   });
 
-  function watchTravel() {
-    clearInterval(state.travelTimer);
-    if (!state.char || !state.char.transit) return;
-    const tick = () => {
-      const c = state.char;
-      if (!c || !c.transit) { clearInterval(state.travelTimer); return; }
-      const done = W.completeTravel(data, c, Date.now(), rng);
-      if (!done) {
-        const t = W.travelProgress(c, Date.now());
-        const fill = $('#travel-fill');
-        if (fill) { fill.style.width = `${t.progress * 100}%`; $('#travel-left').textContent = `Осталось ${Math.ceil(t.left / 1000)} с`; }
-        return;
-      }
-      clearInterval(state.travelTimer);
-      app.save();
-      toast(`Вы пришли: ${data.locations[c.location].name}`);
-      if (!$('#hub').hidden) render();
-    };
-    tick();
-    state.travelTimer = setInterval(tick, 250);
+  // Часы мира на экране локации: переходы, возрождение, передышка
+  function worldTick() {
+    const c = state.char;
+    if (!c || $('#hub').hidden) return;
+    const now = Date.now();
+    if (c.transit) {
+      const done = W.completeTravel(data, c, now);
+      if (done) { app.save(); toast(`Вы пришли: ${data.locations[c.location].name}`); if (state.tab === 'world') render(); return; }
+      const t = W.travelProgress(c, now);
+      const fill = $('#travel-fill');
+      if (fill) { fill.style.width = `${t.progress * 100}%`; $('#travel-left').textContent = `Осталось ${Math.ceil(t.left / 1000)} с`; }
+      return;
+    }
+    if (state.tab !== 'world') return;
+    // Полная перерисовка — только когда изменился состав монстров или кончилась передышка
+    // (иначе можно «съесть» клик), а таймеры обновляем точечно
+    const st = W.update(data, c, now, rng);
+    const sig = [st.boss && st.boss.uid, ...st.mobs.map((m) => `${m.uid}${m.deadUntil}${m.busy}`), W.restLeft(c, now) > 0, c.settings.autoHunt].join('|');
+    if (sig !== state.worldSig) { state.worldSig = sig; renderWorld($('#tab-world')); return; }
+    const rest = W.restLeft(c, now);
+    const note = $('#rest-note');
+    if (note) note.textContent = rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`;
+    for (const m of st.mobs) {
+      if (m.deadUntil == null) continue;
+      const el = $(`[data-mob="${m.uid}"] .mob-status`);
+      if (el) el.textContent = `возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с`;
+    }
   }
+  state.worldTimer = setInterval(worldTick, 1000);
 
   // ---------- Бой ----------
 
-  function startFight(monsterId, entry) {
+  function startFight(uid) {
     const c = state.char;
-    clearTimeout(state.loopTimer);
-    const level = W.monsterLevel(entry, rng);
-    state.fight = { monsterId, entry, level };
+    clearTimeout(state.huntTimer);
+    const res = W.engage(data, c, uid, Date.now());
+    if (!res.ok) { toast(res.reason, 'bad'); return false; }
+    const mob = res.mob;
+    state.fight = { uid, monsterId: mob.id, level: mob.level };
+    app.save();
     $('#result').hidden = true;
     closeSheet();
+    closeModal();
     show('battle');
     PC.battleUI.start({
       player: P.toFighter(data, c),
-      monster: M.monsterAt(monsterId, level),
-      settings: { auto: !!c.settings.autoBattle, speed: c.settings.speed || 1, loop: !!c.settings.loop },
-      onSettings: (s) => { c.settings.autoBattle = s.auto; c.settings.speed = s.speed; c.settings.loop = s.loop; app.save(); },
+      monster: M.monsterAt(mob.id, mob.level),
+      settings: c.settings,
+      onSettings: () => app.save(),
       onEnd: (battle, { fled }) => {
+        const won = battle.winner === battle.player;
+        W.disengage(data, c, uid, won, Date.now());
         const summary = P.applyBattleResult(data, c, battle, state.fight, rng, { fled });
         for (const it of summary.items) it.fresh = true;
         app.save();
         showResult(summary, battle);
       },
     });
+    return true;
+  }
+
+  // Автоохота: после передышки — на живого монстра локации (боссов не трогает)
+  function scheduleHunt() {
+    clearTimeout(state.huntTimer);
+    const c = state.char;
+    if (!c.settings.autoHunt || c.transit || W.here(data, c).safe) return;
+    const tick = () => {
+      if (!c.settings.autoHunt) return;
+      const now = Date.now();
+      W.update(data, c, now, rng);
+      const note = $('#hunt-note');
+      const rest = W.restLeft(c, now);
+      const mob = rest ? null : W.pickForAutoHunt(data, c, state.fight && state.fight.monsterId, rng);
+      if (mob && startFight(mob.uid)) return;
+      if (note) note.textContent = rest ? `Следующий бой через ${Math.ceil(rest / 1000)} с…` : 'Ждём возрождения монстров…';
+      state.huntTimer = setTimeout(tick, 500);
+    };
+    tick();
   }
 
   function showResult(sum, battle) {
@@ -280,11 +305,11 @@
       html += `<p>+${fmtNum(sum.exp)} опыта · +${fmtNum(sum.gold)} 💰 · ${battle.turn} ${plural(battle.turn, 'ход', 'хода', 'ходов')}</p>
         <div class="progress"><div style="width:${c.level >= P.MAX_LEVEL ? 100 : (c.exp / need) * 100}%"></div></div>
         <p class="meta">${c.level} уровень · ${fmtNum(c.exp)} / ${fmtNum(need)}</p>`;
-      if (sum.levelsUp.length) html += `<p class="levelup">Новый уровень: ${c.level}! Очки характеристик и умений ждут во вкладке «Герой».</p>`;
+      if (sum.levelsUp.length) html += `<p class="levelup">Новый уровень: ${c.level}! Очки ждут во вкладке «Герой».</p>`;
       for (const id of sum.newSkills) html += `<p class="levelup">Открыто умение «${data.skills[id].name}»</p>`;
       if (sum.items.length) html += `<div class="loot-grid">${sum.items.map((it) => tile(it, { attrs: `data-loot="${it.uid}"`, can: I.canEquip(data, c, it).ok })).join('')}</div>`;
       const mats = Object.entries(sum.materials);
-      if (mats.length) html += `<div class="cost" style="justify-content:center">${mats.map(([k, n]) => `<span>${art(data.materials[k].art, '•')}+${n}</span>`).join('')}</div>`;
+      if (mats.length) html += `<div class="cost" style="justify-content:center">${mats.map(([k, n]) => `<span class="info-link" data-info="${k}">${art(data.materials[k].art, '•')}+${n}</span>`).join('')}</div>`;
       if (sum.salvaged.length) {
         const full = sum.salvaged.some((x) => x.full);
         html += `<p class="meta">${full ? 'Сумка полна — ' : 'Авторазбор: '}разобрано ${sum.salvaged.length} ${plural(sum.salvaged.length, 'вещь', 'вещи', 'вещей')}.</p>`;
@@ -297,55 +322,72 @@
       if (sum.sentHome) html += `<p>Вы пришли в себя в деревне ${data.locations[data.HOME].name}.</p>`;
       if (sum.goldLost) html += `<p class="req">Потеряно золота: ${sum.goldLost}.</p>`;
     }
-    const looping = sum.win && c.settings.loop;
-    if (looping) html += '<p class="meta" id="loop-note">Следующий бой через 2 с…</p>';
+    const hunting = c.settings.autoHunt && !sum.sentHome && !sum.fled;
+    if (!sum.win) c.settings.autoHunt = false;
+    html += `<p class="meta" id="hunt-note">${hunting && sum.win ? 'Автоохота: ждём тик…' : ''}</p>`;
     $('#result-body').innerHTML = html;
-    $('#again').hidden = !sum.win && sum.sentHome;
-    $('#to-camp').textContent = looping ? 'Остановить охоту' : 'К локации';
+    const fightAgain = sum.win && !data.monsters[state.fight.monsterId].boss && !W.here(data, c).safe;
+    $('#again').hidden = !fightAgain || (hunting && sum.win);
+    $('#again').textContent = 'Следующий бой';
+    $('#to-camp').textContent = hunting && sum.win ? 'Остановить охоту' : 'К локации';
     $('#result').hidden = false;
-    if (looping) state.loopTimer = setTimeout(() => startFight(state.fight.monsterId, state.fight.entry), 2000 / Math.max(1, (c.settings.speed || 1) / 2));
+    if (hunting && sum.win) scheduleHunt();
   }
 
   $('#result-body').addEventListener('click', (e) => {
     const t = e.target.closest('[data-loot]');
     if (!t) return;
-    clearTimeout(state.loopTimer);
-    const note = $('#loop-note');
-    if (note) note.textContent = 'Охота на паузе, пока открыта вещь.';
     const found = I.findItem(state.char, t.dataset.loot);
-    if (found) openSheet('Добыча', cardHtml(state.char, found.item, 'loot'));
+    if (found) PC.itemUI.openItem(state.char, found.item, 'loot');
   });
-  $('#again').addEventListener('click', () => startFight(state.fight.monsterId, state.fight.entry));
+  // «Следующий бой»: ещё один монстр того же вида (или любой), как только закончится передышка
+  $('#again').addEventListener('click', () => {
+    const c = state.char;
+    const wait = () => {
+      const now = Date.now();
+      W.update(data, c, now, rng);
+      const rest = W.restLeft(c, now);
+      const mob = rest ? null : W.pickForAutoHunt(data, c, state.fight.monsterId, rng);
+      if (mob) { startFight(mob.uid); return; }
+      $('#hunt-note').textContent = rest ? `Передышка ${Math.ceil(rest / 1000)} с…` : 'Ждём возрождения монстров…';
+      state.huntTimer = setTimeout(wait, 400);
+    };
+    wait();
+  });
   $('#to-camp').addEventListener('click', () => {
-    clearTimeout(state.loopTimer);
-    if (state.char.settings.loop) { state.char.settings.loop = false; app.save(); }
+    clearTimeout(state.huntTimer);
+    const c = state.char;
+    if (c.settings.autoHunt) { c.settings.autoHunt = false; app.save(); }
     $('#result').hidden = true;
-    setTab(state.char.statPoints || state.char.skillPoints ? 'hero' : 'world');
+    setTab(c.statPoints || c.skillPoints ? 'hero' : 'world');
   });
 
-  // ---------- NPC: лавка и скупщик ----------
+  // ---------- NPC: лавка и алхимик ----------
 
   function openNpc(id) {
     if (id === 'smith') return setTab('forge', 'enhance');
     if (id === 'enchanter') return setTab('forge', 'reroll');
     if (id === 'shop') return openShop();
-    if (id === 'buyer') return openBuyer();
+    if (id === 'alchemist') return openAlchemist();
+    if (id === 'buyer') return PC.bagUI.openBuyer();
+    if (id === 'stash') return PC.bagUI.openStash();
   }
 
   function npcHead(id) {
     const n = data.npcs[id];
-    return `<div class="row" style="margin-bottom:10px">${avatar(n, 56)}<p style="margin:0;font-style:italic;color:#e6d2b0">«${n.greeting}»</p></div>`;
+    return `<div class="row npc-head">${avatar(n, 56)}<p>«${n.greeting}»</p></div>`;
   }
 
   function openShop(msg) {
     const c = state.char;
     const rows = data.shopStock.map((id) => {
       const m = data.materials[id];
-      return `<div class="kv" style="align-items:center"><span>${art(m.art, '•', 'stat-ico')}<span><b style="color:var(--text)">${m.name}</b><br><small>${m.desc || ''} есть: ${c.materials[id] || 0}</small></span></span>
-        <span class="row"><button class="btn small" data-buy="${id}" data-n="1" ${c.gold < m.price ? 'disabled' : ''}>${fmtNum(m.price)} 💰</button>
-        <button class="btn small" data-buy="${id}" data-n="5" ${c.gold < m.price * 5 ? 'disabled' : ''}>×5</button></span></div>`;
+      return `<div class="trade-row"><span class="ava info-link" data-info="${id}" style="width:40px;height:40px">${art(m.art, '•')}</span>
+        <div class="txt"><b>${m.name}</b><div class="meta">есть: ${c.materials[id] || 0}</div></div>
+        <button class="btn small" data-buy="${id}" data-n="1" ${c.gold < m.price ? 'disabled' : ''}>${fmtNum(m.price)} 💰</button>
+        <button class="btn small" data-buy="${id}" data-n="5" ${c.gold < m.price * 5 ? 'disabled' : ''}>×5</button></div>`;
     }).join('');
-    openSheet(data.npcs.shop.name, `${npcHead('shop')}${msg ? `<div class="flash good">${msg}</div>` : ''}<p class="meta">У вас ${fmtNum(c.gold)} 💰</p>${rows}`, (e) => {
+    openModal(data.npcs.shop.name, `${npcHead('shop')}${msg ? `<div class="flash good">${msg}</div>` : ''}<p class="meta">У вас ${fmtNum(c.gold)} 💰</p>${rows}`, (e) => {
       const b = e.target.closest('[data-buy]');
       if (!b || b.disabled) return;
       const res = E.buy(data, c, b.dataset.buy, Number(b.dataset.n));
@@ -355,27 +397,46 @@
     });
   }
 
-  function openBuyer(msg) {
+  function openAlchemist(msg) {
     const c = state.char;
-    const items = c.bag.filter(Boolean);
-    const byRarity = data.rarities.slice(0, 4).map((r, i) => {
-      const list = items.filter((it) => it.rarity <= i && !it.enhance && !it.rank);
-      const sum = list.reduce((s, it) => s + I.sellPrice(data, it), 0);
-      return `<button class="btn small" data-sellbelow="${i}" ${list.length ? '' : 'disabled'}>до «${r.name}»: ${list.length} шт · ${fmtNum(sum)} 💰</button>`;
+    const rows = data.recipes.map((r, i) => {
+      const out = data.materials[r.out];
+      const can = E.canBrew(data, c, r);
+      const can5 = E.canBrew(data, c, r, 5);
+      return `<div class="recipe ${can ? '' : 'off'}">
+        <div class="row"><span class="ava info-link" data-info="${r.out}" style="width:44px;height:44px">${art(out.art, '🧪')}</span>
+          <div class="txt"><b>${out.name}</b> ×${r.n}<div class="meta">есть: ${c.materials[r.out] || 0}</div></div>
+          <button class="btn small" data-brew="${i}" data-n="1" ${can ? '' : 'disabled'}>Сварить</button>
+          <button class="btn small" data-brew="${i}" data-n="5" ${can5 ? '' : 'disabled'}>×5</button></div>
+        ${costHtml({ ...r.need, gold: r.gold })}</div>`;
     }).join('');
-    const rows = items.map((it) => `<div class="kv" style="align-items:center"><span>${PC.itemUI.nameHtml(it)}</span>
-      <button class="btn small" data-sell="${it.uid}">${fmtNum(I.sellPrice(data, it))} 💰</button></div>`).join('');
-    openSheet(data.npcs.buyer.name, `${npcHead('buyer')}${msg ? `<div class="flash good">${msg}</div>` : ''}
-      <p class="meta">Продать оптом (заточенные и вещи со звёздами не трогаю):</p><div class="row-actions" style="margin:0 0 10px">${byRarity}</div>
-      ${rows || '<p class="empty-note">Сумка пуста.</p>'}`, (e) => {
-      const s = e.target.closest('[data-sell]');
-      if (s) { const r = E.sell(data, c, s.dataset.sell); app.save(); render(); return openBuyer(`Продано за ${r.price} 💰`); }
-      const b = e.target.closest('[data-sellbelow]');
-      if (b && !b.disabled) { const r = E.sellBelow(data, c, Number(b.dataset.sellbelow)); app.save(); render(); openBuyer(`Продано ${r.count} шт за ${r.total} 💰`); }
+    openModal(data.npcs.alchemist.name, `${npcHead('alchemist')}${msg ? `<div class="flash good">${msg}</div>` : ''}
+      <p class="meta">Материалы падают с монстров своих зон. Нажмите на материал, чтобы узнать, где его искать.</p>${rows}`, (e) => {
+      const b = e.target.closest('[data-brew]');
+      if (!b || b.disabled) return;
+      const r = E.brew(data, c, Number(b.dataset.brew), Number(b.dataset.n));
+      if (!r.ok) return toast(r.reason, 'bad');
+      app.save(); render();
+      openAlchemist(`Сварено: ${data.materials[r.out].name} ×${r.count}`);
     });
   }
 
   // ---------- Герой ----------
+
+  // Сворачиваемый блок; состояние хранится на устройстве
+  function block(id, title, note, body) {
+    const open = !prefs.collapsed[id];
+    return `<div class="card section collapsible ${open ? 'open' : ''}">
+      <h3 data-toggle="${id}"><span>${open ? '▾' : '▸'} ${title}</span>${note || ''}</h3>${open ? body : ''}</div>`;
+  }
+
+  const PRIMARY_DESC = {
+    str: 'Атака мечами и топорами, крит. урон',
+    agi: 'Атака луками, точность, уклонение, скорость',
+    int: 'Магическая атака, мана, маг. защита',
+    vit: 'Здоровье, защита, блок со щитом',
+    luk: 'Шанс крита, находка предметов',
+  };
 
   function renderHero(root) {
     const c = state.char;
@@ -386,14 +447,6 @@
     const pend = Object.values(state.pending).reduce((a, b) => a + b, 0);
     const free = c.statPoints - pend;
     const res = data.resources[s.resource];
-
-    const prim = S.PRIMARY.map((k) => {
-      const d = data.statDefs[k];
-      const extra = (bonus[k] || 0) + (bonus.allPrimary || 0);
-      return `<div class="stat-row">${statIcon(k)}<div class="txt"><b>${d.name}</b><div class="meta">${PRIMARY_DESC[k]}</div></div>
-        <div class="val">${c.stats[k] + (state.pending[k] || 0)}${extra ? `<span class="bonus">+${extra}</span>` : ''}${state.pending[k] ? `<span class="pend">(+${state.pending[k]})</span>` : ''}</div>
-        <button class="plus" data-stat="${k}" ${free > 0 ? '' : 'disabled'} aria-label="Добавить: ${d.name}">+</button></div>`;
-    }).join('');
 
     const combat = [
       ['hp', 'Здоровье', Math.round(s.maxHp)],
@@ -412,13 +465,28 @@
       ['luk', 'Находка / золото / опыт', `${Math.round(s.mf)}% / +${Math.round((s.goldPct || 0) * 100)}% / +${Math.round((s.expPct || 0) * 100)}%`],
     ].map(([ic, k, v]) => `<div class="kv"><span>${art(`stats/${ic}`, '', 'stat-ico')}${k}</span><b>${v}</b></div>`).join('');
 
-    // Знаки-добродетели
+    const prim = S.PRIMARY.map((k) => {
+      const d = data.statDefs[k];
+      const extra = (bonus[k] || 0) + (bonus.allPrimary || 0);
+      return `<div class="stat-row">${statIcon(k)}<div class="txt"><b>${d.name}</b><div class="meta">${PRIMARY_DESC[k]}</div></div>
+        <div class="val">${c.stats[k] + (state.pending[k] || 0)}${extra ? `<span class="bonus">+${extra}</span>` : ''}${state.pending[k] ? `<span class="pend">(+${state.pending[k]})</span>` : ''}</div>
+        <button class="plus" data-stat="${k}" ${free > 0 ? '' : 'disabled'} aria-label="Добавить: ${d.name}">+</button></div>`;
+    }).join('');
+
     const vcount = {};
     for (const it of Object.values(c.equipment)) if (it && it.virtue) vcount[it.virtue] = (vcount[it.virtue] || 0) + 1;
     const virtues = Object.entries(vcount).map(([id, n]) => {
       const v = data.virtues[id];
       const parts = Object.entries(v.sets).map(([k, mods]) => `<span style="opacity:${n >= k ? 1 : 0.45}">${k}: ${Object.entries(mods).map(([sk, sv]) => `${data.statDefs[sk].name.toLowerCase()} +${data.statDefs[sk].fmt(sv)}`).join(', ')}</span>`).join('<br>');
       return `<div class="kv"><span class="virtue-chip" style="color:${v.color}"><i></i>${v.name} ×${n}</span><span class="meta" style="text-align:right">${parts}</span></div>`;
+    }).join('');
+
+    const slots = Array.from({ length: data.SKILL_SLOTS }, (_, i) => {
+      const id = c.slots[i];
+      if (!id) return `<div class="slot-skill"><span class="n">${i + 1}</span><span class="meta">пусто</span></div>`;
+      const sk = data.skills[id];
+      return `<div class="slot-skill filled"><span class="n">${i + 1}</span>${art(`stats/${sk.icon}`, '', 'stat-ico')}<span>${sk.name}</span>
+        ${i ? `<button class="chip-btn" data-slot-left="${i}">◀</button>` : ''}</div>`;
     }).join('');
 
     const skills = P.classSkills(data, c.job).map((sk) => {
@@ -441,37 +509,24 @@
         <button class="plus" data-passive="${p.id}" ${c.skillPoints > 0 && r < p.max ? '' : 'disabled'}>+</button></div>`;
     }).join('');
 
-    const slots = Array.from({ length: data.SKILL_SLOTS }, (_, i) => {
-      const id = c.slots[i];
-      if (!id) return `<div class="slot-skill"><span class="n">${i + 1}</span><span class="meta">пусто</span></div>`;
-      const sk = data.skills[id];
-      return `<div class="slot-skill filled"><span class="n">${i + 1}</span>${art(`stats/${sk.icon}`, '', 'stat-ico')}<span>${sk.name}</span>
-        ${i ? `<button class="chip-btn" data-slot-left="${i}">◀</button>` : ''}</div>`;
-    }).join('');
-
-    root.innerHTML = `
-      <div class="card section"><h3>Характеристики <span class="points-pill">${free} ${plural(free, 'очко', 'очка', 'очков')}</span></h3>
-        ${prim}
+    const pill = (n) => `<span class="points-pill">${n} ${plural(n, 'очко', 'очка', 'очков')}</span>`;
+    root.innerHTML = [
+      block('combat', 'Боевые качества', '', combat),
+      block('stats', 'Характеристики', pill(free), `${prim}
         ${pend ? '<div class="row-actions"><button class="btn" data-act="stats-reset">Сбросить</button><button class="btn primary" data-act="stats-save">Сохранить</button></div>' : ''}
-        <p class="hint">${P.STAT_POINTS_PER_LEVEL} очка за уровень. Сохранённые очки вернуть нельзя.</p></div>
-      <div class="card section"><h3>Боевые качества</h3>${combat}</div>
-      ${virtues ? `<div class="card section"><h3>Знаки-добродетели</h3><div class="virtue-sets">${virtues}</div></div>` : ''}
-      <div class="card section"><h3>Ячейки умений<span class="note">порядок = приоритет автобоя</span></h3><div class="slots-bar">${slots}</div></div>
-      <div class="card section"><h3>Умения <span class="points-pill">${c.skillPoints} ${plural(c.skillPoints, 'очко', 'очка', 'очков')}</span></h3>${skills}</div>
-      <div class="card section"><h3>Пассивки</h3>${passives}</div>
-      <div class="section"><button class="btn danger wide" data-act="reset">Удалить героя и начать заново</button></div>`;
+        <p class="hint">За каждый уровень дают ${P.STAT_POINTS_PER_LEVEL} очка характеристик и ${P.SKILL_POINTS_PER_LEVEL} очко умений. Каждое «+» тратит одно очко. Сохранённые очки вернуть нельзя.</p>`),
+      virtues ? block('virtues', 'Знаки-добродетели', '', `<div class="virtue-sets">${virtues}</div>`) : '',
+      block('slots', 'Ячейки умений', '<span class="note">порядок = приоритет автобоя</span>', `<div class="slots-bar">${slots}</div>`),
+      block('skills', 'Умения', pill(c.skillPoints), skills),
+      block('passives', 'Пассивки', pill(c.skillPoints), passives),
+      '<div class="section"><button class="btn danger wide" data-act="reset">Удалить героя и начать заново</button></div>',
+    ].join('');
   }
-
-  const PRIMARY_DESC = {
-    str: 'Атака мечами и топорами, крит. урон',
-    agi: 'Атака луками, точность, уклонение, скорость',
-    int: 'Магическая атака, мана, маг. защита',
-    vit: 'Здоровье, защита, блок со щитом',
-    luk: 'Шанс крита, находка предметов',
-  };
 
   $('#tab-hero').addEventListener('click', (e) => {
     const c = state.char;
+    const tog = e.target.closest('[data-toggle]');
+    if (tog) { const id = tog.dataset.toggle; prefs.collapsed[id] = !prefs.collapsed[id]; savePrefs(); return render(); }
     const st = e.target.closest('[data-stat]');
     if (st && !st.disabled) { state.pending[st.dataset.stat] = (state.pending[st.dataset.stat] || 0) + 1; return render(); }
     const act = e.target.closest('[data-act]');
@@ -479,8 +534,7 @@
       if (act.dataset.act === 'stats-reset') { state.pending = {}; return render(); }
       if (act.dataset.act === 'stats-save') { P.allocate(c, state.pending); state.pending = {}; app.save(); return render(); }
       if (act.dataset.act === 'reset') {
-        if (!confirm(`Удалить ${c.nick} навсегда? Уровень, вещи и золото пропадут.`)) return;
-        clearInterval(state.travelTimer);
+        if (!confirm(`Удалить ${c.nick} навсегда? Уровень, вещи и золото пропадут. Сундук сохранится.`)) return;
         charStore.clear();
         state.char = null;
         state.pending = {};
@@ -494,9 +548,9 @@
     if (learn && !learn.disabled) { const r = P.learnSkill(data, c, learn.dataset.learn); if (!r.ok) toast(r.reason, 'bad'); app.save(); return render(); }
     const pas = e.target.closest('[data-passive]');
     if (pas && !pas.disabled) { const r = P.learnPassive(data, c, pas.dataset.passive); if (!r.ok) toast(r.reason, 'bad'); app.save(); return render(); }
-    const tog = e.target.closest('[data-slot-toggle]');
-    if (tog) {
-      const id = tog.dataset.slotToggle;
+    const slotTog = e.target.closest('[data-slot-toggle]');
+    if (slotTog) {
+      const id = slotTog.dataset.slotToggle;
       if (c.slots.includes(id)) c.slots = c.slots.filter((x) => x !== id);
       else if (c.slots.length < data.SKILL_SLOTS) c.slots.push(id);
       else return toast(`Все ${data.SKILL_SLOTS} ячейки заняты — сначала уберите умение`, 'bad');
@@ -513,13 +567,14 @@
   // ---------- Старт ----------
 
   window.addEventListener('DOMContentLoaded', () => {
-    if (state.char) setTab('world');
-    else {
-      if (charStore.load() == null) {
-        try { if (localStorage.getItem('pc-character-v1')) toast('Новая версия: старый персонаж несовместим, создайте героя заново.'); } catch (e) { /* нет хранилища */ }
-      }
+    if (state.char) {
+      setTab('world');
+      if (state.char.settings.autoHunt) scheduleHunt();
+    } else {
       renderCreate();
       show('create');
     }
   });
+
+  void openSheet;
 })();

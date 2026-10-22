@@ -40,6 +40,7 @@
   function openSheet(title, html, onClick, { modal = false, onClose = null } = {}) {
     sheetModal = modal;
     sheetOnClose = onClose;
+    $('#sheet').classList.remove('over-modal');
     $('#sheet-title').textContent = title;
     $('#sheet-body').innerHTML = html;
     sheetHandler = onClick || null;
@@ -58,6 +59,38 @@
   });
   $('#sheet').addEventListener('change', (e) => { if (sheetHandler) sheetHandler(e); });
   document.addEventListener('keydown', (e) => { if (e.key === 'Escape' && !sheetModal && !$('#sheet').hidden) closeSheet(); });
+
+  // Окно по центру экрана (как в EHT) — для предметов, ресурсов и подтверждений.
+  // tools — html кнопок в шапке рядом с крестиком.
+  let modalHandler = null;
+  let modalOnClose = null;
+  function openModal(title, html, onClick, { tools = '', onClose = null } = {}) {
+    $('#modal-title').innerHTML = title;
+    $('#modal-tools').innerHTML = tools;
+    $('#modal-body').innerHTML = html;
+    modalHandler = onClick || null;
+    modalOnClose = onClose;
+    $('#modal').hidden = false;
+  }
+  function closeModal() {
+    if ($('#modal').hidden) return;
+    $('#modal').hidden = true;
+    modalHandler = null;
+    const cb = modalOnClose;
+    modalOnClose = null;
+    if (cb) cb();
+  }
+  $('#modal').addEventListener('click', (e) => {
+    if (e.target.closest('[data-mclose]')) return closeModal();
+    if (modalHandler) modalHandler(e);
+  });
+  $('#modal').addEventListener('change', (e) => { if (modalHandler) modalHandler(e); });
+  document.addEventListener('keydown', (e) => { if (e.key === 'Escape') closeModal(); });
+
+  // Настройки интерфейса на этом устройстве: лупа, свёрнутые блоки
+  const prefsStore = storage('pc-ui-prefs', { lens: false, collapsed: {} });
+  const prefs = prefsStore.load();
+  const savePrefs = () => prefsStore.save(prefs);
 
   function toast(text, kind = '') {
     const el = document.createElement('div');
@@ -82,5 +115,5 @@
     };
   }
 
-  PC.kit = { $, $$, art, statIcon, avatar, escapeHtml, plural, fmtNum, openSheet, closeSheet, toast, storage };
+  PC.kit = { $, $$, art, statIcon, avatar, escapeHtml, plural, fmtNum, openSheet, closeSheet, openModal, closeModal, prefs, savePrefs, toast, storage };
 })();

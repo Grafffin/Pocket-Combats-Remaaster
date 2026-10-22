@@ -22,8 +22,8 @@ function fight(char, monsterId, level, seed) {
   const b = new Battle({ player: P.toFighter(data, char), monster: PC.monsters.monsterAt(monsterId, level), seed, data });
   const p = b.player;
   while (!b.ended && b.turn < 60) {
-    const pot = p.consumables.find((c) => c.id === 'hp_potion' && c.count > 0);
-    if (pot && p.hp / p.maxHp < 0.35) b.useConsumable(p, 'hp_potion');
+    const pot = p.consumables.find((c) => c.id.startsWith('hp_potion') && c.count > 0);
+    if (pot && p.hp / p.maxHp < 0.35) b.useConsumable(p, pot.id);
     b.submit(b.autoAction(p));
   }
   return b;
@@ -69,7 +69,7 @@ function charAt(job, L, rng) {
   c.skillPoints += (L - 1) * P.SKILL_POINTS_PER_LEVEL;
   autoBuild(c);
   typicalGear(c, rng);
-  c.materials.hp_potion = 3;
+  c.materials.hp_potion_1 = 3;
   return c;
 }
 
@@ -112,7 +112,7 @@ if (!career) {
       const [zoneId, zone] = ok[Math.max(0, ok.length - 1 - penalty)];
       c.location = zoneId;
       // Босс необязателен: бот идёт на него, только если дорос до его уровня
-      const bossOk = zone.boss && PC.world.bossReady(data, c) && c.level >= zone.boss[1] - 1 && rng.chance(30);
+      const bossOk = zone.boss && (c.zoneKills[zoneId] || 0) >= data.BOSS_KILLS && c.level >= zone.boss[1] - 1 && rng.chance(30);
       const entry = bossOk ? [zone.boss[0], zone.boss[1], zone.boss[1]] : rng.pick(zone.monsters);
       const level = rng.int(entry[1], entry[2]);
       const b = fight(c, entry[0], level, rng.int(1, 1e9));
@@ -133,7 +133,7 @@ if (!career) {
         const info = I.enhanceInfo(data, it);
         if (!info.capped && !info.maxed && info.next <= 5 && c.materials.stone1 > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
       }
-      while ((c.materials.hp_potion || 0) < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion').ok);
+      while ((c.materials.hp_potion_1 || 0) < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion_1').ok);
       autoBuild(c);
       for (const L of [5, 10, 15, 20, 25, 30]) if (c.level >= L && !levelAt[L]) levelAt[L] = battles;
     }
