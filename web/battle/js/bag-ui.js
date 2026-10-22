@@ -17,13 +17,14 @@
   const STASH_PAGE = 60;
   const stashStore = storage('pc-stash', null);
   const stash = stashStore.load() || { items: new Array(STASH_SIZE).fill(null) };
+  PC.progression.fixAffixLevels(stash.items);
   const saveStash = () => stashStore.save(stash);
 
   // ---------- Вкладка «Сумка» ----------
 
   function render(root) {
     const c = app.state.char;
-    const total = Object.values(c.equipment).filter(Boolean).reduce((s, it) => s + I.power(data, it), 0);
+    const total = PC.stats.combatScore(PC.stats.compute(data, c));
     const doll = Object.keys(data.slots).map((slot) => {
       const it = c.equipment[slot];
       const w = c.equipment.weapon && data.types[c.equipment.weapon.type];
@@ -47,7 +48,7 @@
     root.innerHTML = `
       <div class="card" style="margin:12px">
         <div class="doll">${doll}
-          <div class="portrait">${art(`classes/${c.job}`, '')}<span class="power">Сила снаряжения ${fmtNum(total)}</span></div>
+          <div class="portrait">${art(`classes/${c.job}`, '')}<span class="power">Боевая сила ${PC.fmtBig(total)}</span></div>
         </div>
       </div>
       <div class="bag-tools">

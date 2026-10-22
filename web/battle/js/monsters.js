@@ -127,7 +127,7 @@
     stone_troll: {
       name: 'Каменный тролль', gender: 'm', forms: { gen: 'Каменного тролля', dat: 'Каменному троллю', acc: 'Каменного тролля' },
       kind: 'construct', art: 'monsters/stone_troll', emoji: '🪨',
-      m: { hp: 1.5, atk: 1.15, def: 1.4, eva: 0.4, speed: 0.9 },
+      m: { hp: 1.4, atk: 1.0, def: 1.3, eva: 0.4, speed: 0.9 },
       skills: ['boulder'],
       verbs: [{ m: 'ударил кулачищем', f: 'ударила кулачищем', p: 'по', c: 'dat' }, { m: 'отшвырнул', f: 'отшвырнула', c: 'acc' }],
       blurb: 'Огромный, медленный, оглушает валунами.',
@@ -190,12 +190,14 @@
     speed: (L) => 95 + 0.5 * L,
   };
   const BOSS = { hp: 2.6, atk: 1.08, def: 1.2, mdef: 1.2 };
+  // Монстры растут чуть медленнее персонажа: экипировка отстаёт от уровня (база вещи — по тиру, плоские свойства — по корню)
+  const MONSTER_GROWTH_POW = 0.93;
 
   // Шаблон бойца для движка: монстр на конкретном уровне
   function monsterAt(id, L) {
     const m = monsters[id];
     const k = (key) => (m.m && m.m[key] != null ? m.m[key] : 1) * (m.boss && BOSS[key] ? BOSS[key] : 1);
-    const SC = PC.stats.SCALE;
+    const SC = Math.pow(PC.stats.growth(L), MONSTER_GROWTH_POW);
     const atk = curve.atk(L) * k('atk') * SC;
     const stats = {
       level: L,

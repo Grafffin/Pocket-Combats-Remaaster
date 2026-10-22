@@ -291,7 +291,8 @@
       let dmg = (r.int(a.s.weaponMin, a.s.weaponMax) + this.atkOf(a)) * (opts.mult || 1) * this.damageMultiplier(a, t, opts);
       if (crit) dmg *= a.s.critDmg / 100;
       if (blocked) dmg *= 0.5;
-      dmg *= PC.stats.DEF_K / (PC.stats.DEF_K + this.defOf(t));
+      const K = PC.stats.defK(a.level);
+      dmg *= K / (K + this.defOf(t));
       dmg += this.elementalAddOn(a, t);
       dmg *= 1 - (t.s.dmgReduce || 0) / 100;
       dmg = Math.max(1, Math.round(dmg));
@@ -320,7 +321,8 @@
       if (opts.element === 'fire') dmg *= 1 + (a.s.fireSpellPct || 0);
       const crit = r.chance(a.s.crit + mod(a, 'crit'));
       if (crit) dmg *= a.s.critDmg / 100;
-      dmg *= PC.stats.DEF_K / (PC.stats.DEF_K + this.mdefOf(t));
+      const K = PC.stats.defK(a.level);
+      dmg *= K / (K + this.mdefOf(t));
       const resKey = { fire: 'fireRes', cold: 'coldRes', poison: 'poisonRes' }[opts.element];
       if (resKey) dmg *= 1 - (t.s[resKey] || 0) / 100;
       dmg *= 1 - (t.s.dmgReduce || 0) / 100;
@@ -383,7 +385,8 @@
           this.debuff(t, a, { id: 'legend_mark', name: 'Метка добычи', turns: 99, mods: { dmgTakenPct: 0.2 } });
         }
         if (a.legendary.has('thunder') && r.chance(15)) {
-          const n = Math.max(1, Math.round(this.atkOf(a) * 0.8 * PC.stats.DEF_K / (PC.stats.DEF_K + this.mdefOf(t))));
+          const K = PC.stats.defK(a.level);
+          const n = Math.max(1, Math.round(this.atkOf(a) * 0.8 * K / (K + this.mdefOf(t))));
           const d = this.damage(t, n);
           this.say('damage', this.fill('С небес в {B.acc} бьёт молния {dmg} {hp}.', a, t, { dmg: this.dmgTag(n, 'lightning'), hp: this.hpTag(t) }), { type: 'damage', target: t.id, amount: d, kind: 'lightning' });
         }

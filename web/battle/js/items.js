@@ -76,7 +76,7 @@
     for (let t = lo; t <= maxTier; t++) tiers.push([t, data.TIER_FALLOFF[maxTier - t] || 1]);
     const tier = weightedPick(rng, tiers);
     const roll = rar.high ? 0.5 + rng.next() * 0.5 : rng.next();
-    const af = { id: a.id, tier, roll };
+    const af = { id: a.id, tier, roll, lvl: 0 };
     const N = data.NEGATIVE;
     const rarIndex = data.rarities.indexOf(rar);
     if (!a.param && a.id !== 'allSkills' && N.rarities.includes(rarIndex) && rng.chance(N.chance)) af.neg = true;
@@ -95,6 +95,7 @@
     if (!pool.length) return null;
     const a = weightedPick(rng, pool.map((x) => [x, x.w]));
     const af = rollAffix(data, a, maxTier, rar || data.rarities[item.rarity], item.cls, rng);
+    af.lvl = item.ilvl;
     item.affixes.push(af);
     return af;
   }
@@ -125,7 +126,7 @@
   function affixValue(data, af) {
     const a = data.affixes[af.id];
     const [lo, hi] = a.t[af.tier - 1];
-    const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.SCALE : 1;
+    const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.flatGrowth(af.lvl || 1) : 1;
     const v = Math.round((lo + (hi - lo) * af.roll) * k);
     return af.neg ? -Math.max(1, Math.round(v * data.NEGATIVE.scale)) : v;
   }
@@ -145,7 +146,7 @@
     const type = data.types[item.type];
     const raw = type.base(item.tier);
     const mult = qualityMult(item.quality) * (1 + item.enhance * data.enhance.perLevel) * (1 + item.rank * data.rank.perRank);
-    const S = PC.stats.SCALE;
+    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]);
     const sc = (k) => (PC.stats.SCALED.has(k) ? S : 1);
     const out = {};
     for (const [k, v] of Object.entries(raw)) {
@@ -207,14 +208,14 @@
   function power(data, item) {
     const t = totals(data, item);
     const dmg = weaponDamage(data, item);
-    const S = PC.stats.SCALE;
+    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]);
     let p = 0;
     if (dmg) p += (dmg.min + dmg.max) * 1.2 / S;
     const w = { atk: 2 / S, matk: 2 / S, def: 1.2 / S, mdef: 0.8 / S, hp: 0.25 / S, mp: 0.3, eva: 0.6, acc: 0.4, crit: 6, critDmg: 1.5, speed: 3, block: 4, lifesteal: 6, hpRegen: 2 / S, dmgReduce: 8, thorns: 1.5 / S, fireDmg: 1.5 / S, coldDmg: 1.5 / S, poisonDmg: 1.5 / S };
     for (const [k, v] of Object.entries(t)) {
       if (typeof v !== 'number') continue;
       if (w[k]) p += v * w[k];
-      else if (k.endsWith('Pct')) p += v * 150;
+      else if (k.endsWith('Pct')) p += v * 700;
       else p += v * 1.5;
     }
     p += Object.keys(t.skillLvl || {}).length * 40 + Object.keys(t.skillDmg || {}).length * 25 + item.legendary.length * 80;

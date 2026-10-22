@@ -8,12 +8,19 @@
 
   const PRIMARY = ['str', 'agi', 'int', 'vit', 'luk'];
 
-  // Масштаб «силовых» чисел: здоровье, атака, защита, урон — ×100, чтобы проценты от них были ощутимы.
-  // Рейтинги (точность, уклонение, скорость), шансы и ресурс не масштабируются.
-  const SCALE = 100;
+  // Рост «силовых» чисел с уровнем: здоровье, атака, защита, урон растут на GROWTH за уровень
+  // (1 ур. ×1, 10 ур. ×2.8, 20 ур. ×8.6, 35 ур. ×47). Персонаж и монстры — по своему уровню, база вещи — по тиру.
+  // Плоские свойства вещей растут медленнее (корень из множителя), поэтому к позднему этапу
+  // процентные свойства («+% атаки», «+% здоровья») дают всё больше по сравнению с плоскими.
+  // Рейтинги (точность, уклонение, скорость), шансы и ресурс не растут.
+  const GROWTH = 1.12;
+  const MAX_GROWTH_LEVEL = 40;
+  const growth = (L) => Math.pow(GROWTH, Math.min(Math.max(L, 1), MAX_GROWTH_LEVEL) - 1);
+  const FLAT_POW = 0.5;
+  const flatGrowth = (L) => Math.pow(growth(L), FLAT_POW);
   const SCALED = new Set(['atk', 'matk', 'def', 'mdef', 'hp', 'thorns', 'hpRegen', 'fireDmg', 'coldDmg', 'poisonDmg', 'dmg']);
-  // Константа защиты: множитель урона = K / (K + защита)
-  const DEF_K = 100 * SCALE;
+  // Константа защиты для атакующего уровня L: множитель урона = K / (K + защита)
+  const defK = (L) => 100 * growth(L);
 
   // 1234 → «1 234», 12 345 → «12.3к», 1 234 567 → «1.23кк», 1.2e9 → «1.2млрд»
   function fmtBig(n) {
@@ -139,17 +146,18 @@
     const wb = weapon && PC.items ? PC.items.weaponDamage(data, weapon) : null;
     const usesAgi = cls.primary === 'agi';
     const L = char.level;
+    const G = growth(L);
 
     const s = {
       level: L,
       ...prim,
-      weaponMin: wb ? wb.min : 1 * SCALE,
-      weaponMax: wb ? wb.max : 3 * SCALE,
-      atk: (v('atk') + (usesAgi ? prim.agi : prim.str) * 2 * SCALE) * (1 + v('atkPct')),
-      matk: (v('matk') + prim.int * 2.5 * SCALE) * (1 + v('matkPct')),
-      def: (v('def') + prim.vit * SCALE) * (1 + v('defPct')),
-      mdef: (v('mdef') + ((prim.int + prim.vit) * 0.5 + L) * SCALE) * (1 + v('mdefPct')),
-      maxHp: ((40 + L * 8 + prim.vit * 12) * SCALE + v('hp')) * (1 + v('hpPct')),
+      weaponMin: wb ? wb.min : Math.round(1 * G),
+      weaponMax: wb ? wb.max : Math.round(3 * G),
+      atk: (v('atk') + (usesAgi ? prim.agi : prim.str) * 2 * G) * (1 + v('atkPct')),
+      matk: (v('matk') + prim.int * 2.5 * G) * (1 + v('matkPct')),
+      def: (v('def') + prim.vit * G) * (1 + v('defPct')),
+      mdef: (v('mdef') + ((prim.int + prim.vit) * 0.5 + L) * G) * (1 + v('mdefPct')),
+      maxHp: ((40 + L * 8 + prim.vit * 12) * G + v('hp')) * (1 + v('hpPct')),
       crit: 3 + prim.luk * 0.3 + v('crit'),
       critDmg: 150 + prim.str * 0.5 + v('critDmg'),
       acc: (80 + L * 2 + prim.agi * 3 + prim.luk + v('acc')) * (1 + v('accPct')),
@@ -197,7 +205,18 @@
     return base + (stats.allSkills || 0) + ((stats.skillLvl && stats.skillLvl[id]) || 0);
   }
 
-  PC.stats = { PRIMARY, SCALE, SCALED, DEF_K, fmtBig, defs, caps, add, gather, compute, skillLevel };
+  // Боевая оценка: ожидаемый урон за удар × эффективное здоровье, геометрическое среднее.
+  // Грубо, но учитывает проценты, криты и защиту так же, как бой.
+  function combatScore(s) {
+    const hit = (s.caster ? s.matk : s.atk + (s.weaponMin + s.weaponMax) / 2) * (1 + (s.dmgPct || 0));
+    const crit = Math.min(75, s.crit) / 100;
+    const offense = hit * (1 + crit * (s.critDmg / 100 - 1)) * (s.speed / 100) * (1 + (s.lifesteal || 0) / 200);
+    const K = defK(s.level);
+    const defense = s.maxHp * (1 + (s.caster ? s.mdef : s.def) / K) / (1 - Math.min(50, s.dmgReduce || 0) / 100) * (1 + (s.block || 0) / 200);
+    return Math.sqrt(offense * defense);
+  }
+
+  PC.stats = { PRIMARY, GROWTH, combatScore, growth, flatGrowth, SCALED, defK, fmtBig, defs, caps, add, gather, compute, skillLevel };
   PC.fmtBig = fmtBig;
   data.statDefs = defs;
   if (typeof module !== 'undefined') module.exports = PC;

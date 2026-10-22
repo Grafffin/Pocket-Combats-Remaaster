@@ -47,7 +47,7 @@
       const [lo, hi] = a.t[af.tier - 1];
       const pct = hi > lo ? Math.round(af.roll * 100) : 100;
       const unit = a.pct || (data.statDefs[a.stat] && data.statDefs[a.stat].fmt(1).endsWith('%')) ? '%' : '';
-      const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.SCALE : 1;
+      const k = a.stat && PC.stats.SCALED.has(a.stat) ? PC.stats.flatGrowth(af.lvl || 1) : 1;
       const f = (v) => (unit ? v : PC.fmtBig(v * k));
       const range = lens ? ` <span class="range">[${af.neg ? `−${f(Math.round(hi * data.NEGATIVE.scale))}–${f(Math.max(1, Math.round(lo * data.NEGATIVE.scale)))}` : `${f(lo)}–${f(hi)}`}${unit}]</span>` : '';
       return `<li class="${af.neg ? 'neg' : 'affix'}"><span class="t t${af.tier}" data-info="affixTier">T${af.tier}</span><span class="txt">${I.affixText(data, af)}${range}</span>
@@ -81,17 +81,27 @@
       return `<span class="${d > 0 ? 'up' : 'down'}">${label} ${d > 0 ? '+' : '−'}${PC.fmtBig(Math.abs(d))}</span>`;
     }).filter(Boolean);
     const cur = char.equipment[slot];
+    const d = (S.combatScore(after) / S.combatScore(before) - 1) * 100;
+    const total = Math.abs(d) < 0.05 ? '' : `<span class="${d > 0 ? 'up' : 'down'}"><b>Боевая сила ${d > 0 ? '+' : '−'}${Math.abs(d).toFixed(1)}%</b></span>`;
     return `<div class="compare"><h4>${cur ? `Вместо: ${nameHtml(cur)}` : 'Слот пуст'}</h4>
-      <div class="diff">${parts.join('') || '<span class="muted">Без изменений</span>'}</div></div>`;
+      <div class="diff">${total}${parts.join('') || (total ? '' : '<span class="muted">Без изменений</span>')}</div></div>`;
   }
 
-  // Сильнее надетого? Для пометок в сумке
+  // Сильнее надетого? Сравниваем боевую оценку героя с этой вещью и без неё (кэш до следующего изменения)
+  const upgradeCache = new Map();
   function isUpgrade(char, item) {
     if (!I.canEquip(data, char, item).ok) return false;
+    const key = `${item.uid}|${JSON.stringify(char.equipment)}|${JSON.stringify(char.stats)}|${char.level}`;
+    if (upgradeCache.has(key)) return upgradeCache.get(key);
     const slots = I.slotsFor(data, item);
-    const cur = slots.map((s) => char.equipment[s]);
-    if (cur.some((x) => !x)) return true;
-    return I.power(data, item) > Math.min(...cur.map((x) => I.power(data, x)));
+    const slot = slots.find((s) => !char.equipment[s]) || slots.reduce((a, b) => (I.power(data, char.equipment[a]) <= I.power(data, char.equipment[b]) ? a : b));
+    const before = S.combatScore(S.compute(data, char));
+    const clone = { ...char, equipment: { ...char.equipment, [slot]: item } };
+    if (data.types[item.type].twoHanded) delete clone.equipment.offhand;
+    const res = S.combatScore(S.compute(data, clone)) > before * 1.001;
+    if (upgradeCache.size > 2000) upgradeCache.clear();
+    upgradeCache.set(key, res);
+    return res;
   }
 
   function cardHtml(char, item, where) {
@@ -104,7 +114,7 @@
       ${virtue}
       ${where !== 'equipped' ? diffHtml(char, item) : ''}
       ${check.ok ? '' : `<div class="req">${check.reason}</div>`}
-      <div class="meta">Нужен ${I.reqLevel(data, item)} уровень · скупщик даст ${fmtNum(I.sellPrice(data, item))} 💰 · сила ${I.power(data, item)}</div>
+      <div class="meta">Нужен ${I.reqLevel(data, item)} уровень · скупщик даст ${fmtNum(I.sellPrice(data, item))} 💰</div>
     </div>`;
   }
 

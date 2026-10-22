@@ -5,7 +5,7 @@
   const PC = root.PC || (root.PC = {});
   const I = () => PC.items;
 
-  const CHAR_VERSION = 4;
+  const CHAR_VERSION = 5;
   const STAT_POINTS_PER_LEVEL = 3;
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
@@ -56,7 +56,17 @@
       char.settings = { autoSalvage: char.settings.autoSalvage ?? -1, autoBattle: !!char.settings.autoBattle, autoHunt: false, potionAt: 35 };
       char.version = 4;
     }
+    if (char.version === 4) {
+      fixAffixLevels(char.bag);
+      fixAffixLevels(Object.values(char.equipment));
+      char.version = 5;
+    }
     return char;
+  }
+
+  // Свойства вещей, созданных до плавного роста чисел, получают уровень своей вещи
+  function fixAffixLevels(list) {
+    for (const it of list) if (it) for (const af of it.affixes) if (!af.lvl) af.lvl = it.ilvl;
   }
 
   const classSkills = (data, job) => Object.values(data.skills).filter((s) => s.cls === job).sort((a, b) => a.unlock - b.unlock);
@@ -218,7 +228,7 @@
   PC.progression = {
     CHAR_VERSION, STAT_POINTS_PER_LEVEL, SKILL_POINTS_PER_LEVEL, MAX_LEVEL,
     expToNext, expMultiplier, newCharacter, migrate, classSkills, classPassives,
-    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP,
+    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP, fixAffixLevels,
   };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
