@@ -5,7 +5,7 @@
   const PC = root.PC || (root.PC = {});
   const I = () => PC.items;
 
-  const CHAR_VERSION = 5;
+  const CHAR_VERSION = 6;
   const STAT_POINTS_PER_LEVEL = 3;
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
@@ -60,6 +60,14 @@
       fixAffixLevels(char.bag);
       fixAffixLevels(Object.values(char.equipment));
       char.version = 5;
+    }
+    if (char.version === 5) {
+      // Сложность стала общей: открытая — по последней зоне
+      const fz = Object.keys(data.locations).find((id) => data.locations[id].final);
+      char.diffUnlocked = (char.zoneDiff && char.zoneDiff[fz]) || 0;
+      char.difficulty = 0;
+      delete char.zoneDiff; delete char.diff;
+      char.version = 6;
     }
     return char;
   }
@@ -164,7 +172,7 @@
     const itemCount = m.boss ? DROP.bossItems : (rng.chance(DROP.item * (1 + mf / 200)) ? 1 : 0);
     for (let i = 0; i < itemCount; i++) {
       const cls = rng.chance(80) ? char.job : rng.pick(Object.keys(data.classes));
-      drops.items.push(I().generate(data, { ilvl: level + dd.ilvl, cls, mf, boss: m.boss, rarityFloor: m.boss ? dd.floor : 0, rarityBoost: dd.rare }, rng));
+      drops.items.push(I().generate(data, { ilvl: level + dd.ilvl, cls, mf, boss: m.boss, rarityFloor: m.boss ? 2 : 0 }, rng));
     }
     const tier = I().maxTierFor(data, level);
     if (rng.chance(DROP.main)) addMat(rng.pick(['ore', 'leather']), rng.int(1, 1 + Math.floor(tier / 2)));
@@ -174,6 +182,13 @@
     if (rng.chance(DROP.potion)) addMat('hp_potion_1', 1);
     const zone = data.locations[char.location];
     if (zone && zone.mats && rng.chance(DROP.zoneMat)) addMat(rng.pick(zone.mats), rng.int(1, 2));
+    // Уники: только с «своих» боссов и с нужной сложности; шанс растёт с находкой
+    if (m.boss) {
+      for (const u of Object.values(data.uniques)) {
+        if (u.boss !== monsterId || u.minDiff > D) continue;
+        if (rng.chance(data.UNIQUE_CHANCE * (1 + mf / 300))) drops.items.push(I().generateUnique(data, u.id, { ilvl: level + dd.ilvl }, rng));
+      }
+    }
     if (D && rng.chance(dd.stone3)) addMat('stone3', 1);
     if (D >= 2 && rng.chance(10 + 3 * D)) addMat('protect', 1);
     if (m.boss) { addMat('stone2', 1 + D); if ((tier >= 5 || D) && rng.chance(30 + 8 * D)) addMat('stone3', 1); addMat('reroll', 1 + Math.floor(D / 2)); }
@@ -208,10 +223,9 @@
       char.zoneKills[char.location] = (char.zoneKills[char.location] || 0) + 1;
       if (m.boss) {
         char.zoneKills[char.location] = 0;
-        // Победа над боссом открывает следующую сложность зоны
-        char.zoneDiff = char.zoneDiff || {};
-        if (D + 1 < data.difficulties.length && (char.zoneDiff[char.location] || 0) < D + 1) {
-          char.zoneDiff[char.location] = D + 1;
+        // Победа над последним боссом мира открывает следующую сложность
+        if (loc.final && D + 1 < data.difficulties.length && (char.diffUnlocked || 0) < D + 1) {
+          char.diffUnlocked = D + 1;
           summary.unlocked = data.difficulties[D + 1].name;
         }
       }

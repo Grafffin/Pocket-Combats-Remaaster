@@ -63,7 +63,9 @@ function slotList(job) {
   return Object.keys(data.slots).filter((s) => s !== 'offhand' || (cls.offhand.length && !twoHanded));
 }
 
-const finish = (item) => Object.assign(item, { quality: 100, enhance: 15, rank: 5 });
+// Вложения в вещи: по умолчанию максимум; для «реалистичной» сборки — легендарные +10 ★3
+const INVEST = { quality: 100, enhance: 15, rank: 5, rarity: 6 };
+const finish = (item) => Object.assign(item, { quality: INVEST.quality, enhance: INVEST.enhance, rank: INVEST.rank });
 
 function perfectGear(c, rng) {
   const job = c.job;
@@ -95,7 +97,10 @@ function randomGear(c, rng) {
     const w = c.equipment.weapon && data.types[c.equipment.weapon.type];
     if (kind === 'offhand' && (!cls.offhand.length || (w && w.twoHanded))) continue;
     const typeId = rng.pick(I.typesFor(data, kind, job)).id;
-    const item = finish(I.generate(data, { ilvl: c.level, tier: I.maxTierFor(data, c.level), type: typeId, cls: job, rarityFloor: 6 }, rng));
+    const item = finish(I.generate(data, { ilvl: c.level, tier: I.maxTierFor(data, c.level), type: typeId, cls: job, rarityFloor: INVEST.rarity }, rng));
+    item.rarity = INVEST.rarity;
+    while (item.affixes.length > data.rarities[INVEST.rarity].affixes) item.affixes.pop();
+    while (item.legendary.length > data.rarities[INVEST.rarity].legendary) item.legendary.pop();
     // вехи заточки: +5 — тир одного свойства, +10 — ещё одно свойство, +15 — все +1 тир
     const cap = I.maxTierFor(data, c.level);
     if (item.affixes.length) { const af = rng.pick(item.affixes); af.tier = Math.min(cap, af.tier + 1); }
@@ -148,6 +153,9 @@ function breakpoint(builds, boss, level) {
   return lo;
 }
 
+module.exports = { baseChar, perfectGear, randomGear, fight, breakpoint, finish, sheet, INVEST };
+
+if (require.main === module) {
 const BOSSES = [['lich', 36], ['troll_elder', 28], ['ancient_spirit', 11]];
 const rows = [];
 const sheets = [];
@@ -171,3 +179,4 @@ console.log('Характеристики (Лич, уровень 36; тир в�
 console.table(sheets);
 console.log('Во сколько раз можно усилить босса (здоровье и атаку), чтобы герой побеждал в половине боёв, и какая это сложность зоны:');
 console.table(rows);
+}

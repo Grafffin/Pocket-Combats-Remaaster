@@ -56,6 +56,22 @@
     return `<ul class="props">${base}</ul>${aff ? `<div class="props-label">Свойства</div><ul class="props">${aff}</ul>` : ''}`;
   }
 
+  function uniqueHtml(item) {
+    if (!item.unique) return '';
+    const u = data.uniques[item.unique];
+    const mods = Object.entries(u.mods || {}).map(([k, v]) => {
+      const d = data.statDefs[k];
+      const neg = v < 0;
+      const val = k.endsWith('Pct') ? `${Math.round(Math.abs(v) * 100)}%` : d.fmt(Math.abs(v));
+      return `<li class="${neg ? 'neg' : 'uniq'}">${statIcon(k)}<span class="txt">${neg ? '−' : '+'}${val} ${d.name.toLowerCase()}</span></li>`;
+    }).join('');
+    const boss = data.monsters[u.boss];
+    return `<div class="props-label">Свойства уника</div><ul class="props">${mods}</ul>
+      <div class="uniq-block"><b>✦ ${u.effect}</b><span>${u.role}</span></div>
+      <p class="flavor">«${u.flavor}»</p>
+      <p class="meta">Падает: ${boss.name}${u.minDiff ? `, с «${data.difficulties[u.minDiff].name}»` : ''}</p>`;
+  }
+
   function legendHtml(item) {
     return item.legendary.map((id) => {
       const l = data.legendaries[id];
@@ -109,6 +125,7 @@
     const virtue = item.virtue ? `<span class="virtue-chip info-link" data-info="virtue" style="color:${data.virtues[item.virtue].color}"><i></i>Знак: ${data.virtues[item.virtue].name}</span>` : '';
     return `<div class="item-card">
       <div class="item-head">${tile(item).replace('</div>', item.rarity >= 4 ? '<span class="sparks"><i></i><i></i><i></i><i></i></span></div>' : '</div>')}<div><div class="item-name">${nameHtml(item)}</div><div class="item-sub">${subline(item)}</div></div></div>
+      ${uniqueHtml(item)}
       ${propsHtml(item)}
       ${legendHtml(item)}
       ${virtue}

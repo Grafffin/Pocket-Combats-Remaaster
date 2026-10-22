@@ -56,23 +56,25 @@
       desc: 'Руины склепа наполовину под водой. Из тёмных арок тянет холодом и тихим шёпотом.',
       monsters: [['skeleton', 27, 31], ['ghoul', 28, 33], ['wraith', 30, 35]], mats: ['bone_meal', 'ectoplasm'],
       boss: ['lich', 36],
+      final: true, // последний босс мира: победа открывает следующую сложность
       routes: { stone_hills: 18 },
     },
   };
 
-  // Сложности зон (по мотивам Torment в EHT). Открываются по зонам: убить босса зоны на текущей сложности.
-  // mult — во сколько раз сильнее монстры (здоровье и атака; защита прежняя); награды растут вместе с ними.
-  // ilvl — прибавка к уровню выпавших вещей (сильнее база и плоские свойства), mf — к находке,
-  // rare — множитель шанса героических и выше, floor — минимальная редкость добычи боссов.
+  // Сложность мира (по мотивам Torment в EHT) — общая для всех зон. Следующая открывается победой над
+  // последним боссом мира (зона с final: true) на текущей сложности. Цель — гриндить характеристики и вещи,
+  // а не просто проходить мобов. mult — во сколько раз сильнее монстры (здоровье и атака; защита прежняя).
+  // ilvl — прибавка к уровню выпавших вещей (сильнее база и плоские свойства), mf — к находке.
+  // Гарантий редкости нет: на неё влияет только находка (mf). anim — анимация значка в шапке.
   const difficulties = [
-    { id: 0, name: 'Обычная', short: 'Обычн.', mult: 1, exp: 1, gold: 1, ilvl: 0, mf: 0, rare: 1, floor: 2, stone3: 0, color: '#8b93a7' },
-    { id: 1, name: 'Кошмар', short: 'Кошмар', mult: 2, exp: 1.6, gold: 1.6, ilvl: 4, mf: 40, rare: 1.6, floor: 2, stone3: 3, color: '#b27bff' },
-    { id: 2, name: 'Ад', short: 'Ад', mult: 4, exp: 2.4, gold: 2.4, ilvl: 8, mf: 80, rare: 2.4, floor: 3, stone3: 6, color: '#ff9f3d' },
-    { id: 3, name: 'Пытка I', short: 'П I', mult: 7, exp: 3.4, gold: 3.4, ilvl: 12, mf: 130, rare: 3.4, floor: 3, stone3: 10, color: '#ff4d5e' },
-    { id: 4, name: 'Пытка II', short: 'П II', mult: 12, exp: 4.6, gold: 4.6, ilvl: 16, mf: 190, rare: 4.6, floor: 4, stone3: 15, color: '#ff4d5e' },
-    { id: 5, name: 'Пытка III', short: 'П III', mult: 20, exp: 6, gold: 6, ilvl: 20, mf: 260, rare: 6, floor: 4, stone3: 20, color: '#ff4d5e' },
-    { id: 6, name: 'Пытка IV', short: 'П IV', mult: 32, exp: 8, gold: 8, ilvl: 24, mf: 340, rare: 8, floor: 5, stone3: 28, color: '#3fe0d0' },
-    { id: 7, name: 'Пытка V', short: 'П V', mult: 50, exp: 10, gold: 10, ilvl: 28, mf: 430, rare: 10, floor: 5, stone3: 36, color: '#3fe0d0' },
+    { id: 0, name: 'Обычная', short: 'I', mult: 1, exp: 1, gold: 1, ilvl: 0, mf: 0, stone3: 0, color: '#8b93a7', anim: 'calm' },
+    { id: 1, name: 'Кошмар', short: 'II', mult: 2, exp: 1.6, gold: 1.6, ilvl: 4, mf: 40, stone3: 3, color: '#b27bff', anim: 'pulse' },
+    { id: 2, name: 'Ад', short: 'III', mult: 4, exp: 2.4, gold: 2.4, ilvl: 8, mf: 80, stone3: 6, color: '#ff9f3d', anim: 'flame' },
+    { id: 3, name: 'Пытка I', short: 'IV', mult: 7, exp: 3.4, gold: 3.4, ilvl: 12, mf: 130, stone3: 10, color: '#ff4d5e', anim: 'blood' },
+    { id: 4, name: 'Пытка II', short: 'V', mult: 12, exp: 4.6, gold: 4.6, ilvl: 16, mf: 190, stone3: 15, color: '#ff4d5e', anim: 'blood' },
+    { id: 5, name: 'Пытка III', short: 'VI', mult: 20, exp: 6, gold: 6, ilvl: 20, mf: 260, stone3: 20, color: '#ff2a3d', anim: 'rage' },
+    { id: 6, name: 'Пытка IV', short: 'VII', mult: 32, exp: 8, gold: 8, ilvl: 24, mf: 340, stone3: 28, color: '#3fe0d0', anim: 'void' },
+    { id: 7, name: 'Пытка V', short: 'VIII', mult: 50, exp: 10, gold: 10, ilvl: 28, mf: 430, stone3: 36, color: '#f0c46a', anim: 'void' },
   ];
 
   const BOSS_KILLS = 10;           // побед в зоне до появления босса

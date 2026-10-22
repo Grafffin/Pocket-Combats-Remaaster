@@ -123,6 +123,25 @@
     return item;
   }
 
+  // Уникальная вещь: фиксированные база, тир и свойства; уровень предмета и качество — как у обычной добычи
+  function generateUnique(data, id, { ilvl }, rng) {
+    const u = data.uniques[id];
+    const type = data.types[u.type];
+    const rarity = data.rarities.findIndex((r) => r.id === 'unique');
+    // Тир уника растёт с уровнем предмета: ранний босс на высокой сложности даёт поздний уник
+    const lv = Math.max(ilvl || 1, data.TIER_LEVEL[u.tier]);
+    const item = {
+      uid: newUid(), type: u.type, tier: Math.max(u.tier, maxTierFor(data, lv)), ilvl: lv,
+      rarity, quality: rollQuality(rng), cls: type.cls ? type.cls[0] : null,
+      affixes: [], legendary: [], enhance: 0, rank: 0, unique: id,
+    };
+    // К фиксированным свойствам уника — случайные (3, как у героической вещи), не повторяющие фиксированные
+    if (!item.cls) item.cls = rng.pick(Object.keys(data.classes));
+    for (let i = 0; i < data.rarities[rarity].affixes; i++) addRandomAffix(data, item, rng, data.rarities[3]);
+    item.affixes = item.affixes.filter((af) => !(u.mods && data.affixes[af.id].stat in u.mods));
+    return item;
+  }
+
   // ---------- Характеристики вещи ----------
 
   function affixValue(data, af) {
@@ -148,7 +167,7 @@
     const type = data.types[item.type];
     const raw = type.base(item.tier);
     const mult = qualityMult(item.quality) * (1 + item.enhance * data.enhance.perLevel) * (1 + item.rank * data.rank.perRank);
-    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]) * ilvlBonus(data, item);
+    const S = PC.stats.growth(data.TIER_LEVEL[item.tier]) * ilvlBonus(data, item) * (item.unique ? data.UNIQUE_BASE : 1);
     const sc = (k) => (PC.stats.SCALED.has(k) ? S : 1);
     const out = {};
     for (const [k, v] of Object.entries(raw)) {
@@ -171,6 +190,11 @@
       if (af.id === 'skillDmg') { out.skillDmg = out.skillDmg || {}; out.skillDmg[af.param] = (out.skillDmg[af.param] || 0) + v / 100; continue; }
       add(a.stat, a.pct ? v / 100 : v);
     }
+    if (item.unique) {
+      const u = data.uniques[item.unique];
+      for (const [k, v] of Object.entries(u.mods || {})) add(k, v);
+      for (const e of u.effects || []) { out.legendary = out.legendary || {}; out.legendary[e] = 1; }
+    }
     for (const id of item.legendary) {
       out.legendary = out.legendary || {};
       out.legendary[id] = 1;
@@ -188,6 +212,7 @@
   const reqLevel = (data, item) => data.TIER_LEVEL[item.tier];
 
   function name(data, item) {
+    if (item.unique) return data.uniques[item.unique].name;
     const type = data.types[item.type];
     const a = data.adjectives[type.mat][item.tier - 1][type.g];
     return `${a} ${type.name}`;
@@ -553,7 +578,7 @@
   }
 
   PC.items = {
-    BAG_SIZE, newUid, generate, maxTierFor, qualityMult, qualityName,
+    BAG_SIZE, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
     affixValue, affixText, baseStats, baseLines, totals, weaponDamage, isShield, reqLevel, name, power,
     bagAdd, bagFree, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
     sellPrice, salvageYield, salvage,

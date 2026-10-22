@@ -117,14 +117,17 @@
     return rng.pick(same.length ? same : alive);
   }
 
-  // ---------- Сложность зон ----------
-  const diffOf = (char, locId) => (char.diff && char.diff[locId]) || 0;
-  const diffUnlocked = (char, locId) => (char.zoneDiff && char.zoneDiff[locId]) || 0;
-  function setDiff(data, char, locId, D) {
+  // ---------- Сложность мира (общая для всех зон) ----------
+  const diffOf = (char) => char.difficulty || 0;
+  const diffUnlocked = (char) => char.diffUnlocked || 0;
+  const finalZone = (data) => Object.keys(data.locations).find((id) => data.locations[id].final);
+  function setDiff(data, char, D) {
     if (D < 0 || D >= data.difficulties.length) return { ok: false, reason: 'Нет такой сложности' };
-    if (D > diffUnlocked(char, locId)) return { ok: false, reason: `Откроется после победы над боссом зоны на «${data.difficulties[D - 1].name}»` };
-    char.diff = char.diff || {};
-    char.diff[locId] = D;
+    if (D > diffUnlocked(char)) {
+      const boss = data.monsters[data.locations[finalZone(data)].boss[0]].name;
+      return { ok: false, reason: `Откроется после победы над последним боссом (${boss}) на «${data.difficulties[D - 1].name}»` };
+    }
+    char.difficulty = D;
     return { ok: true };
   }
 
@@ -156,7 +159,7 @@
   }
 
   PC.world = {
-    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, tickOf, tickStart, msToNextTick,
+    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
     here, monsterLevel, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };

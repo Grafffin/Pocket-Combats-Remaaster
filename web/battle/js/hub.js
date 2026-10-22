@@ -100,8 +100,46 @@
       <div class="who"><b>${escapeHtml(c.nick)}</b>
         <div class="bar-line"><span class="meta">${data.classes[c.job].title} · ${c.level} ур.</span>
           <div class="progress thin" style="flex:1"><div style="width:${c.level >= P.MAX_LEVEL ? 100 : (c.exp / need) * 100}%"></div></div></div></div>
+      ${diffBadge(c)}
       <div class="wallet"><span class="info-link" data-info="gold">${art('materials/gold', '💰')}${fmtNum(c.gold)}</span><span class="meta">${buffs || `${fmtNum(c.exp)} / ${fmtNum(need)}`}</span></div>`;
   }
+
+  // Значок сложности мира: цвет и анимация зависят от ступени, тап — выбор сложности
+  function diffBadge(c) {
+    const d = data.difficulties[W.diffOf(c)];
+    return `<button class="diff-badge anim-${d.anim}" style="--dc:${d.color}" data-act="difficulty" title="Сложность: ${d.name}">
+      <span class="db-ring"></span><span class="db-num">${d.short}</span></button>`;
+  }
+
+  function openDifficulty() {
+    const c = state.char;
+    const cur = W.diffOf(c), open = W.diffUnlocked(c);
+    const fz = data.locations[W.finalZone(data)];
+    const bossName = data.monsters[fz.boss[0]].name;
+    const rows = data.difficulties.map((d) => {
+      const locked = d.id > open;
+      return `<button class="diff-row-item ${d.id === cur ? 'on' : ''}" data-diff="${d.id}" ${locked ? 'disabled' : ''} style="--dc:${d.color}">
+        <span class="diff-badge anim-${d.anim} small" style="--dc:${d.color}"><span class="db-ring"></span><span class="db-num">${d.short}</span></span>
+        <span class="txt"><b>${d.name}</b>${locked ? ' 🔒' : ''}<small class="meta">${d.id ? `монстры ×${d.mult} · опыт и золото ×${d.exp} · находка +${d.mf}% · уровень вещей +${d.ilvl}${d.stone3 ? ` · камни III ${d.stone3}%` : ''}` : 'базовая сложность'}</small></span></button>`;
+    }).join('');
+    openModal('Сложность мира', `<p class="meta">Одна для всех зон. Следующая открывается победой над последним боссом мира — <b>${bossName}</b> (${fz.name}) — на текущей сложности. Цель — собрать вещи, которые вытянут каждую ступень.</p>
+      <div class="list">${rows}</div>`, (e) => {
+      const b = e.target.closest('[data-diff]');
+      if (!b || b.disabled) return;
+      if (state.fight && !$('#battle').hidden) return toast('Нельзя менять сложность в бою', 'bad');
+      const r = W.setDiff(data, c, Number(b.dataset.diff));
+      if (!r.ok) return toast(r.reason, 'bad');
+      app.save();
+      state.worldSig = null;
+      closeModal();
+      render();
+      toast(`Сложность: ${data.difficulties[c.difficulty].name}`);
+    });
+  }
+
+  $('#hero-bar').addEventListener('click', (e) => {
+    if (e.target.closest('[data-act="difficulty"]')) openDifficulty();
+  });
 
   $('#tabs').addEventListener('click', (e) => {
     const b = e.target.closest('[data-tab]');
@@ -183,7 +221,6 @@
     root.innerHTML = `
       <div class="banner">${art(loc.art, '')}<div class="title"><b>${loc.name}</b><span>${loc.levels ? `${loc.levels[0]}–${loc.levels[1]} уровень · тир вещей ${loc.tier}${W.diffOf(c, c.location) ? ` · <i style="color:${data.difficulties[W.diffOf(c, c.location)].color};font-style:normal">${data.difficulties[W.diffOf(c, c.location)].name}</i>` : ''}` : 'Безопасная зона'}</span></div></div>
       <div class="card section"><h3>Переходы</h3>${routes}</div>
-      ${loc.safe ? '' : diffBlock(c)}
       ${npcs ? `<div class="card section"><h3>Жители</h3><div class="npc-grid">${npcs}</div></div>` : ''}
       <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Монстры'}
           <span class="note" id="rest-note">${rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`}</span></h3>
@@ -193,19 +230,6 @@
           <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
       <div class="card section"><p class="loc-desc">${loc.desc}</p></div>`;
-  }
-
-  // Сложность зоны: ступени, открытые убийством босса на предыдущей
-  function diffBlock(c) {
-    const cur = W.diffOf(c, c.location);
-    const open = W.diffUnlocked(c, c.location);
-    const dd = data.difficulties[cur];
-    const chips = data.difficulties.map((d) => `<button class="diff-chip ${d.id === cur ? 'on' : ''}" data-diff="${d.id}" ${d.id > open ? 'disabled' : ''}
-        style="--dc:${d.color}" title="${d.id > open ? 'Откроется после победы над боссом зоны на предыдущей сложности' : d.name}">${d.id > open ? '🔒 ' : ''}${d.short}</button>`).join('');
-    const perks = cur ? `Монстры ×${dd.mult} (здоровье и атака) · опыт и золото ×${dd.exp} · находка +${dd.mf}% · уровень вещей +${dd.ilvl}${dd.stone3 ? ` · камни III ${dd.stone3}%` : ''}`
-      : 'Базовая сложность. Убейте босса зоны, чтобы открыть «Кошмар».';
-    return `<div class="card section"><h3>Сложность<span class="note" style="color:${dd.color}">${dd.name}</span></h3>
-      <div class="diff-row">${chips}</div><p class="hint" style="margin-bottom:0">${perks}</p></div>`;
   }
 
   function mobRow(m, now, rest) {
@@ -240,15 +264,6 @@
       app.save();
       render();
       return;
-    }
-    const df = e.target.closest('[data-diff]');
-    if (df) {
-      if (df.disabled) return toast(df.title, 'bad');
-      const r = W.setDiff(data, c, c.location, Number(df.dataset.diff));
-      if (!r.ok) return toast(r.reason, 'bad');
-      app.save();
-      state.worldSig = null;
-      return render();
     }
     const act = e.target.closest('[data-act]');
     if (!act) return;
@@ -304,10 +319,28 @@
       <div class="kv"><span>Золото</span><b>${g0}–${g1}</b></div>
       ${def.ai === 'idle' ? '' : `<div class="props-label">Возможная добыча</div>
       <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[dd.floor].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
+      ${def.boss ? uniqueDrops(m.id, D) : ''}
       <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
       ${m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
+      const un = e.target.closest('[data-unique]');
+      if (un) {
+        const sample = I.generateUnique(data, un.dataset.unique, { ilvl: m.level + dd.ilvl }, rng);
+        sample.quality = 50;
+        PC.itemUI.openItem(c, sample, 'loot');
+      }
     });
+  }
+
+  // Уники, которые может уронить босс (на текущей сложности и выше)
+  function uniqueDrops(bossId, D) {
+    const list = Object.values(data.uniques).filter((u) => u.boss === bossId);
+    if (!list.length) return '';
+    return `<p class="meta">Уникальные вещи (шанс ${data.UNIQUE_CHANCE}% каждая, растёт с находкой):</p><div class="list uniq-list">${list.map((u) => {
+      const open = u.minDiff <= D;
+      return `<button class="uniq-row ${open ? '' : 'locked'}" data-unique="${u.id}">${PC.itemUI.KIND_EMOJI[data.types[u.type].kind]} <b class="rc7">${u.name}</b>
+        <small class="meta">${open ? u.role : `с «${data.difficulties[u.minDiff].name}»`}</small></button>`;
+    }).join('')}</div>`;
   }
 
   // Часы мира на экране локации: переходы, возрождение, передышка

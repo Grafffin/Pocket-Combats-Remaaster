@@ -206,6 +206,7 @@
 
     applyStun(t, source, kind = 'stun') {
       if (t.hp <= 0) return;
+      if (t.legendary.has('stoneHeart')) { this.say('effect', this.fill('Каменное сердце {B.gen} не дрогнуло.', source, t)); return; }
       const freeze = kind === 'freeze';
       this.addEffect(t, {
         id: kind, name: freeze ? 'Заморозка' : 'Оглушение', kind: 'debuff', turns: 1, disable: true, say: false,
@@ -213,8 +214,15 @@
       this.say('effect', this.fill(freeze ? '{B} {b:скован|скована} льдом.' : '{B} {b:оглушён|оглушена}.', source, t));
     }
 
+    // Терновый яд (уник «Терновый венец»): отдельный от обычного яда, поэтому складывается с ним
+    applyThornPoison(t, source) {
+      const per = Math.max(1, Math.round(this.matkOf(source) * 0.5 * (1 + (source.s.dotPct || 0))));
+      this.addEffect(t, { id: 'thorn_poison', name: 'Терновый яд', kind: 'debuff', turns: 3, dot: { kind: 'poison', per }, say: false }, source);
+    }
+
     applyChill(t, source) {
       if (t.hp <= 0) return;
+      if (t.legendary.has('stoneHeart')) return;
       this.addEffect(t, { id: 'chill', name: 'Озноб', kind: 'debuff', turns: 2, chilled: true, mods: { speedPct: -0.3 }, say: false }, source);
       this.say('effect', this.fill('{B} {b:замедлен|замедлена} холодом.', source, t));
     }
@@ -267,6 +275,8 @@
       if (a.legendary.has('execute') && t.hp / t.maxHp < 0.25) m += 0.6;
       if (a.legendary.has('coldHeart') && t.effects.some((e) => e.chilled)) m += 0.3;
       if (a.legendary.has('berserkBlood')) m += (1 - a.hp / a.maxHp) * 0.5;
+      if (a.legendary.has('giantSlayer')) m += t.maxHp > a.maxHp ? 0.8 : -0.15;
+      if (a.legendary.has('frostScythe') && t.effects.some((e) => e.chilled)) m += 0.4;
       return m;
     }
 
@@ -296,6 +306,7 @@
       dmg *= K / (K + this.defOf(t));
       dmg += this.elementalAddOn(a, t);
       dmg *= 1 - (t.s.dmgReduce || 0) / 100;
+      if (a.legendary.has('shred')) dmg += t.hp * 0.06;
       dmg = Math.max(1, Math.round(dmg));
 
       const kind = crit && blocked ? 'critblock' : crit ? 'crit' : blocked ? 'block' : 'normal';
@@ -309,6 +320,10 @@
       this.afterHit(a, t, dealt, { melee: !RANGED[a.weaponType], blocked });
       if (blocked) this.maybeCounter(t, a, opts);
       this.checkDeath(t);
+      if (crit && !blocked && !opts.followUp && a.legendary.has('critShot') && t.hp > 0) {
+        this.say('skill', this.fill('{A} тут же {a:пустил|пустила} вторую стрелу!', a, t));
+        this.attack(a, t, { mult: 0.7, followUp: true, sure: true });
+      }
       return { hit: true, dmg: dealt, crit, blocked };
     }
 
@@ -316,6 +331,7 @@
     spell(a, t, opts = {}) {
       if (a.hp <= 0 || t.hp <= 0) return { dmg: 0 };
       const r = this.rng;
+      if (a.legendary.has('frostScythe')) opts = { ...opts, element: 'cold', text: null };
       const surge = a.effects.find((e) => e.nextSpell);
       let dmg = this.matkOf(a) * (opts.mult || 1) * r.float(0.9, 1.1) * this.damageMultiplier(a, t, opts);
       if (surge) { dmg *= 1 + surge.nextSpell; a.effects = a.effects.filter((e) => e !== surge); }
@@ -335,6 +351,8 @@
       this.say('damage', this.fill(tpl, a, t, { dmg: this.dmgTag(dmg, kind), hp: this.hpTag(t) }), { type: 'damage', target: t.id, amount: dmg, kind });
       this.afterHit(a, t, dealt, { melee: false, spell: true });
       if (a.s.chillChance && t.hp > 0 && r.chance(a.s.chillChance)) this.applyChill(t, a);
+      if (a.legendary.has('spellPoison') && t.hp > 0) this.applyThornPoison(t, a);
+      if (a.legendary.has('frostScythe') && t.hp > 0) { this.applyChill(t, a); if (r.chance(50)) this.applyStun(t, a, 'freeze'); }
       this.checkDeath(t);
       return { dmg: dealt, crit };
     }
@@ -358,6 +376,11 @@
       }
       f.effects = f.effects.filter((e) => !('shieldHp' in e) || e.shieldHp > 0);
       f.hp = Math.max(0, f.hp - left);
+      if (f.hp <= 0 && f.legendary.has('phylactery') && !f.phylacteryUsed) {
+        f.phylacteryUsed = true;
+        f.hp = 1;
+        this.heal(f, Math.round(f.maxHp * 0.4), 'Филактерия вспыхивает — {A} {a:вырвался|вырвалась} из лап смерти {heal} {hp}.');
+      }
       if (left > 0 && f.resource === 'rage') this.gainResource(f, this.data.resources.rage.onHurt);
       if (f.hp > 0 && f.legendary.has('secondWind') && !f.secondWindUsed && f.hp / f.maxHp < 0.2) {
         f.secondWindUsed = true;
@@ -524,7 +547,7 @@
       const other = this.opponentOf(f);
       const mine = this.speedOf(f), theirs = this.speedOf(other);
       if (mine <= theirs) return;
-      const chance = Math.min(35, ((mine - theirs) / theirs) * 50);
+      const chance = Math.min(f.legendary.has('haste') ? 60 : 35, ((mine - theirs) / theirs) * 50 * (f.legendary.has('haste') ? 2 : 1));
       if (this.rng.chance(chance)) this.attack(f, other, { extra: true });
     }
 

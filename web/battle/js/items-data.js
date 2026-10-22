@@ -101,6 +101,8 @@
     { id: 'legendary', name: 'Легендарный', color: '#ff9f3d', weight: 1.2, affixes: 3, legendary: 1, value: 9 },
     { id: 'mythic', name: 'Мифический', color: '#ff4d5e', weight: 0.25, affixes: 4, legendary: 1, floor: 1, value: 20 },
     { id: 'ancient', name: 'Древний', color: '#3fe0d0', weight: 0.05, affixes: 4, legendary: 2, floor: 1, high: true, value: 50 },
+    // Уникальные — не выпадают случайно, только конкретные вещи с конкретных боссов (data.uniques)
+    { id: 'unique', name: 'Уникальный', color: '#e8c26b', weight: 0, affixes: 3, legendary: 0, value: 30 },
   ];
   // Окончания прилагательных редкости не нужны: редкость показывается цветом и подписью
 
@@ -219,6 +221,102 @@
     hunterMark: { name: 'Метка добычи', desc: 'Первое попадание помечает цель: +20% получаемого урона до конца боя.' },
   };
 
+  // ---------- Уники ----------
+  // Именные вещи с боссов. Каждая задумана как центр отдельной сборки: сильный необычный эффект,
+  // заметный минус и узкая роль — ни одна не подходит «всем и всегда».
+  // boss — с кого падает, minDiff — с какой сложности, mods — постоянные свойства (минусы со знаком −),
+  // effects — особые механики (реализованы в engine.js), role — для чего вещь, flavor — текст на карточке.
+  // Шанс выпадения — UNIQUE_CHANCE% за победу над боссом (растёт с находкой).
+  const UNIQUE_CHANCE = 4;
+  const UNIQUE_BASE = 1.25; // база уника мощнее обычной вещи того же тира
+  const uniques = {
+    boar_fang: {
+      name: 'Клык Вожака', type: 'greataxe', tier: 2, boss: 'boar_king', minDiff: 0,
+      mods: { atkPct: 0.35, defPct: -0.25 }, effects: ['shred'], best: 'troll_elder',
+      effect: 'Каждое попадание дополнительно отнимает 6% текущего здоровья цели.',
+      role: 'Против боссов и толстых врагов. Против мелочи — почти бесполезно, а защита ниже.',
+      flavor: 'Старый секач сломал о него трёх охотников. Четвёртый сломал секача.',
+    },
+    boar_hide: {
+      name: 'Шкура Секача', type: 'plate', tier: 2, boss: 'boar_king', minDiff: 0,
+      mods: { hpPct: 0.4, thornsPct: 0.6, speedPct: -0.15 }, best: 'ataman',
+      effect: '60% вашей защиты возвращается каждому, кто бьёт вас вблизи.',
+      role: 'Танк против рукопашных монстров. Медленнее — враг чаще бьёт первым.',
+      flavor: 'Щетина до сих пор колется. Особенно когда по ней бьют.',
+    },
+    thorn_crown: {
+      name: 'Терновый венец', type: 'hat', tier: 3, boss: 'ancient_spirit', minDiff: 0,
+      mods: { matkPct: 0.3, hpPct: -0.1 }, effects: ['spellPoison'], best: 'troll_elder',
+      effect: 'Каждое заклинание оплетает цель терновым ядом: 50% маг. атаки каждый ход, 3 хода (складывается с обычным ядом).',
+      role: 'Маг на долгие бои с боссами. Против нежити и големов с сопротивлением яду — слабее.',
+      flavor: 'Корни прорастают сквозь мысли. Мысли от этого становятся острее.',
+    },
+    world_root: {
+      name: 'Корень мира', type: 'amulet', tier: 3, boss: 'ancient_spirit', minDiff: 2,
+      mods: { hpRegenPct: 0.06, dmgPct: -0.2 }, best: 'troll_elder',
+      effect: 'Каждый ход восстанавливает 6% здоровья.',
+      role: 'Выживание без зелий на долгой охоте. Урон заметно ниже.',
+      flavor: 'Говорят, лес растёт, пока этот корень цел.',
+    },
+    chief_cleaver: {
+      name: 'Тесак вождя', type: 'sword', tier: 4, boss: 'goblin_chief', minDiff: 0,
+      mods: { stunChance: 30, block: 15, atkPct: 0.2, critDmg: -25 }, best: 'troll_elder',
+      effect: '30% шанс оглушить при попадании, +15% блока, +20% атаки.',
+      role: 'Контроль для воина со щитом. Криты слабее — не для сборки на крит.',
+      flavor: 'Гоблины верят, что им можно оглушить даже гору. Пока не пробовали.',
+    },
+    greed_ring: {
+      name: 'Кольцо жадности', type: 'ring', tier: 4, boss: 'goblin_chief', minDiff: 0,
+      mods: { goldPct: 1.0, mf: 60, atkPct: -0.25, matkPct: -0.25 }, farm: true,
+      effect: '+100% золота и +60% находки предметов.',
+      role: 'Фарм на лёгкой сложности. В тяжёлых боях — обуза.',
+      flavor: 'Вождь носил его, не снимая. Даже когда умирал.',
+    },
+    ataman_bow: {
+      name: 'Лук атамана', type: 'bow', tier: 5, boss: 'ataman', minDiff: 0,
+      mods: { crit: 15, atkPct: 0.2, critDmg: 30, hpPct: -0.2 }, effects: ['critShot'], best: 'troll_elder',
+      effect: 'После каждого критического выстрела — сразу ещё один выстрел (70% урона).',
+      role: 'Охотник на крит. Хрупкий: здоровья на четверть меньше.',
+      flavor: 'На прикладе — двадцать зарубок. Последнюю делал не атаман.',
+    },
+    bandit_belt: {
+      name: 'Пояс разбойника', type: 'belt', tier: 5, boss: 'ataman', minDiff: 2,
+      mods: { speed: 60, atkPct: 0.35, critDmg: 20, hpPct: -0.1 }, effects: ['haste'], best: 'harpy',
+      effect: '+60 скорости, шанс дополнительного удара удваивается.',
+      role: 'Лишние удары против быстрых и вёртких врагов (гарпии, разбойники). Против толстокожих почти бесполезен, здоровья меньше.',
+      flavor: 'Кто носит этот пояс, всегда успевает уйти. Почти всегда.',
+    },
+    stone_heart: {
+      name: 'Каменное сердце', type: 'amulet', tier: 6, boss: 'troll_elder', minDiff: 0,
+      mods: { defPct: 0.6, mdefPct: 0.8, speed: -20 }, effects: ['stoneHeart'], best: 'lich',
+      effect: 'Иммунитет к оглушению, заморозке и замедлению; +60% защиты и +80% маг. защиты.',
+      role: 'Против боссов с контролем (тролли, лич). Очень медленно: враг почти всегда бьёт первым.',
+      flavor: 'Оно бьётся раз в сто лет. Но очень уверенно.',
+    },
+    giant_grip: {
+      name: 'Длань великана', type: 'gauntlets', tier: 6, boss: 'troll_elder', minDiff: 3,
+      mods: { atkPct: 0.2 }, effects: ['giantSlayer'], best: 'lich',
+      effect: '+80% урона по врагам, у которых больше здоровья, чем у вас; −15% по остальным.',
+      role: 'Убийца боссов. На обычной охоте вредит.',
+      flavor: 'Сшита из перчатки тролля. Изнутри всё ещё тепло.',
+    },
+    phylactery: {
+      name: 'Филактерия', type: 'orb', tier: 7, boss: 'lich', minDiff: 0,
+      mods: { matkPct: 0.15, hpPct: -0.15 }, effects: ['phylactery'], best: 'troll_elder',
+      effect: 'Раз за бой смертельный удар оставляет 1 здоровья и лечит 40%.',
+      role: 'Страховка мага в тяжёлых боях. Меньше здоровья — чаще срабатывает, чем хотелось бы.',
+      flavor: 'Лич держал в ней душу. Ваша там тоже поместится.',
+    },
+    winter_scythe: {
+      name: 'Коса вечной зимы', type: 'staff', tier: 7, boss: 'lich', minDiff: 4,
+      mods: { matkPct: 0.8, int: 12, mp: 90, mpRegen: 8, hpPct: 0.15, dmgReduce: 8, critDmg: -20 }, effects: ['frostScythe'], best: 'troll_elder',
+      effect: 'Все заклинания — холодом и замедляют цель; 50% шанс заморозить; по замедленным врагам +40% урона.',
+      role: 'Контроль-маг. Против врагов с сопротивлением холоду (призраки, лич) — плохо.',
+      flavor: 'Лезвие не тает даже в огне. Огонь от этого гаснет.',
+    },
+  };
+  for (const [id, u] of Object.entries(uniques)) u.id = id;
+
   // ---------- Заточка ----------
   // chance[n] — шанс перехода на +n. fail: что бывает при неудаче на этом шаге.
   const enhance = {
@@ -332,7 +430,7 @@
 
   Object.assign(data, {
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, rarities, qualities, affixes, TIER_FALLOFF,
-    legendaries, enhance, rank, materials: materials2, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
+    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
