@@ -171,6 +171,25 @@
     } else if (a) a.open();
   }
 
+  const RESULT = { win: ['Победа', 'good'], lose: ['Поражение', 'req'], fled: ['Бегство', 'meta'] };
+  async function openHistory() {
+    openModal('История боёв', '<p class="meta">Загрузка…</p>');
+    const rows = await PC.battles.history();
+    const body = rows == null ? '<p class="meta">История пока недоступна (нужна миграция 0008 на сервере).</p>'
+      : !rows.length ? '<p class="meta">Пока нет завершённых боёв.</p>'
+      : `<div class="menu-list">${rows.map((r) => {
+        const m = data.monsters[r.monster_id], [label, cls] = RESULT[r.result] || ['?', 'meta'];
+        const when = new Date(r.ended_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        return `<button class="menu-item" data-hist="${r.id}"><span><b class="${cls}">${label}</b> · ${escapeHtml(m ? m.name : r.monster_id)} ${r.monster_level} ур.
+          <small class="meta">${when} · ${r.turns} ход. · ${(r.members || []).map(escapeHtml).join(', ')}${r.total_damage ? ` · урон ${fmtNum(r.my_damage || 0)}/${fmtNum(r.total_damage)}` : ''}</small></span></button>`;
+      }).join('')}</div>`;
+    openModal('История боёв', body, (e) => {
+      const b = e.target.closest('[data-hist]');
+      const r = b && rows.find((x) => x.id === b.dataset.hist);
+      if (r) openModal('Лог боя', `<div class="hist-log">${(r.log || []).map((l) => `<p class="${l.k === 'turn' ? 'meta' : ''}">${l.k === 'turn' ? `Ход ${escapeHtml(l.t)}` : escapeHtml(l.t)}</p>`).join('') || '<p class="meta">Лог не сохранён.</p>'}</div><button class="btn wide" data-back>Назад</button>`, (ev) => { if (ev.target.closest('[data-back]')) openHistory(); });
+    });
+  }
+
   // Дополнительное меню (☰): разделы, которым не нужно место на нижней панели
   function openMenu() {
     const village = app.inVillage();
@@ -180,6 +199,7 @@
       ${item('forge', 'npcs/blacksmith', 'Кузница', village ? 'Заточка, ранги, перенос, перековка, ковка' : 'Только в деревне', village)}
       ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
       ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
+      ${item('history', 'ui/gear', 'История боёв', PC.battles && PC.battles.history ? 'Последние 30 боёв' : 'Недоступно', !!(PC.battles && PC.battles.history))}
       ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
       ${item('account', 'ui/gear', 'Аккаунт', accNote(), true)}
       ${item('settings', 'ui/gear', 'Настройки', 'Скоро', false)}
@@ -191,6 +211,7 @@
       if (b.dataset.menu === 'alchemist') openAlchemist();
       if (b.dataset.menu === 'stash') PC.bagUI.openStash();
       if (b.dataset.menu === 'account') openAccount();
+      if (b.dataset.menu === 'history') openHistory();
     });
   }
 
@@ -444,7 +465,11 @@
       onEnd: (battle, { fled, share }) => {
         const won = battle.winner === battle.player;
         if (join) c.restTick = W.tickOf(Date.now()) + 1; else W.disengage(data, c, uid, won, Date.now());
-        if (PC.battles) PC.battles.end();
+        if (PC.battles) {
+          PC.battles.record(c, { location: c.location, monsterId: mob.id, level: mob.level, diff: D, result: won ? 'win' : fled ? 'fled' : 'lose',
+            turns: battle.turn, my: share && share.my, total: share && share.total, log: battle.log });
+          PC.battles.end();
+        }
         // Награда за общий бой: нужен вклад не меньше 5% от всего урона по монстру
         if (share && share.total > 0 && share.my < share.total * 0.05) state.fight.noReward = true;
         const summary = P.applyBattleResult(data, c, battle, state.fight, rng, { fled });
