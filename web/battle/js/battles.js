@@ -57,6 +57,7 @@
       const { data, error } = res;
       if (missing(error) || error) return;
       mine = data.id;
+      openParty(mine);
       await cl.from('battle_members').insert({ battle_id: mine, user_id: auth.user.id, nick: c.nick, level: c.level, job: c.job });
       soon();
     } catch (e) { console.warn('battle publish', e); }
@@ -66,6 +67,7 @@
   B.end = async function () {
     const was = mine;
     mine = null;
+    closeParty();
     if (!online()) return;
     try {
       if (was && B.coop) await auth.client.rpc('leave_battle', { p_battle: was });
@@ -86,6 +88,7 @@
       return { error: /battle_full/.test(m) ? 'В бою уже 10 игроков' : /battle_closed/.test(m) ? 'Бой уже закончился' : 'Не удалось вступить в бой' };
     }
     mine = data.id;
+    openParty(mine);
     soon();
     return data;
   };
@@ -100,13 +103,45 @@
     if (res.error) return null;
     const r = Array.isArray(res.data) ? res.data[0] : res.data;
     if (!r) return null;
-    let party = [];
-    if (B.party !== false) {
-      const q = await cl.from('battle_members').select('user_id,nick,level,hp,hp_max,res,res_max,res_color').eq('battle_id', mine);
-      if (q.error) { if (noColumn(q.error)) B.party = false; } else party = (q.data || []).filter((x) => x.user_id !== auth.user.id);
-    }
-    return { hp: Number(r.monster_hp), max: Number(r.monster_max), status: r.status, my: Number(r.my_damage), total: Number(r.total_damage), members: r.members, party };
+    return { hp: Number(r.monster_hp), max: Number(r.monster_max), status: r.status, my: Number(r.my_damage), total: Number(r.total_damage), members: r.members };
   };
+  // ---- Союзники в общем бою: мгновенно через Realtime (вступление/выход) и broadcast (здоровье, остаток монстра) ----
+  let pch = null;
+  const party = new Map(), cbs = { party: null, mon: null };
+  const emit = () => { if (cbs.party) cbs.party([...party.values()].filter((x) => x.user_id !== auth.user.id)); };
+  async function loadParty(id) {
+    if (B.party === false || !online()) return;
+    const q = await auth.client.from('battle_members').select('user_id,nick,level,job,hp,hp_max,res,res_max,res_color').eq('battle_id', id);
+    if (q.error) { if (noColumn(q.error)) B.party = false; return; }
+    const ids = new Set((q.data || []).map((x) => x.user_id));
+    for (const k of [...party.keys()]) if (!ids.has(k)) party.delete(k);
+    for (const r of q.data || []) {
+      const old = party.get(r.user_id);
+      party.set(r.user_id, old && old.hp_max ? { ...r, hp: old.hp, hp_max: old.hp_max, res: old.res, res_max: old.res_max, res_color: old.res_color } : r);
+    }
+    emit();
+  }
+  function openParty(id) {
+    closeParty();
+    if (B.party === false || !online()) return;
+    pch = auth.client.channel(`bparty:${id}`, { config: { broadcast: { self: false } } })
+      .on('broadcast', { event: 'vit' }, ({ payload }) => { party.set(payload.user_id, { ...(party.get(payload.user_id) || {}), ...payload }); emit(); })
+      .on('broadcast', { event: 'mon' }, ({ payload }) => { if (cbs.mon) cbs.mon(payload); })
+      .on('postgres_changes', { event: '*', schema: 'public', table: 'battle_members', filter: `battle_id=eq.${id}` }, () => loadParty(id))
+      .subscribe((st) => { if (st === 'SUBSCRIBED') loadParty(id); });
+    loadParty(id);
+  }
+  function closeParty() {
+    if (pch) { auth.client.removeChannel(pch); pch = null; }
+    party.clear();
+  }
+  B.listen = (p, m) => { cbs.party = p; cbs.mon = m; };
+  // Своё состояние и остаток монстра — остальным участникам сразу
+  B.pushVitals = function (v, c) {
+    if (!pch || !v) return;
+    pch.send({ type: 'broadcast', event: 'vit', payload: { user_id: auth.user.id, nick: c.nick, level: c.level, job: c.job, hp: Math.round(v.hp), hp_max: Math.round(v.hpMax), res: Math.round(v.res), res_max: Math.round(v.resMax), res_color: v.resColor || '' } });
+  };
+  B.pushMonster = (r) => { if (pch && r) pch.send({ type: 'broadcast', event: 'mon', payload: { hp: r.hp, max: r.max, status: r.status } }); };
   B.inBattle = () => !!mine;
 
   B.html = function () {
