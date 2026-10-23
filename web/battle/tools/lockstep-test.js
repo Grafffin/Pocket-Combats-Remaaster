@@ -324,4 +324,40 @@ test('одиночный хозяин закрыл страницу, остал�
   assert.strictEqual(a.battle.winner, a.battle.player, 'победа участнику');
 });
 
+test('вступление видно сразу, а новичок пропускает текущий ход', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(25000);                       // середина хода
+  const turnNow = host.turn.n;
+  const late = join(w, { uid: 'late', job: jobs[3] });
+  w.advance(300);                         // чуть больше задержки сети: хода не прошло
+  assert.strictEqual(host.turn.n, turnNow, 'ход ещё не сменился');
+  for (const s of [host, a, late]) assert.ok(s.battle.players.some((f) => f.key === 'late'), 'новичок виден сразу');
+  assert.ok(late.turn.joinWait && late.turn.acted, 'новичок в ожидании');
+  assert.strictEqual(late.submit('basic'), false, 'в этом ходу действовать нельзя');
+  const hp0 = host.battle.playerByKey('late').hp;
+  w.advance(12000);                       // ход закончился
+  assert.ok(host.battle.turn > turnNow, 'ход прошёл');
+  const f = host.battle.playerByKey('late');
+  assert.strictEqual(f.dealt, 0, 'в пропущенном ходу новичок не бил');
+  assert.ok(!late.turn.joinWait, 'в следующем ходу уже действует');
+  w.advance(22000);
+  assert.ok(f.dealt > 0 || f.support > 0 || host.battle.turn > turnNow + 1, 'дальше участвует');
+  sameBattle(host, a, 'host/a'); sameBattle(host, late, 'host/late');
+});
+
+test('награда делится по вкладу: больше импакта — больше доля', () => {
+  const b = new PC.Battle({ players: [{ key: 'x', tpl: mkTpl('x', jobs[0]) }, { key: 'y', tpl: mkTpl('y', jobs[1]) }, { key: 'z', tpl: mkTpl('z', jobs[2]) }], monster: weakMonster(), seed: 3, data, localKey: 'x' });
+  const [x, y, z] = b.players;
+  x.dealt = 600; y.dealt = 300; z.dealt = 100;
+  const r = [x, y, z].map((f) => b.rewardMult(f));
+  assert.ok(r[0].mult > r[1].mult && r[1].mult > r[2].mult, 'порядок по вкладу');
+  const sum = r.reduce((q, v) => q + v.mult, 0);
+  assert.ok(Math.abs(sum - r[0].pool) < 1e-9, 'сумма = пул 1 + 0.6·(n−1)');
+  assert.ok(Math.abs(r.reduce((q, v) => q + v.share, 0) - 1) < 1e-9, 'доли в сумме 1');
+  z.dealt = 0; z.support = 400;
+  assert.ok(b.rewardMult(z).share > 0.15, 'лечение и щиты тоже считаются');
+});
+
 console.log(`\nвсе тесты прошли: ${n}`);

@@ -89,7 +89,7 @@
 
   function onSharedTurn(t) {
     const b = ui.battle;
-    ui.turn = { start: t.start, end: t.end, monsterAt: t.end, autoAt: t.start, playerActed: !!t.acted, monsterActed: false };
+    ui.turn = { n: t.n, start: t.start, end: t.end, monsterAt: t.end, autoAt: t.start, playerActed: !!t.acted, monsterActed: false };
     renderSkillbar();
     updateBar();
     if (b.ended || b.player.hp <= 0 || !ui.opts.settings.autoBattle) return;
@@ -325,7 +325,8 @@
     const mark = $('#turn-mark');
     mark.style.left = `${((t.monsterAt - t.start) / dur) * 100}%`;
     mark.classList.toggle('done', t.monsterActed);
-    $('#turn-txt').textContent = t.playerActed ? `Ход сделан · следующий через ${Math.ceil(left / 1000)} с`
+    const jw = ui.session && ui.session.turn && ui.session.turn.joinWait && ui.session.turn.n === t.n;
+    $('#turn-txt').textContent = jw ? `Вы вступили — действуете со следующего хода · ${Math.ceil(left / 1000)} с` : t.playerActed ? `Ход сделан · следующий через ${Math.ceil(left / 1000)} с`
       : `Ваш ход: ${Math.ceil(left / 1000)} с${ui.opts.settings.autoBattle ? ' · автобой' : ''}`;
     $('#tick-label').textContent = `${Math.ceil(left / 1000)} с`;
   }
