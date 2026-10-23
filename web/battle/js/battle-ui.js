@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const { Battle, data, world: W } = PC;
-  const { $, art, avatar, openModal, closeModal, closeSheet } = PC.kit;
+  const { $, art, avatar, escapeHtml, openModal, closeModal, closeSheet } = PC.kit;
   const fmt = PC.fmtBig;
 
   const MIN_FIRST_TURN = 5000;  // если до границы тика меньше — первый ход длится до следующей
@@ -30,6 +30,7 @@
     $('#f-m').innerHTML = fighterHtml(b.monster);
     $('#f-m').classList.toggle('boss', b.monster.boss);
     ui.syncing = false;
+    renderParty([]);
     const sh = opts.shared;
     if (sh && sh.hp) { b.monster.maxHp = Number(sh.max); b.monster.hp = Number(sh.hp); }   // вступили в чужой бой: общий запас здоровья
     ui.lastHp = b.monster.hp;
@@ -68,14 +69,31 @@
       if (b.ended) pump();
     }
   }
+  // Союзники в общем бое: компактные карточки, видны всем участникам
+  function renderParty(list) {
+    const el = $('#party');
+    if (!el) return;
+    el.hidden = !list.length;
+    el.innerHTML = list.map((m) => {
+      const pct = m.hp_max ? Math.max(0, Math.min(1, m.hp / m.hp_max)) : 1;
+      const rp = m.res_max ? Math.max(0, Math.min(1, m.res / m.res_max)) : null;
+      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}"><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
+        ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${m.res_color || '#c9a227'}"></div></div></div>` : ''}</div>
+        <div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div></div>`;
+    }).join('');
+  }
+  const vitals = () => {
+    const p = ui.battle.player;
+    return { hp: p.hp, hpMax: p.maxHp, res: p.res, resMax: p.resMax, resColor: p.resource ? (data.resources[p.resource] || {}).color : '' };
+  };
   function syncShared() {
     const b = ui.battle, sh = ui.opts && ui.opts.shared;
     if (!sh || !b || b.ended || ui.finished || ui.syncing) return;
     const sentHp = b.monster.hp;
     ui.syncing = true;
-    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - sentHp))).then((r) => {
+    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - sentHp), vitals())).then((r) => {
       ui.syncing = false;
-      if (r && b === ui.battle && !b.ended && !ui.finished) applyShared(r, sentHp);
+      if (r && b === ui.battle && !b.ended && !ui.finished) { applyShared(r, sentHp); renderParty(r.party || []); }
     }, () => { ui.syncing = false; });
   }
 
@@ -154,10 +172,11 @@
 
   function fighterHtml(f) {
     const res = f.resource ? data.resources[f.resource] : null;
-    return `<div class="head">${avatar(f)}<div style="min-width:0">
-        <div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур. · скорость ${Math.round(f.s.speed)}</div></div></div>
-      <div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div></div><div class="num"><span>HP</span><span class="v"></span></div></div>
-      ${res ? `<div class="meter res"><div class="track"><div class="fill" style="background:${res.color}"></div></div><div class="num"><span>${res.name}</span><span class="v"></span></div></div>` : ''}
+    // Слева полоски здоровья и ресурса, справа имя и уровень (скорость не показываем)
+    return `<div class="head">${avatar(f)}
+        <div class="vit"><div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div><span class="v"></span></div></div>
+        ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div>
+        <div class="who"><div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур.</div></div></div>
       <div class="effects"></div>`;
   }
 
@@ -170,11 +189,12 @@
       fill.style.width = `${pct * 100}%`;
       fill.style.backgroundColor = pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
       el.querySelector('.hp .shield-fill').style.width = `${Math.min(1, s.shield / f.maxHp) * 100}%`;
-      el.querySelector('.hp .v').textContent = `${fmt(s.hp)}${s.shield ? ` +${fmt(s.shield)}` : ''} / ${fmt(f.maxHp)}`;
+      el.querySelector('.hp .v').textContent = `${fmt(s.hp)}${s.shield ? ` +${fmt(s.shield)}` : ''}`;
+      el.querySelector('.hp').title = `${fmt(s.hp)} / ${fmt(f.maxHp)}`;
       const res = el.querySelector('.res');
       if (res) {
         res.querySelector('.fill').style.width = `${(s.res / f.resMax) * 100}%`;
-        res.querySelector('.v').textContent = `${Math.round(s.res)} / ${f.resMax}`;
+        res.title = `${f.resName}: ${Math.round(s.res)} / ${f.resMax}`;
       }
       el.querySelector('.effects').innerHTML = s.effects.filter((e) => e.id !== 'shield').map((e) =>
         `<span class="chip ${e.kind}">${e.name}${e.disable || e.turns > 50 ? '' : ' ' + e.turns}</span>`).join('');
@@ -268,7 +288,7 @@
     let done = false;
     const end = (share) => { if (!done) { done = true; ui.opts.onEnd(b, { fled, share }); } };
     const timeout = setTimeout(() => end(null), 4000);
-    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - b.monster.hp))).then((r) => { clearTimeout(timeout); end(r); }, () => { clearTimeout(timeout); end(null); });
+    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - b.monster.hp), vitals())).then((r) => { clearTimeout(timeout); end(r); }, () => { clearTimeout(timeout); end(null); });
   }
 
   // ---------- Панель умений ----------
