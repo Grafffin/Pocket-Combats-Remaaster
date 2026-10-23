@@ -25,10 +25,20 @@
 
   const newUid = () => Math.random().toString(36).slice(2, 10);
 
-  function rollMob(loc, rng) {
-    const entry = rng.pick(loc.monsters);
-    return { uid: newUid(), id: entry[0], level: monsterLevel(entry, rng), deadUntil: null, busy: false };
+  // Монстр слота (slot, cycle) определяется только ими и id локации: у всех игроков на локации он одинаковый
+  function hashStr(str) {
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+    return h >>> 0;
   }
+  function rollMob(loc, locId, slot, cycle) {
+    const uid = `${locId}.${slot}.${cycle}`;
+    const rng = PC.makeRng(hashStr(uid));
+    const entry = rng.pick(loc.monsters);
+    return { uid, id: entry[0], level: monsterLevel(entry, rng), deadUntil: null, busy: false, slot, cycle };
+  }
+  // Сообщить общему миру (worldsync.js) об изменении монстра; без него всё работает локально
+  const share = (char, m, patch) => { if (PC.worldSync && m.slot != null) PC.worldSync.push(char.location, m, patch); };
 
   // Состояние локации: живые и убитые монстры, босс. Хранится в персонаже (в ММО — на сервере).
   function locState(data, char, locId, rng) {
@@ -38,7 +48,9 @@
     if (!st) {
       const size = loc.safe ? loc.monsters.length : poolSize(loc);
       st = char.world[locId] = { mobs: [] };
-      for (let i = 0; i < size; i++) st.mobs.push(loc.safe ? { uid: newUid(), id: loc.monsters[i][0], level: loc.monsters[i][1], deadUntil: null } : rollMob(loc, rng));
+      for (let i = 0; i < size; i++) st.mobs.push(loc.safe ? { uid: newUid(), id: loc.monsters[i][0], level: loc.monsters[i][1], deadUntil: null } : rollMob(loc, locId, i, 0));
+    } else if (!loc.safe && st.mobs.some((m) => m.slot == null)) {
+      st.mobs = st.mobs.map((m, i) => rollMob(loc, locId, i, 0));   // старое сохранение: переходим на общих монстров
     }
     return st;
   }
@@ -53,7 +65,10 @@
     for (const m of st.mobs) if (m.deadUntil != null && m.deadUntil > tick + RESPAWN_TICKS) m.deadUntil = tick + RESPAWN_TICKS;
     for (let i = 0; i < st.mobs.length; i++) {
       const m = st.mobs[i];
-      if (m.deadUntil != null && tick >= m.deadUntil) st.mobs[i] = loc.safe ? { ...m, deadUntil: null } : rollMob(loc, rng);
+      if (m.deadUntil != null && tick >= m.deadUntil) {
+        st.mobs[i] = loc.safe ? { ...m, deadUntil: null } : rollMob(loc, char.location, m.slot, m.cycle + 1);
+        if (!loc.safe) share(char, st.mobs[i], {});
+      }
       else if (m.busy && (m.busySince == null || tick - m.busySince > BUSY_TICKS)) m.busy = false;
     }
     if (st.boss && st.boss.busy && (st.boss.busySince == null || tick - st.boss.busySince > BUSY_TICKS)) st.boss.busy = false;
@@ -94,6 +109,7 @@
     if (!m || m.deadUntil != null) return { ok: false, reason: 'Этого монстра уже нет — дождитесь возрождения' };
     m.busy = true;
     m.busySince = tickOf(now);
+    share(char, m, { busy_until: m.busySince + BUSY_TICKS });
     return { ok: true, mob: m };
   }
 
@@ -104,9 +120,10 @@
     char.restTick = tickOf(now) + 1;
     if (!m) return;
     m.busy = false;
-    if (!won) return;
+    if (!won) { share(char, m, {}); return; }
     if (m.boss) { delete st.boss; return; }
     m.deadUntil = tickOf(now) + RESPAWN_TICKS;
+    share(char, m, { dead_until: m.deadUntil });
   }
 
   // Монстр для автоохоты: предпочтительно того же вида, боссы — никогда (их бьют вручную)
@@ -159,8 +176,8 @@
   }
 
   PC.world = {
-    TICK_MS, RESPAWN_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
-    here, monsterLevel, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
+    TICK_MS, RESPAWN_TICKS, BUSY_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
+    here, monsterLevel, hashStr, rollMob, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };
   if (typeof module !== 'undefined') module.exports = PC;
