@@ -427,7 +427,7 @@
     let shared = null;
     if (PC.battles) {
       if (!join) PC.battles.start(c, mob, { hp: Math.max(1, Math.round(monster.stats.maxHp)), diff: D });
-      shared = { hp: join && join.monster_hp, max: join && join.monster_max, sync: (dmg) => PC.battles.sync(dmg) };
+      shared = { hp: join && join.monster_hp, max: join && join.monster_max, sync: (dmg, v) => PC.battles.sync(dmg, v) };
     }
     app.save();
     $('#result').hidden = true;

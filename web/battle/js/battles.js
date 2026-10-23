@@ -90,13 +90,22 @@
     return data;
   };
 
-  // Общий запас здоровья монстра: отправить нанесённый урон, получить свежее состояние
-  B.sync = async function (damage) {
+  // Общий запас здоровья монстра: отправить нанесённый урон (и своё состояние), получить свежее состояние и список союзников
+  B.sync = async function (damage, v) {
     if (!mine || !online()) return null;
-    const { data, error } = await auth.client.rpc('battle_hit', { p_battle: mine, p_damage: Math.max(0, Math.round(damage || 0)) });
-    if (error) return null;
-    const r = Array.isArray(data) ? data[0] : data;
-    return r ? { hp: Number(r.monster_hp), max: Number(r.monster_max), status: r.status, my: Number(r.my_damage), total: Number(r.total_damage), members: r.members } : null;
+    const cl = auth.client, args = { p_battle: mine, p_damage: Math.max(0, Math.round(damage || 0)) };
+    let res = B.party !== false && v ? await cl.rpc('battle_hit', { ...args, p_hp: Math.round(v.hp), p_hp_max: Math.round(v.hpMax), p_res: Math.round(v.res), p_res_max: Math.round(v.resMax), p_res_color: v.resColor || '' }) : null;
+    if (res && res.error && res.error.code === 'PGRST202') { B.party = false; res = null; }
+    if (!res) res = await cl.rpc('battle_hit', args);
+    if (res.error) return null;
+    const r = Array.isArray(res.data) ? res.data[0] : res.data;
+    if (!r) return null;
+    let party = [];
+    if (B.party !== false) {
+      const q = await cl.from('battle_members').select('user_id,nick,level,hp,hp_max,res,res_max,res_color').eq('battle_id', mine);
+      if (q.error) { if (noColumn(q.error)) B.party = false; } else party = (q.data || []).filter((x) => x.user_id !== auth.user.id);
+    }
+    return { hp: Number(r.monster_hp), max: Number(r.monster_max), status: r.status, my: Number(r.my_damage), total: Number(r.total_damage), members: r.members, party };
   };
   B.inBattle = () => !!mine;
 
