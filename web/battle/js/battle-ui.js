@@ -62,6 +62,20 @@
     sess.on('turn', (t) => { if (live()) onSharedTurn(t); });
     sess.on('end', () => { if (live()) pump(); });
     sess.on('abort', (reason) => { if (live()) finish(false, reason); });
+    // История получена заново (потеряли ход, сменился хозяин): бой — новый объект, показываем его с чистого листа
+    sess.on('reset', () => {
+      if (!live()) return;
+      ui.battle = sess.battle;
+      $('#log').innerHTML = '';
+      const bb = ui.battle;
+      ui.shown = bb.log.length;
+      for (let i = Math.max(0, bb.log.length - 40); i < bb.log.length; i++) addEntry(bb.log[i]);
+      $('#f-p').innerHTML = fighterHtml(bb.player);
+      $('#f-m').innerHTML = fighterHtml(bb.monster);
+      applySnapshot(finalSnap());
+      if (sess.turn) onSharedTurn(sess.turn);
+      if (bb.ended || bb.player.hp <= 0) pump();
+    });
     if (sess.turn) onSharedTurn(sess.turn);
     if (b.ended || b.player.hp <= 0) pump();
   }
@@ -428,8 +442,7 @@
   }
 
   $('#leave').addEventListener('click', () => {
-    const host = ui.session && ui.session.host && ui.battle.alivePlayers().length > 1;
-    if (!ui.battle.ended && !confirm(host ? 'Вы хозяин боя: если сбежать, бой закроется для всех участников. Сбежать?' : 'Сбежать из боя? Это засчитается как поражение.')) return;
+    if (!ui.battle.ended && !confirm('Сбежать из боя? Это засчитается как поражение. Остальные продолжат бой.')) return;
     changeSettings({ autoHunt: false });
     finish(!ui.battle.ended && ui.battle.player.hp > 0);
   });

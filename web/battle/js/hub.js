@@ -463,7 +463,7 @@
           if (B) B.end();
           state.session = null; closeChannel();
           app.save();
-          toast(aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился' : 'Хозяин боя ушёл — бой прерван', 'bad');
+          toast(aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился или некому его вести' : 'Бой прерван', 'bad');
           show('hub'); render();
           return;
         }
@@ -523,13 +523,9 @@
       };
       sess.on('ready', launch);
       sess.on('abort', (reason) => { if (!started) { started = true; common.onEnd(null, { aborted: reason }); } });
-      if (host) {
-        // база знает состояние боя: список «Бои» и признак «бой жив»; по концу боя хозяин закрывает запись
-        sess.on('update', () => B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended));
-        sess.on('end', () => { if (!sess.stopped) { closeChannelLater(ch); B.end(); } });
-      } else {
-        sess.on('end', () => closeChannelLater(ch));
-      }
+      // расчёт боя может перейти к другому участнику (хозяин закрыл страницу), поэтому роль проверяем в момент события
+      sess.on('update', () => { if (sess.host) B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended); });
+      sess.on('end', () => { if (sess.host && !sess.stopped) { closeChannelLater(ch); B.end(); } else closeChannelLater(ch); });
       if (!host) toast('Вступаем в бой…');
       sess.start();
     });

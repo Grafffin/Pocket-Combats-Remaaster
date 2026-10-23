@@ -189,7 +189,6 @@
       const m = data[0], b = m.battles;
       if (!PC.data.monsters[b.monster_id]) return null;
       mine = b.id;
-      if (b.owner_id === auth.user.id) { B.end(); return null; }   // хозяин ушёл со страницы — бой считался у него, он потерян
       soon();
       return { ...b, resume: { hp: m.hp, hpMax: m.hp_max, res: m.res } };
     } catch (e) { return null; }

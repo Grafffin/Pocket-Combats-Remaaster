@@ -197,7 +197,7 @@ async function attack(p) {
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
   let stage = 'старт';
   try {
-    const A = await openPlayer(browser, 'user-a', 'Альфа', Object.keys(PC.data.classes)[0]);
+    let A = await openPlayer(browser, 'user-a', 'Альфа', Object.keys(PC.data.classes)[0]);
     const B = await openPlayer(browser, 'user-b', 'Бета', Object.keys(PC.data.classes)[2]);
     await tankify(A.page, 40, 0.3); await tankify(B.page, 40, 0.3);
 
@@ -240,13 +240,31 @@ async function attack(p) {
     assert.strictEqual(await monHp(A.page), await monHp(B.page), 'после возврата здоровье монстра одинаково');
     console.log('ok   после обновления страницы участник вернулся в тот же бой');
 
-    stage = 'хозяин уходит — бой прерван';
-    await A.page.evaluate(() => { window.confirm = () => true; document.querySelector('#leave').click(); });
-    await until(() => B.page.evaluate(() => !!document.querySelector('#toast, .toast') && !document.querySelector('#battle').hidden === false), 15000, 'вышли из боя у участника');
-    assert.ok(!(await visible(B.page, '#battle')), 'у участника бой закрыт');
-    console.log('ok   когда хозяин ушёл, у участника бой прерван без потерь');
-    const lossB = await B.page.evaluate(() => PC.app.state.char.losses);
-    assert.strictEqual(lossB, 0, 'участнику не засчитано поражение');
+    stage = 'хозяин закрыл страницу — бой идёт у остального';
+    const turnBefore = Number(String(await turnNo(B.page)).replace(/\D/g, ''));
+    await A.page.context().close();   // закрыли игру целиком, без «выхода»
+    pages.splice(pages.indexOf(A), 1);
+    await sleep(42000);               // 15 с тишины, передача расчёта и пара тиков
+    const turnAfter = Number(String(await turnNo(B.page)).replace(/\D/g, ''));
+    assert.ok(turnAfter > turnBefore + 1, `бой не остановился: ход ${turnBefore} → ${turnAfter}`);
+    assert.ok(await visible(B.page, '#battle'), 'экран боя у участника остался');
+    assert.ok((await logOf(B.page)).some((t) => /Альфа замешкал/.test(t)), 'герой ушедшего хозяина пропускает ходы (AFK)');
+    assert.strictEqual(await B.page.evaluate(() => PC.app.state.char.losses), 0, 'поражение не засчитано');
+    console.log('ok   хозяин закрыл игру: бой пошёл дальше у участника, герой хозяина AFK');
+
+    stage = 'прежний хозяин возвращается';
+    const A2 = await openPlayer(browser, 'user-a', 'Альфа', Object.keys(PC.data.classes)[0]);
+    await tankify(A2.page, 40, 0.3);
+    await until(() => visible(A2.page, '#battle'), 40000, 'возврат прежнего хозяина в бой');
+    await sleep(14000);
+    assert.deepStrictEqual(tail(await logOf(A2.page)), tail(await logOf(B.page)), 'вернувшийся видит тот же бой');
+    assert.strictEqual(await monHp(A2.page), await monHp(B.page), 'здоровье монстра одинаково');
+    console.log('ok   вернувшийся хозяин вернулся в тот же бой участником');
+
+    stage = 'оба выходят из боя';
+    for (const p of [A2, B]) await p.page.evaluate(() => { window.confirm = () => true; document.querySelector('#leave').click(); });
+    A = A2;
+    await sleep(2000);
 
     stage = 'бой до смерти монстра';
     await Promise.all([A, B].map((p) => p.page.evaluate(() => { document.querySelector('#to-camp') && document.querySelector('#to-camp').click(); })));
