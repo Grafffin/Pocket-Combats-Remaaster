@@ -166,28 +166,6 @@ test('выход участника: остальные продолжают, о
   sameBattle(host, b, 'host/b после выхода a');
 });
 
-test('хозяин закрыл бой: остальные получают abort', () => {
-  const w = makeWorld();
-  const strong = tank();
-  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: strong });
-  const a = join(w, { uid: 'a', job: jobs[1] });
-  w.advance(15000);
-  host.leave();
-  w.advance(500);
-  assert.deepStrictEqual(a.events, ['abort:host_left']);
-});
-
-test('хозяин пропал без сообщения: через 30 секунд abort', () => {
-  const w = makeWorld();
-  const strong = tank();
-  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: strong });
-  const a = join(w, { uid: 'a', job: jobs[1] });
-  w.advance(15000);
-  host.stop();                  // страницу хозяина закрыли без «leave»
-  w.advance(45000);
-  assert.deepStrictEqual(a.events, ['abort:host_timeout']);
-});
-
 test('нет хозяина: вступающий получает abort:nohost', () => {
   const w = makeWorld();
   const a = join(w, { uid: 'a', job: jobs[1] });
@@ -208,16 +186,6 @@ test('11-й игрок не помещается', () => {
   sameBattle(host, peers[0], '10 игроков');
 });
 
-test('молчун без действий выбывает через несколько ходов', () => {
-  const w = makeWorld();
-  const strong = tank();
-  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: strong });
-  const a = join(w, { uid: 'a', job: jobs[1], auto: false });
-  w.advance(150000);
-  const f = host.battle.playerByKey('a');
-  assert.ok(f.left || f.hp <= 0, 'молчун убран или погиб');
-});
-
 test('зелье применяется у всех одинаково', () => {
   const w = makeWorld();
   const strong = tank();
@@ -229,6 +197,131 @@ test('зелье применяется у всех одинаково', () => {
   a.submitPotion(Object.keys(data.consumables)[0]);
   w.advance(30000);
   sameBattle(host, a, 'с зельем');
+});
+
+const fightLen = (w, ms) => w.advance(ms);
+const closeAll = (...ss) => ss.forEach((x) => x.stop());
+
+test('хозяин закрыл страницу: его герой AFK, расчёт переходит к другому, бой идёт до конца', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(5) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(25000);
+  const turnBefore = a.battle.turn;
+  host.stop();                                   // закрыли страницу без «выхода»
+  w.advance(60000);
+  assert.ok(a.host || b.host, 'кто-то стал хозяином');
+  assert.ok(a.battle.turn > turnBefore + 2, 'бой не остановился');
+  assert.ok(!a.battle.playerByKey('h').left, 'герой хозяина остался в бою');
+  assert.ok(a.battle.log.some((e) => /замешкал/.test(e.text) && /h/.test(e.text) || /замешкал/.test(e.text)), 'пропускает ходы');
+  w.advance(900000);
+  for (const s of [a, b]) assert.ok(s.battle.ended, 'бой закончился');
+  sameBattle(a, b, 'a/b после смены хозяина');
+});
+
+test('хозяин вышел из боя: расчёт передаётся сразу', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(25000);
+  const t0 = a.battle.turn;
+  host.leave();
+  w.advance(20000);
+  assert.ok(a.host || b.host);
+  assert.ok(a.battle.playerByKey('h').left, 'вышедший убран из боя');
+  assert.ok(a.battle.turn > t0, 'бой пошёл дальше');
+  sameBattle(a, b, 'после выхода хозяина');
+});
+
+test('закрыли страницу и хозяин, и первый кандидат: берёт третий', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  const c = join(w, { uid: 'c', job: jobs[3] });
+  w.advance(25000);
+  closeAll(host, a);
+  const t0 = b.battle.turn;
+  w.advance(90000);
+  assert.ok(b.host, 'b стал хозяином (следующий по порядку после a)');
+  assert.ok(b.battle.turn > t0 + 3);
+  sameBattle(b, c, 'b/c');
+});
+
+test('хозяин успел отправить ход только одному: новый хозяин догоняет, расхождения нет', () => {
+  let n3 = false;
+  const w = makeWorld({ drop: (m, uid) => { if (m.t === 'turn' && m.rec.n === 3 && uid === 'a') { n3 = true; w.setT(() => host.stop(), 60); return true; } return false; } });
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(60000);
+  assert.ok(n3);
+  assert.ok(a.host, 'a — первый кандидат');
+  w.advance(50000);
+  sameBattle(a, b, 'a/b: ход 3 не пропал и не пересчитан иначе');
+  assert.ok(a.battle.turn >= 6);
+});
+
+test('разрыв связи у участника (ложная тревога): после восстановления хозяин один и все согласны', () => {
+  let cut = false;
+  const w = makeWorld({ drop: (m, uid) => cut && ((uid === 'a' && m.h === 'h') || (m.t === 'act' || m.t === 'hello') && m.uid === 'a' && uid === 'h') });
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(25000);
+  cut = true;
+  w.advance(30000);
+  cut = false;
+  w.advance(60000);
+  const hosts = [host, a, b].filter((s) => s.host);
+  assert.strictEqual(hosts.length, 1, `хозяин один, а их ${hosts.length}`);
+  sameBattle(host, b, 'h/b');
+  sameBattle(a, b, 'a/b');
+});
+
+test('AFK-участник остаётся в бою до конца и может вернуться', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(25000);
+  a.stop();                                         // закрыл страницу
+  w.advance(100000);
+  assert.ok(!host.battle.ended);
+  assert.ok(!host.battle.playerByKey('a').left, 'остался в бою, а не выбыл');
+  const a2 = join(w, { uid: 'a', job: jobs[1] });   // открыл заново
+  w.advance(4000);
+  sameBattle(host, a2, 'после возврата AFK');
+  assert.strictEqual(host.battle.players.filter((f) => f.key === 'a').length, 1);
+  w.advance(500000);
+  sameBattle(host, a2, 'в конце');
+});
+
+test('вернувшийся прежний хозяин становится обычным участником', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(25000);
+  host.stop();
+  w.advance(40000);
+  assert.ok(a.host);
+  const h2 = join(w, { uid: 'h', job: jobs[0] });   // страницу открыли заново: уже как участник
+  w.advance(4000);
+  assert.ok(!h2.host && h2.battle, 'синхронизировался как участник');
+  sameBattle(a, h2, 'новый хозяин и вернувшийся');
+  assert.strictEqual(a.battle.players.filter((f) => f.key === 'h').length, 1);
+});
+
+test('одиночный хозяин закрыл страницу, остался один участник: он доигрывает бой', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(4) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(15000);
+  host.stop();
+  w.advance(500000);
+  assert.ok(a.battle.ended && a.battle.monster.dead, 'монстр убит');
+  assert.strictEqual(a.battle.winner, a.battle.player, 'победа участнику');
 });
 
 console.log(`\nвсе тесты прошли: ${n}`);

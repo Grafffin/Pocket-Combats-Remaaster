@@ -572,7 +572,8 @@
 
     removePlayer(key) {
       const f = this.playerByKey(key);
-      if (!f || f.left || f.hp <= 0) return;
+      if (!f || f.left) return;
+      if (f.hp <= 0) { f.left = true; return; }   // погибший просто больше не участвует и не может стать хозяином боя
       f.left = true;
       f.hp = 0;
       f.dead = true;
