@@ -5,7 +5,7 @@
 (function () {
   'use strict';
   const { Battle, data, world: W } = PC;
-  const { $, art, avatar, escapeHtml, openModal, closeModal, closeSheet } = PC.kit;
+  const { $, art, avatar, escapeHtml, openModal, closeModal, closeSheet, toast } = PC.kit;
   const fmt = PC.fmtBig;
 
   const MIN_FIRST_TURN = 5000;  // если до границы тика меньше — первый ход длится до следующей
@@ -17,12 +17,15 @@
     timers: [], barTimer: null, pumping: false,
   };
 
+  // opts.session — общий бой (PC.lockstep): мир, здоровье монстра и лог общие для всех участников, ходы приходят от хозяина.
+  // Без session бой одиночный и считается здесь же в реальном времени тика.
   function start(opts) {
     stop();
     ui.opts = opts;
-    ui.battle = new Battle({ player: opts.player, monster: opts.monster, data });
+    const sess = ui.session = opts.session || null;
+    ui.battle = sess ? sess.battle : new Battle({ player: opts.player, monster: opts.monster, data });
     const rs = opts.resume;   // вернулись в бой после обновления страницы: берём сохранённые здоровье и ресурс
-    if (rs && rs.hp > 0) {
+    if (!sess && rs && rs.hp > 0) {
       const p = ui.battle.player;
       p.hp = Math.max(1, Math.min(p.maxHp, rs.hp));
       if (rs.res != null && p.resMax) p.res = Math.max(0, Math.min(p.resMax, rs.res));
@@ -35,28 +38,58 @@
     $('#f-p').innerHTML = fighterHtml(b.player);
     $('#f-m').innerHTML = fighterHtml(b.monster);
     $('#f-m').classList.toggle('boss', b.monster.boss);
-    ui.syncing = false;
-    renderParty([]);
-    const sh = opts.shared;
-    if (sh && sh.hp) { b.monster.maxHp = Number(sh.max); b.monster.hp = Number(sh.hp); }   // вступили в чужой бой: общий запас здоровья
-    ui.lastHp = b.monster.hp;
-    if (sh) {
-      ui.syncTimer = setInterval(syncShared, 3000);
-      ui.vitSig = '';
-      ui.vitTimer = setInterval(pushVitals, 1000);
-      if (sh.listen) sh.listen(renderParty, (r) => {   // остаток здоровья монстра от других участников — сразу
-        const bb = ui.battle;
-        if (bb && !bb.ended && !ui.finished && r && r.max) applyShared({ hp: Number(r.hp), max: Number(r.max), status: r.status }, bb.monster.hp);
-      });
-      setTimeout(() => { syncShared(); pushVitals(); }, 300);
-    }
     renderToggles();
     ui.barTimer = setInterval(updateBar, 100);
+    if (sess) return startShared(sess);
     const now = Date.now();
     let end = now + W.msToNextTick(now);
     if (end - now < MIN_FIRST_TURN) end += W.TICK_MS;
     beginTurn(now, end);
     pump();
+  }
+
+  // ---------- Общий бой ----------
+
+  function startShared(sess) {
+    const b = ui.battle;
+    // вступили в уже идущий бой: прошлое показываем сразу, без задержек
+    const from = Math.max(0, b.log.length - 40);
+    ui.shown = b.log.length;
+    for (let i = from; i < b.log.length; i++) addEntry(b.log[i]);
+    if (b.log.length) applySnapshot(finalSnap());
+    const live = () => ui.session === sess && !ui.finished;
+    sess.on('update', () => { if (live()) { renderSkillbar(); pump(); } });
+    sess.on('turn', (t) => { if (live()) onSharedTurn(t); });
+    sess.on('end', () => { if (live()) pump(); });
+    sess.on('abort', (reason) => { if (live()) finish(false, reason); });
+    if (sess.turn) onSharedTurn(sess.turn);
+    if (b.ended || b.player.hp <= 0) pump();
+  }
+
+  // Состояние всех бойцов прямо сейчас (последняя запись лога могла быть до вступления кого-то)
+  function finalSnap() {
+    const b = ui.battle, snap = {};
+    for (const f of b.fighters) snap[f.id] = { hp: f.hp, res: f.res, shield: b.shieldOf(f), effects: f.effects.map((e) => ({ id: e.id, name: e.name, kind: e.kind, turns: e.turns, disable: e.disable })) };
+    return snap;
+  }
+
+  function onSharedTurn(t) {
+    const b = ui.battle;
+    ui.turn = { start: t.start, end: t.end, monsterAt: t.end, autoAt: t.start, playerActed: !!t.acted, monsterActed: false };
+    renderSkillbar();
+    updateBar();
+    if (b.ended || b.player.hp <= 0 || !ui.opts.settings.autoBattle) return;
+    sharedAuto();
+  }
+
+  // Автобой в общем бою: решение принимаем в начале хода (состояние боя до конца хода не меняется)
+  function sharedAuto() {
+    const b = ui.battle, sess = ui.session, p = b.player;
+    if (!sess.turn || sess.turn.acted || b.ended || p.hp <= 0) return;
+    autoPotions();
+    sess.submit(b.autoAction(p));
+    ui.turn.playerActed = true;
+    renderSkillbar();
   }
 
   function clearTimers() { ui.timers.forEach(clearTimeout); ui.timers = []; }
@@ -66,60 +99,24 @@
     ui.finished = true;
     clearTimers();
     clearInterval(ui.barTimer);
-    clearInterval(ui.syncTimer);
-    clearInterval(ui.vitTimer);
-    if (ui.opts && ui.opts.shared && ui.opts.shared.listen) ui.opts.shared.listen(null, null);
   }
 
-  // Общий бой: отправляем нанесённый монстру урон и берём общий остаток его здоровья
-  function applyShared(r, sentHp) {
-    const b = ui.battle, m = b.monster;
-    const delta = m.hp - sentHp;                        // что изменилось у нас, пока шёл запрос
-    m.maxHp = r.max;
-    m.hp = Math.max(0, Math.min(r.max, r.hp + Math.min(0, delta)));
-    ui.lastHp = r.hp;
-    if (r.hp <= 0 || r.status === 'finished') m.hp = 0;
-    if (m.hp <= 0) b.checkDeath(m);
-    const last = b.log[b.log.length - 1];
-    if (last) {
-      applySnapshot({ ...last.snap, [m.id]: { ...last.snap[m.id], hp: m.hp } });
-      if (b.ended) pump();
-    }
-  }
-  // Союзники в общем бое: компактные карточки, видны всем участникам
-  function renderParty(list) {
+  // Разметка карточек союзников из состояния бойцов (hp берём из снимка записи лога, чтобы цифры совпадали с логом)
+  function renderParty(snap) {
     const el = $('#party');
-    if (!el) return;
-    el.hidden = !list.length;
-    el.innerHTML = list.map((m) => {
-      const pct = m.hp_max ? Math.max(0, Math.min(1, m.hp / m.hp_max)) : 1;
-      const rp = m.res_max ? Math.max(0, Math.min(1, m.res / m.res_max)) : null;
-      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}">${avatar({ art: `classes/${m.job}`, name: m.nick }, 28)}<div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
-        ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${m.res_color || '#c9a227'}"></div></div></div>` : ''}</div>
-        </div>`;
+    const b = ui.battle;
+    if (!el || !ui.session) return;
+    const mates = b.players.filter((f) => f !== b.player);
+    el.hidden = !mates.length;
+    el.innerHTML = mates.map((f) => {
+      const s = snap[f.id] || { hp: f.hp, res: f.res };
+      const pct = Math.max(0, Math.min(1, s.hp / f.maxHp));
+      const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
+      const col = f.resource ? (data.resources[f.resource] || {}).color : '';
+      const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
+      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
+        ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
-  }
-  const vitals = () => {
-    const p = ui.battle.player;
-    return { hp: p.hp, hpMax: p.maxHp, res: p.res, resMax: p.resMax, resColor: p.resource ? (data.resources[p.resource] || {}).color : '' };
-  };
-  function pushVitals() {
-    const b = ui.battle, sh = ui.opts && ui.opts.shared;
-    if (!sh || !sh.pushVitals || !b || ui.finished) return;
-    const v = vitals(), sig = `${Math.round(v.hp)}|${Math.round(v.res)}|${v.hpMax}`;
-    if (sig === ui.vitSig) return;
-    ui.vitSig = sig;
-    sh.pushVitals(v);
-  }
-  function syncShared() {
-    const b = ui.battle, sh = ui.opts && ui.opts.shared;
-    if (!sh || !b || b.ended || ui.finished || ui.syncing) return;
-    const sentHp = b.monster.hp;
-    ui.syncing = true;
-    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - sentHp), vitals())).then((r) => {
-      ui.syncing = false;
-      if (r && b === ui.battle && !b.ended && !ui.finished) { applyShared(r, sentHp); if (sh.pushMonster) sh.pushMonster(r); }
-    }, () => { ui.syncing = false; });
   }
 
   // ---------- Ход ----------
@@ -160,6 +157,10 @@
   function playerAct(skillId) {
     const b = ui.battle, t = ui.turn;
     if (ui.finished || b.ended || t.playerActed) return;
+    if (ui.session) {
+      if (ui.session.submit(skillId)) { t.playerActed = true; renderSkillbar(); updateBar(); }
+      return;
+    }
     t.playerActed = true;
     b.act(b.player, skillId);
     afterAction();
@@ -205,10 +206,20 @@
         <div class="effects"></div></div>${f.isPlayer ? '<div class="party" id="party" hidden></div>' : ''}`;
   }
 
+  // Карточка бойца на экране: свой герой и монстр; остальные участники показываются строками в плашке героя
+  function elOf(id) {
+    const b = ui.battle;
+    if (b.player && id === b.player.id) return $('#f-p');
+    if (id === b.monster.id) return $('#f-m');
+    return null;
+  }
+
   function applySnapshot(snap) {
+    renderParty(snap);
     for (const f of ui.battle.fighters) {
       const s = snap[f.id];
-      const el = $(`#f-${f.id}`);
+      const el = elOf(f.id);
+      if (!s || !el) continue;
       const pct = s.hp / f.maxHp;
       const fill = el.querySelector('.hp .fill');
       fill.style.width = `${pct * 100}%`;
@@ -251,7 +262,8 @@
 
   function animateEvent(ev) {
     if (!ev) return;
-    const el = $(`#f-${ev.target}`);
+    const el = elOf(ev.target);
+    if (!el) return;
     if (ev.type === 'damage') { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
     const fl = document.createElement('div');
     fl.className = 'float';
@@ -273,14 +285,17 @@
       if (battle !== ui.battle) { ui.pumping = false; return; }
       if (ui.shown >= battle.log.length) {
         ui.pumping = false;
-        if (battle.ended && !ui.finished) setTimeout(() => finish(false), 700);
+        // бой окончен или в общем бою погиб мой герой (остальные дерутся дальше)
+        if ((battle.ended || (ui.session && battle.player.hp <= 0)) && !ui.finished) setTimeout(() => finish(false), 700);
         return;
       }
       const entry = battle.log[ui.shown++];
       addEntry(entry);
       applySnapshot(entry.snap);
       animateEvent(entry.ev);
-      setTimeout(next, entry.type === 'poetry' ? 500 : STEP_MS);
+      // в большом бою лога много: ускоряем показ, чтобы он не отставал от тиков
+      const backlog = battle.log.length - ui.shown;
+      setTimeout(next, entry.type === 'poetry' ? 500 : Math.max(40, Math.min(STEP_MS, 6000 / (backlog + 1))));
     };
     next();
   }
@@ -301,19 +316,17 @@
     $('#tick-label').textContent = `${Math.ceil(left / 1000)} с`;
   }
 
-  function finish(fled) {
+  // aborted: общий бой оборвался (хозяин ушёл, не нашли бой) — без потерь и наград
+  function finish(fled, aborted) {
     if (ui.finished) return;
     stop();
     closeSheet();
     closeModal();
     $('#tick-label').textContent = '';
-    const b = ui.battle, sh = ui.opts.shared;
-    if (!sh) return ui.opts.onEnd(b, { fled });
-    // Общий бой: последний отчёт об уроне, чтобы узнать свою долю
-    let done = false;
-    const end = (share) => { if (!done) { done = true; ui.opts.onEnd(b, { fled, share }); } };
-    const timeout = setTimeout(() => end(null), 4000);
-    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - b.monster.hp), vitals())).then((r) => { clearTimeout(timeout); end(r); }, () => { clearTimeout(timeout); end(null); });
+    const b = ui.battle, me = b.player;
+    const share = ui.session && me ? { my: me.dealt, total: b.totalDealt } : null;
+    if (ui.session && (fled || aborted || !ui.session.host)) ui.session.leave();   // хозяин при победе/гибели остаётся движком боя
+    ui.opts.onEnd(b, { fled, share, aborted: aborted || null });
   }
 
   // ---------- Панель умений ----------
@@ -321,7 +334,7 @@
   function renderSkillbar() {
     const b = ui.battle;
     const p = b.player;
-    const lock = b.ended || (ui.turn && ui.turn.playerActed);
+    const lock = b.ended || p.hp <= 0 || (ui.turn && ui.turn.playerActed);
     const buttons = [`<button class="sk basic" data-skill="basic" ${lock ? 'disabled' : ''}>${art('stats/atk', '⚔')}<span>Удар</span></button>`];
     for (const sk of p.skills) {
       const st = b.skillState(p, sk.id);
@@ -334,7 +347,7 @@
     const potions = p.consumables.filter((c) => c.count > 0);
     if (potions.length) {
       const total = potions.reduce((s, c) => s + c.count, 0);
-      buttons.push(`<button class="sk" data-act="potions" ${b.ended || !b.canUseConsumable(p) ? 'disabled' : ''} title="Зелья">
+      buttons.push(`<button class="sk" data-act="potions" ${b.ended || p.hp <= 0 || !b.canUseConsumable(p) || (ui.session && ui.session.turn && ui.session.turn.potted) ? 'disabled' : ''} title="Зелья">
         ${art('materials/potion_hp_1', '🧪')}<span>Зелья</span><span class="count">${total}</span>${potCd ? `<span class="cd">${potCd}</span>` : ''}</button>`);
     }
     const bar = $('#skillbar');
@@ -350,10 +363,11 @@
       return `<button class="mob" data-potion="${c.id}"><div class="ava" style="width:44px;height:44px">${art(d.art, '🧪')}</div>
         <div class="txt"><b>${d.name}</b><div class="meta">${d.desc} · есть ${c.count}</div></div></button>`;
     }).join('');
-    openModal('Зелья', `<p class="meta">Зелье не тратит ход. После него — откат ${data.POTION_CD} хода.</p><div class="list">${list}</div>`, (e) => {
+    openModal('Зелья', `<p class="meta">Зелье не тратит ход. После него — откат ${data.POTION_CD} хода.${ui.session ? ' В общем бою оно срабатывает в конце хода.' : ''}</p><div class="list">${list}</div>`, (e) => {
       const btn = e.target.closest('[data-potion]');
       if (!btn) return;
       closeModal();
+      if (ui.session) { if (ui.session.submitPotion(btn.dataset.potion)) { toast('Зелье будет выпито в конце хода'); afterAction(); } return; }
       if (b.useConsumable(p, btn.dataset.potion)) afterAction();
     });
   }
@@ -377,7 +391,8 @@
     renderToggles();
     if (ui.opts.onSettings) ui.opts.onSettings(ui.opts.settings);
     // Включили автобой посреди хода — он сработает сразу, если его момент уже прошёл
-    if (patch.autoBattle && ui.turn && !ui.turn.playerActed && Date.now() >= ui.turn.autoAt) autoAct();
+    if (patch.autoBattle && ui.turn && !ui.turn.playerActed && ui.session) sharedAuto();
+    else if (patch.autoBattle && ui.turn && !ui.turn.playerActed && Date.now() >= ui.turn.autoAt) autoAct();
   }
 
   $('#auto-btn').addEventListener('click', () => changeSettings({ autoBattle: !ui.opts.settings.autoBattle, autoHunt: ui.opts.settings.autoBattle ? false : ui.opts.settings.autoHunt }));
@@ -413,9 +428,10 @@
   }
 
   $('#leave').addEventListener('click', () => {
-    if (!ui.battle.ended && !confirm('Сбежать из боя? Это засчитается как поражение.')) return;
+    const host = ui.session && ui.session.host && ui.battle.alivePlayers().length > 1;
+    if (!ui.battle.ended && !confirm(host ? 'Вы хозяин боя: если сбежать, бой закроется для всех участников. Сбежать?' : 'Сбежать из боя? Это засчитается как поражение.')) return;
     changeSettings({ autoHunt: false });
-    finish(!ui.battle.ended);
+    finish(!ui.battle.ended && ui.battle.player.hp > 0);
   });
 
   // Подсказки по бойцам
