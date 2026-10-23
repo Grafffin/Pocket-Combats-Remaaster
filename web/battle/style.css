@@ -691,3 +691,9 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .chat-form { display: flex; gap: 6px; padding: 8px 10px calc(8px + env(safe-area-inset-bottom)); border-top: 1px solid var(--line); }
 .chat-form input { flex: 1; min-width: 0; padding: 9px 10px; border-radius: 8px; border: 1px solid var(--line); background: #0e1015; color: #e6e9f2; font: inherit; font-size: 16px; }
 .chat-form button { padding: 0 14px; border-radius: 8px; border: 0; background: #e8c36a; color: #1a1304; font: inherit; font-weight: 600; cursor: pointer; }
+
+/* Список боёв на локации */
+.battle-list { display: flex; flex-direction: column; gap: 6px; }
+.battle-row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,.04); font-size: 14px; }
+.battle-row.me b { color: var(--accent, #e8c36a); }
+.battle-row .vs { color: #e07a5f; }
