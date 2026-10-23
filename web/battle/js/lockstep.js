@@ -60,6 +60,8 @@
 
     let timer = null, helloTimer = null, watch = null, catchTimer = null, beat = null, lastHeard = k.now();
     let desyncs = 0;                        // отпечаток не сошёлся подряд
+    // Мой бой больше не продолжение боя хозяина (сменился хозяин, не сошёлся отпечаток): ходы не применяю, пока не придёт история
+    const goStale = () => { stale = true; buffer.clear(); joinBuf = []; lastResync = 0; resync(); };
     const buffer = new Map();               // пришедшие вперёд ходы
     let lastResync = 0;
     const knownLeaves = new Set();          // кто сказал, что выходит (нужно, если хозяин успел сказать это только остальным)
@@ -68,7 +70,9 @@
     let pend = null, pj = [], pl = [], waiters = new Set(), waiting = false;
 
     const expected = () => hist.turns.length + 1;
-    const hsend = (m) => k.send({ ...m, ep: S.epoch, h: k.uid });
+    const hsend = (m) => k.send({ ...m, ep: S.epoch, h: k.uid, len: hist ? hist.turns.length : 0 });
+    let hostLen = 0;                        // сколько ходов было у текущего хозяина в его последнем сообщении
+    let stale = false;                      // мой бой не продолжение боя хозяина: жду от него всю историю
     const nextLeft = () => {
       let left = k.tickLeft(k.now());
       if (left < 4000) left += k.TICK;
@@ -127,7 +131,7 @@
     function admit(j) {
       if (S.battle.playerByKey(j.key)) return;
       S.battle.addPlayer(j.tpl, j.key);
-      hsend({ t: 'join', n: S.turn.n, key: j.key, tpl: j.tpl });
+      hsend({ t: 'join', n: S.turn.n, key: j.key, tpl: j.tpl, all: pj.slice() });   // all — все вступившие в этом ходу по порядку: сообщения могут прийти вразнобой
       emit('update', { n: S.turn.n, join: j.key });
     }
 
@@ -176,20 +180,25 @@
         applyRec(m.rec);
         if (m.cs && m.cs !== checksum(S.battle)) {   // мой бой разошёлся с боем хозяина: дальше не считаем, берём историю заново
           emit('desync', m.rec.n);
-          buffer.clear();
           if (++desyncs > MAX_DESYNC) return abort('desync');
-          lastResync = 0;
-          return resync();
+          return goStale();
         }
         if (m.cs) desyncs = 0;
         if (S.battle.ended) return finish();
         if (m.next) setTurn(m.rec.n + 1, m.next.left);
-        for (const j of joinBuf.filter((x) => x.n === expected())) if (!S.battle.playerByKey(j.key)) S.battle.addPlayer(j.tpl, j.key);
+        for (const j of joinBuf.filter((x) => x.n === expected())) addJoins(j);
         joinBuf = joinBuf.filter((x) => x.n > expected());
       }
     }
 
     const rosterIndex = (uid) => S.battle.players.findIndex((f) => f.key === uid);
+
+    // Вступившие по порядку хозяина (сообщения о вступлении могут прийти вразнобой)
+    function addJoins(m) {
+      let added = false;
+      for (const j of m.all || [m]) if (!S.battle.playerByKey(j.key)) { S.battle.addPlayer(j.tpl, j.key); added = true; }
+      return added;
+    }
 
     // Хозяин потерял роль: мой бой мог разойтись с настоящим, поэтому берём историю заново
     function demote() {
@@ -197,22 +206,40 @@
       pend = null; pj = []; pl = []; waiters.clear(); waiting = false;
       k.clearT(timer); k.clearT(catchTimer);
       lastHeard = k.now();
-      sendHello();
+      goStale();
     }
 
-    // Сообщение хозяина допускается, если его эпоха не старая. Новая эпоха (или хозяин, вступивший раньше при равной) снимает роль с меня.
+    // Два хозяина (связь пропадала, и кто-то взял расчёт на себя): остаётся тот, у кого больше ходов,
+    // при равенстве — более поздняя эпоха, затем вступивший раньше. Порядок одинаков у всех, поэтому все сходятся на одном.
+    function better(m) {
+      const myLen = S.host ? hist.turns.length : hostLen, mine = S.host ? k.uid : S.hostUid;
+      if (m.len !== myLen) return m.len > myLen;
+      if (m.ep !== S.epoch) return m.ep > S.epoch;
+      const a = S.battle ? rosterIndex(m.h) : -1, b = S.battle ? rosterIndex(mine) : -1;
+      return a >= 0 && (b < 0 || a < b);
+    }
+
+    // Сообщение хозяина: от текущего — принимаем; от другого — только если он «лучше», тогда переходим к нему
     function gate(m) {
-      if (m.ep < S.epoch) return false;
-      if (m.ep > S.epoch) { S.epoch = m.ep; S.hostUid = m.h; if (S.host) demote(); lastHeard = k.now(); return true; }
-      if (S.hostUid == null || m.h === S.hostUid) { S.hostUid = m.h; lastHeard = k.now(); return true; }
-      const mine = S.host ? k.uid : S.hostUid;
-      if (S.battle && rosterIndex(m.h) >= 0 && rosterIndex(m.h) < rosterIndex(mine)) { S.hostUid = m.h; if (S.host) demote(); lastHeard = k.now(); return true; }
-      return false;
+      const len = m.len || 0;
+      if (S.hostUid == null || m.h === S.hostUid) {
+        S.hostUid = m.h; S.epoch = m.ep; hostLen = Math.max(len, m.h === S.hostUid ? hostLen : 0); lastHeard = k.now();
+        return true;
+      }
+      const silent = !S.host && k.now() - lastHeard > HOST_SILENCE;   // мой хозяин замолчал: новый по более поздней эпохе принимаем, даже если у него меньше ходов (догонит)
+      if (!(silent && m.ep > S.epoch) && !better({ ...m, len })) return false;
+      const wasHost = S.host;
+      S.hostUid = m.h; S.epoch = m.ep; hostLen = len; lastHeard = k.now();
+      if (wasHost) demote();
+      // новый хозяин продолжает мой бой, только если он объявил смену и ждёт ход, до которого я дошёл; иначе беру его историю
+      else if (S.ready && m.t !== 'sync' && !(m.t === 'host' && m.n <= expected())) goStale();
+      return true;
     }
 
     function peerReceive(m) {
       if (m.t === 'sync') {
         if (m.v !== k.version) return abort('version');
+        stale = false;
         buffer.clear();
         S.battle = new PC.Battle({ players: m.hist.roster, monster: m.hist.monster, seed: m.hist.seed, data: k.data, localKey: k.uid });
         hist = { seed: m.hist.seed, monster: m.hist.monster, roster: m.hist.roster, turns: [] };
@@ -223,21 +250,24 @@
         S.ready = true;
         k.clearI(helloTimer);
         if (m.cs && m.cs !== checksum(S.battle)) { emit('desync', expected() - 1); if (++desyncs > MAX_DESYNC) return abort('desync'); }
+        else desyncs = 0;
         if (S.battle.ended) { emit(first ? 'ready' : 'reset', S.battle); return finish(); }
         const waitJoin = (m.pj || []).some((j) => j.key === k.uid) && !hist.turns.some((r) => (r.joins || []).some((j) => j.key === k.uid));
         setTurn(expected(), m.cur.left, waitJoin ? { acted: true, joinWait: true } : null);
         emit(first ? 'ready' : 'reset', S.battle);
       } else if (m.t === 'full') {
         abort(m.why === 'version' ? 'version' : 'full');
-      } else if (!S.ready) {
+      } else if (!S.ready || stale) {
         // ждём sync
+        if (m.t === 'host' && stale) lastResync = 0;
+        if (stale) resync();
       } else if (m.t === 'ts') {
         if (m.n === expected()) setTurn(m.n, m.left);
         else if (m.n > expected()) resync();
       } else if (m.t === 'hb') {
         if (m.n > expected() && !buffer.has(expected())) resync();   // ход потерялся по дороге
       } else if (m.t === 'join') {
-        if (m.n === expected()) { if (!S.battle.playerByKey(m.key)) { S.battle.addPlayer(m.tpl, m.key); emit('update', { n: m.n, join: m.key }); } }
+        if (m.n === expected()) { if (addJoins(m)) emit('update', { n: m.n, join: m.key }); }
         else if (m.n > expected()) joinBuf.push(m);
       } else if (m.t === 'turn') {
         if (m.rec.n < expected()) return;
