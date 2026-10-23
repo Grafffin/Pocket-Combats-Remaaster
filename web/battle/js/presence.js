@@ -10,7 +10,7 @@
   let channel = null, key = null;
 
   function meta(c) {
-    return { id: auth.user.id, nick: c.nick, level: c.level, job: c.job, busy: !!(PC.app.state.fight) };
+    return { id: auth.user.id, nick: c.nick, level: c.level, job: c.job, busy: !$('#battle').hidden };
   }
 
   function collect() {
@@ -62,6 +62,7 @@
     if (c.transit) { if (channel) leave(); return; }
     if (pres.loc !== c.location || !channel) { join(c); return; }
     const k = JSON.stringify(meta(c));
+    if (!document.hidden) draw();   // страховка: карточка могла быть перерисована хабом без свежих данных
     if (key !== k) { key = k; channel.track(meta(c)); }
   }, 1000);
 
