@@ -330,14 +330,16 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .fighter.foe { border-top: 3px solid var(--foe); }
 .fighter.boss { box-shadow: 0 0 0 1px #6b3b1f, 0 0 20px rgba(255, 120, 60, .15); }
 .fighter .head { display: flex; gap: 8px; align-items: center; }
-.fighter .ava { width: 36px; height: 36px; flex: none; }
-.fighter .head { gap: 6px; }
-.vit { flex: 0 0 52px; display: flex; flex-direction: column; gap: 3px; min-width: 0; }
+.fighter .ava { width: 32px; height: 32px; flex: none; }
+.fighter .head { gap: 5px; }
+.vit { flex: 1 1 0; min-width: 40px; display: flex; flex-direction: column; gap: 3px; }
 .vit .meter { margin: 0; }
 .vit .meter.hp .track { height: 14px; }
 .vit .meter.hp .v { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 9px; font-weight: 700; color: #fff; text-shadow: 0 1px 2px #000; font-variant-numeric: tabular-nums; }
 .vit .meter.res .track { height: 5px; }
-.who { min-width: 0; flex: 1; }
+.who { min-width: 0; flex: 0 1 auto; max-width: 40%; }
+.fighter .head .effects { flex: 0 0 20px; margin: 0; min-height: 0; flex-direction: column; gap: 2px; }
+.fighter .head .chip { padding: 0 2px; font-size: 8px; line-height: 1.4; text-align: center; }
 .fighter .name { white-space: nowrap; }
 .party { margin-top: 6px; padding-top: 4px; border-top: 1px solid var(--line); max-height: 76px; overflow-y: auto; overscroll-behavior: contain; }
 .party[hidden] { display: none; }
@@ -345,7 +347,7 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .pmate .name { font-size: 12px; font-weight: 600; color: var(--ally); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pmate .lvl { font-size: 10px; color: var(--muted); }
 .pmate.dead { opacity: .45; filter: grayscale(.9); }
-.fighter .name { font-weight: 600; font-size: 13px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
+.fighter .name { font-weight: 600; font-size: 12px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
 .fighter.ally .name { color: var(--ally); }
 .fighter.foe .name { color: var(--foe); }
 .fighter .lvl { font-size: 11px; color: var(--muted); }

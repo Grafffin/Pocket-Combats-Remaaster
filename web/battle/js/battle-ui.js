@@ -34,7 +34,16 @@
     const sh = opts.shared;
     if (sh && sh.hp) { b.monster.maxHp = Number(sh.max); b.monster.hp = Number(sh.hp); }   // вступили в чужой бой: общий запас здоровья
     ui.lastHp = b.monster.hp;
-    if (sh) ui.syncTimer = setInterval(syncShared, 3000);
+    if (sh) {
+      ui.syncTimer = setInterval(syncShared, 3000);
+      ui.vitSig = '';
+      ui.vitTimer = setInterval(pushVitals, 1000);
+      if (sh.listen) sh.listen(renderParty, (r) => {   // остаток здоровья монстра от других участников — сразу
+        const bb = ui.battle;
+        if (bb && !bb.ended && !ui.finished && r && r.max) applyShared({ hp: Number(r.hp), max: Number(r.max), status: r.status }, bb.monster.hp);
+      });
+      setTimeout(() => { syncShared(); pushVitals(); }, 300);
+    }
     renderToggles();
     ui.barTimer = setInterval(updateBar, 100);
     const now = Date.now();
@@ -52,6 +61,8 @@
     clearTimers();
     clearInterval(ui.barTimer);
     clearInterval(ui.syncTimer);
+    clearInterval(ui.vitTimer);
+    if (ui.opts && ui.opts.shared && ui.opts.shared.listen) ui.opts.shared.listen(null, null);
   }
 
   // Общий бой: отправляем нанесённый монстру урон и берём общий остаток его здоровья
@@ -77,7 +88,7 @@
     el.innerHTML = list.map((m) => {
       const pct = m.hp_max ? Math.max(0, Math.min(1, m.hp / m.hp_max)) : 1;
       const rp = m.res_max ? Math.max(0, Math.min(1, m.res / m.res_max)) : null;
-      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}"><div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
+      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}">${avatar({ art: `classes/${m.job}`, name: m.nick }, 28)}<div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${m.res_color || '#c9a227'}"></div></div></div>` : ''}</div>
         </div>`;
     }).join('');
@@ -86,6 +97,14 @@
     const p = ui.battle.player;
     return { hp: p.hp, hpMax: p.maxHp, res: p.res, resMax: p.resMax, resColor: p.resource ? (data.resources[p.resource] || {}).color : '' };
   };
+  function pushVitals() {
+    const b = ui.battle, sh = ui.opts && ui.opts.shared;
+    if (!sh || !sh.pushVitals || !b || ui.finished) return;
+    const v = vitals(), sig = `${Math.round(v.hp)}|${Math.round(v.res)}|${v.hpMax}`;
+    if (sig === ui.vitSig) return;
+    ui.vitSig = sig;
+    sh.pushVitals(v);
+  }
   function syncShared() {
     const b = ui.battle, sh = ui.opts && ui.opts.shared;
     if (!sh || !b || b.ended || ui.finished || ui.syncing) return;
@@ -93,7 +112,7 @@
     ui.syncing = true;
     Promise.resolve(sh.sync(Math.max(0, ui.lastHp - sentHp), vitals())).then((r) => {
       ui.syncing = false;
-      if (r && b === ui.battle && !b.ended && !ui.finished) { applyShared(r, sentHp); renderParty(r.party || []); }
+      if (r && b === ui.battle && !b.ended && !ui.finished) { applyShared(r, sentHp); if (sh.pushMonster) sh.pushMonster(r); }
     }, () => { ui.syncing = false; });
   }
 
@@ -176,8 +195,8 @@
     return `<div class="head">${avatar(f)}
         <div class="who"><div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур.</div></div>
         <div class="vit"><div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div><span class="v"></span></div></div>
-        ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div></div>
-      <div class="effects"></div>${f.isPlayer ? '<div class="party" id="party" hidden></div>' : ''}`;
+        ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div>
+        <div class="effects"></div></div>${f.isPlayer ? '<div class="party" id="party" hidden></div>' : ''}`;
   }
 
   function applySnapshot(snap) {
@@ -197,7 +216,7 @@
         res.title = `${f.resName}: ${Math.round(s.res)} / ${f.resMax}`;
       }
       el.querySelector('.effects').innerHTML = s.effects.filter((e) => e.id !== 'shield').map((e) =>
-        `<span class="chip ${e.kind}">${e.name}${e.disable || e.turns > 50 ? '' : ' ' + e.turns}</span>`).join('');
+        `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}${e.disable || e.turns > 50 ? '' : e.turns}</span>`).join('');
       el.classList.toggle('dead', s.hp <= 0);
     }
   }
