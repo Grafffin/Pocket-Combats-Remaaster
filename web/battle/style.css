@@ -524,6 +524,7 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 /* ---------- Мир на тике ---------- */
 .mob.dead { opacity: .45; }
 .mob.dead .ava { filter: grayscale(1); }
+.mob-count { margin-left: 6px; font-weight: 800; color: var(--accent, #f0c46a); }
 .mob-status { display: inline-block; margin-top: 3px; font-size: 11px; font-weight: 700; color: var(--warn); }
 .boss-progress { margin-top: 10px; display: flex; flex-direction: column; gap: 4px; }
 .buff { display: inline-flex; align-items: center; gap: 2px; margin-left: 4px; }

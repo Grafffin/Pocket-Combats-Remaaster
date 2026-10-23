@@ -9,10 +9,16 @@
   const RESPAWN_TICKS = 1;      // убитый монстр возвращается на следующем тике
   const BUSY_TICKS = 12;        // «в бою» дольше 2 минут — бой брошен (перезагрузка страницы), монстр освобождается
 
-  // Сколько монстров живёт на локации. В ММО будет зависеть от числа игроков на ней.
+  // Сколько монстров живёт на локации: не меньше числа уровней зоны (каждый уровень представлен) и +2 за каждого игрока сверх первого
   const POOL_BASE = 6;
   const POOL_PER_PLAYER = 2;
-  const poolSize = (loc, players = 1) => (loc.pool || POOL_BASE) + POOL_PER_PLAYER * Math.max(0, players - 1);
+  const span = (loc) => (loc.levels ? loc.levels[1] - loc.levels[0] + 1 : 1);
+  const poolSize = (loc, players = 1) => Math.max(loc.pool || POOL_BASE, span(loc)) + POOL_PER_PLAYER * Math.max(0, players - 1);
+  // Игроков на локации героя (presence.js); без сети — один
+  const playersHere = (char) => {
+    const pr = root.PC && root.PC.presence;
+    return pr && pr.loc === char.location && pr.players.length ? pr.players.length : 1;
+  };
 
   const tickOf = (now) => Math.floor(now / TICK_MS);
   const tickStart = (tick) => tick * TICK_MS;
@@ -31,12 +37,19 @@
     for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
     return h >>> 0;
   }
+  // Уровень слота фиксирован: слоты по кругу проходят весь диапазон зоны, поэтому на локации есть монстры каждого уровня.
+  // Вид — случайный из тех, чей диапазон включает этот уровень.
   function rollMob(loc, locId, slot, cycle) {
     const uid = `${locId}.${slot}.${cycle}`;
     const rng = PC.makeRng(hashStr(uid));
-    const entry = rng.pick(loc.monsters);
-    return { uid, id: entry[0], level: monsterLevel(entry, rng), deadUntil: null, busy: false, slot, cycle };
+    const lo = loc.levels ? loc.levels[0] : loc.monsters[0][1];
+    const level = lo + (slot % span(loc));
+    const fit = loc.monsters.filter((e) => e[1] <= level && level <= e[2]);
+    const entry = rng.pick(fit.length ? fit : loc.monsters);
+    return { uid, id: entry[0], level: fit.length ? level : monsterLevel(entry, rng), deadUntil: null, busy: false, slot, cycle };
   }
+  const SLOT_V = 2;   // версия правила rollMob: старые сохранения пересчитываются
+
   // Сообщить общему миру (worldsync.js) об изменении монстра; без него всё работает локально
   const share = (char, m, patch) => { if (PC.worldSync && m.slot != null) PC.worldSync.push(char.location, m, patch); };
 
@@ -47,12 +60,24 @@
     let st = char.world[locId];
     if (!st) {
       const size = loc.safe ? loc.monsters.length : poolSize(loc);
-      st = char.world[locId] = { mobs: [] };
+      st = char.world[locId] = { mobs: [], v: SLOT_V };
       for (let i = 0; i < size; i++) st.mobs.push(loc.safe ? { uid: newUid(), id: loc.monsters[i][0], level: loc.monsters[i][1], deadUntil: null } : rollMob(loc, locId, i, 0));
     } else if (!loc.safe && st.mobs.some((m) => m.slot == null)) {
       st.mobs = st.mobs.map((m, i) => rollMob(loc, locId, i, 0));   // старое сохранение: переходим на общих монстров
+      st.v = SLOT_V;
+    } else if (!loc.safe && st.v !== SLOT_V) {
+      // монстры слотов по старому правилу: пересчитать, сохранив «мёртв» и «в бою»
+      st.mobs = st.mobs.map((m) => ({ ...rollMob(loc, locId, m.slot, m.cycle), deadUntil: m.deadUntil, busy: m.busy, busySince: m.busySince }));
+      st.v = SLOT_V;
     }
     return st;
+  }
+
+  // Подогнать число слотов под число игроков: новые слоты добавляются в конец, лишние свободные убираются с конца
+  function resize(loc, locId, st, players) {
+    const size = poolSize(loc, players);
+    while (st.mobs.length < size) st.mobs.push(rollMob(loc, locId, st.mobs.length, 0));
+    while (st.mobs.length > size && !st.mobs[st.mobs.length - 1].busy) st.mobs.pop();
   }
 
   // Обработать наступившие тики: возродить монстров, вызвать босса
@@ -60,6 +85,7 @@
     const tick = tickOf(now);
     const loc = here(data, char);
     const st = locState(data, char, char.location, rng);
+    if (!loc.safe) resize(loc, char.location, st, playersHere(char));
     // Защита от сохранений с другой длиной тика: ничего не может ждать дольше положенного
     if ((char.restTick || 0) > tick + 1) char.restTick = tick + 1;
     for (const m of st.mobs) if (m.deadUntil != null && m.deadUntil > tick + RESPAWN_TICKS) m.deadUntil = tick + RESPAWN_TICKS;
@@ -176,7 +202,7 @@
   }
 
   PC.world = {
-    TICK_MS, RESPAWN_TICKS, BUSY_TICKS, poolSize, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
+    TICK_MS, RESPAWN_TICKS, BUSY_TICKS, POOL_PER_PLAYER, poolSize, playersHere, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
     here, monsterLevel, hashStr, rollMob, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };

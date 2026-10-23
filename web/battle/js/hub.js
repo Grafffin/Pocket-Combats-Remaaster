@@ -258,7 +258,7 @@
     }).join('');
 
     const rest = W.restLeft(c, now);
-    const mobs = [st.boss, ...st.mobs].filter(Boolean).map((m) => mobRow(m, now, rest)).join('');
+    const mobs = [st.boss, ...mobGroups(st.mobs)].filter(Boolean).map((g) => mobRow(g.list ? g : { list: [g], key: g.uid }, now, rest)).join('');
     const kills = c.zoneKills[c.location] || 0;
     const bossNote = loc.boss && !st.boss
       ? `<div class="boss-progress"><span class="meta">${data.monsters[loc.boss[0]].name} появится после ${data.BOSS_KILLS} побед</span>
@@ -271,7 +271,7 @@
       <div class="card section"><h3>${loc.safe ? 'Тренировка' : 'Монстры'}
           <span class="note" id="rest-note">${rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`}</span></h3>
         <div class="list">${mobs}</div>${bossNote}
-        ${loc.safe ? '' : `<p class="hint">Монстров на локации ${st.mobs.length} (в ММО их число будет расти с числом игроков). Убитые возрождаются на следующем тике, после боя — передышка до тика. Тик — ${W.TICK_MS / 1000} с. Нажмите на монстра — его характеристики и добыча.</p>`}
+        ${loc.safe ? '' : `<p class="hint">Монстров на локации ${st.mobs.length}${PC.presence && PC.presence.loc === c.location ? ` — их больше, когда здесь больше игроков (+${W.POOL_PER_PLAYER} за каждого)` : ''}. Убитые возрождаются на следующем тике, после боя — передышка до тика. Тик — ${W.TICK_MS / 1000} с. Нажмите на монстра — его характеристики и добыча.</p>`}
         ${loc.safe ? '' : `<div class="row-actions"><button class="btn ${c.settings.autoHunt ? 'primary' : ''}" data-act="hunt">${c.settings.autoHunt ? 'Автоохота включена' : 'Начать автоохоту'}</button>
           <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
@@ -280,20 +280,45 @@
       ${PC.presence ? PC.presence.html() : ''}`;
   }
 
-  function mobRow(m, now, rest) {
+  // Одинаковые монстры одного уровня — одна карточка «xN»; карточки по возрастанию уровня
+  function mobGroups(mobs) {
+    const by = new Map();
+    for (const m of mobs) {
+      const key = `${m.id}.${m.level}`;
+      if (!by.has(key)) by.set(key, { key, list: [] });
+      by.get(key).list.push(m);
+    }
+    return [...by.values()].sort((a, b) => a.list[0].level - b.list[0].level || a.list[0].id.localeCompare(b.list[0].id));
+  }
+  // Статус карточки: сколько в бою и когда возродится ближайший; пусто — все свободны
+  function groupStatus(list, now) {
+    const busy = list.filter((m) => m.deadUntil == null && m.busy).length;
+    const dead = list.filter((m) => m.deadUntil != null);
+    const parts = [];
+    if (busy) parts.push(list.length > 1 ? `в бою ${busy}` : 'в бою');
+    if (dead.length) {
+      const sec = Math.ceil(Math.max(0, W.tickStart(Math.min(...dead.map((m) => m.deadUntil))) - now) / 1000);
+      parts.push(`${list.length > 1 ? `убито ${dead.length}, ` : ''}возродится через ${sec} с`);
+    }
+    return parts.join(' · ');
+  }
+
+  function mobRow(g, now, rest) {
     const c = state.char;
+    const free = g.list.filter((m) => m.deadUntil == null && !m.busy);
+    const m = free[0] || g.list[0];
     const def = data.monsters[m.id];
-    const dead = m.deadUntil != null;
+    const dead = !free.length && g.list.every((x) => x.deadUntil != null);
     const dd = data.difficulties[W.diffOf(c, c.location)];
     const exp = Math.round(M.rewards.exp(m.id, m.level) * P.expMultiplier(c.level, m.level) * dd.exp);
-    let status = '';
-    if (dead) status = `<span class="mob-status">возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с</span>`;
-    else if (m.busy) status = '<span class="mob-status">в бою</span>';
-    return `<div class="mob ${m.boss ? 'boss' : ''} ${dead ? 'dead' : ''}" data-mob="${m.uid}" data-mobinfo="${m.uid}">
+    const st = groupStatus(g.list, now);
+    const status = st ? `<span class="mob-status">${st}</span>` : '';
+    const count = g.list.length > 1 ? `<span class="mob-count">x${g.list.length}</span>` : '';
+    return `<div class="mob ${m.boss ? 'boss' : ''} ${dead ? 'dead' : ''}" data-mob="${m.uid}" data-mobgroup="${g.key}" data-mobinfo="${m.uid}">
       <div class="ava mob-ava" style="width:52px;height:52px">${art(def.art, def.emoji)}<span class="lvl-badge ${levelClass(m.level - c.level)}">${m.level}</span></div>
-      <div class="txt"><b>${def.name}</b>${m.boss ? '<span class="tag boss">босс</span>' : ''}<span class="tag kind">${KIND_NAME[def.kind] || ''}</span>
+      <div class="txt"><b>${def.name}</b>${count}${m.boss ? '<span class="tag boss">босс</span>' : ''}<span class="tag kind">${KIND_NAME[def.kind] || ''}</span>
         ${def.ai === 'idle' ? '' : `<div class="meta">≈${fmtNum(exp)} опыта</div>`}${status}</div>
-      <button class="attack-btn" data-attack="${m.uid}" ${dead || m.busy ? 'disabled' : ''} title="Напасть" aria-label="Напасть">${SWORDS}</button></div>`;
+      <button class="attack-btn" data-attack="${m.uid}" ${free.length ? '' : 'disabled'} title="Напасть" aria-label="Напасть">${SWORDS}</button></div>`;
   }
 
   $('#tab-world').addEventListener('click', (e) => {
@@ -435,10 +460,9 @@
     const rest = W.restLeft(c, now);
     const note = $('#rest-note');
     if (note) note.textContent = rest ? `передышка ${Math.ceil(rest / 1000)} с` : `тик ${Math.ceil(W.msToNextTick(now) / 1000)} с`;
-    for (const m of st.mobs) {
-      if (m.deadUntil == null) continue;
-      const el = $(`[data-mob="${m.uid}"] .mob-status`);
-      if (el) el.textContent = `возродится через ${Math.ceil(Math.max(0, W.tickStart(m.deadUntil) - now) / 1000)} с`;
+    for (const g of mobGroups(st.mobs)) {
+      const el = $(`[data-mobgroup="${g.key}"] .mob-status`);
+      if (el) el.textContent = groupStatus(g.list, now);
     }
   }
   state.worldTimer = setInterval(worldTick, 1000);
