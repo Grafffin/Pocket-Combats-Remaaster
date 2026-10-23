@@ -347,6 +347,8 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .pmate .name { font-size: 12px; font-weight: 600; color: var(--ally); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pmate .lvl { font-size: 10px; color: var(--muted); }
 .pmate.dead { opacity: .45; filter: grayscale(.9); }
+/* цель монстра в общем бою: лёгкая красная обводка */
+.fighter .head.aggro, .pmate.aggro { border-radius: 6px; outline: 1px solid rgba(235, 80, 70, .7); outline-offset: 2px; background: rgba(235, 80, 70, .07); box-shadow: 0 0 8px rgba(235, 80, 70, .2); }
 .fighter .name { font-weight: 600; font-size: 12px; line-height: 1.2; overflow: hidden; text-overflow: ellipsis; }
 .fighter.ally .name { color: var(--ally); }
 .fighter.foe .name { color: var(--foe); }
