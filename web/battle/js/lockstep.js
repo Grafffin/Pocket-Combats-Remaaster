@@ -287,7 +287,7 @@
       }
       let tries = 0;
       sendHello();
-      helloTimer = k.setI(() => { if (S.ready) return; if (++tries > 14) return abort('nohost'); sendHello(); }, 2000);
+      helloTimer = k.setI(() => { if (S.ready) return; if (++tries > 28) return abort('nohost'); sendHello(); }, 1000);
       watch = k.setI(checkHost, 1000);
       return S;
     };

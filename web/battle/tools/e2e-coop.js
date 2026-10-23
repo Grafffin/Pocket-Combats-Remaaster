@@ -219,6 +219,8 @@ async function attack(p) {
     stage = 'вступление из списка «Бои»';
     await until(() => B.page.evaluate(() => !!document.querySelector('[data-act="join-battle"]')), 20000, 'кнопка «Вступить» у второго игрока');
     await B.page.evaluate(() => document.querySelector('[data-act="join-battle"]').click());
+    await until(() => visible(B.page, '#battle'), 500, 'окно боя открылось сразу по «Вступить»');
+    console.log('ok   окно боя открывается сразу по «Вступить», история догоняется в фоне');
     await until(() => visible(B.page, '#battle'), 25000, 'экран боя у вступившего');
     console.log('ok   второй игрок вступил из списка и видит бой');
 

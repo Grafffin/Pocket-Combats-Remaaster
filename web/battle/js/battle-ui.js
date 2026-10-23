@@ -495,6 +495,7 @@
   }
 
   $('#leave').addEventListener('click', () => {
+    if (ui.opts && ui.opts.preview) { if (ui.opts.onCancel) ui.opts.onCancel(); return; }
     if (!ui.battle.ended && !confirm('Сбежать из боя? Это засчитается как поражение. Остальные продолжат бой.')) return;
     changeSettings({ autoHunt: false });
     finish(!ui.battle.ended && ui.battle.player.hp > 0);
@@ -518,5 +519,29 @@
       (f.effects.length ? `<p class="hint">${f.effects.map((x) => x.name).join(', ')}</p>` : ''));
   });
 
-  PC.battleUI = { start, stop, openAutoSettings };
+  // Окно боя сразу по «Вступить»: монстр и герой из строки списка боёв, пока хозяин не прислал историю
+  function preview(o) {
+    stop();
+    ui.opts = { settings: o.settings || {}, onSettings: o.onSettings, preview: true, onCancel: o.onCancel };
+    ui.session = null;
+    ui.turn = null;
+    ui.battle = new Battle({ player: o.player, monster: o.monster, data });
+    const m = ui.battle.monster;
+    if (o.maxHp > 0) { m.maxHp = o.maxHp; m.hp = Math.max(1, Math.min(o.maxHp, o.hp || o.maxHp)); }
+    ui.shown = 0;
+    ui.joinedAt.clear();
+    $('#log').innerHTML = '<div class="entry passed">Подключаемся к бою…</div>';
+    $('#turn-title').textContent = 'Вступаем в бой';
+    $('#f-p').innerHTML = fighterHtml(ui.battle.player);
+    $('#f-m').innerHTML = fighterHtml(m);
+    $('#f-m').classList.toggle('boss', !!m.boss);
+    renderToggles();
+    renderSkillbar();
+    for (const btn of document.querySelectorAll('#skillbar button')) btn.disabled = true;
+    $('#turn-fill').style.width = '0';
+    $('#turn-txt').textContent = 'Подключаемся к бою…';
+    $('#tick-label').textContent = '';
+  }
+
+  PC.battleUI = { start, stop, preview, openAutoSettings };
 })();

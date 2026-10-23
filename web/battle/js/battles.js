@@ -102,7 +102,7 @@
   // Вступить в чужой бой. Возвращает { id, monster_id, monster_level, diff, monster_hp, monster_max } или { error }.
   B.join = async function (c, id) {
     if (!online() || !B.coop) return { error: 'Совместные бои недоступны' };
-    await B.end();
+    B.end();   // не ждём: прежние свои бои убираются параллельно со вступлением
     const { data, error } = await auth.client.rpc('join_battle', { p_battle: id, p_nick: c.nick, p_level: c.level, p_job: c.job });
     if (error) {
       if (noColumn(error) || error.code === 'PGRST202' || error.code === '42883') { B.coop = false; return { error: 'Совместные бои ещё не включены на сервере' }; }
