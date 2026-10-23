@@ -101,9 +101,28 @@
     </div>
   </div>
 
+  <!-- Вход и регистрация -->
+  <div class="auth" id="auth" hidden>
+    <div class="auth-card">
+      <div class="brand"><img src="assets/ui/logo.svg" alt="" onerror="this.remove()"><span>Pocket Combats</span></div>
+      <form id="auth-form" novalidate>
+        <div class="field" id="auth-nick-field" hidden><label for="auth-nick">Ник</label><input id="auth-nick" maxlength="16" autocomplete="nickname" spellcheck="false"></div>
+        <div class="field"><label for="auth-email">Почта</label><input id="auth-email" type="email" autocomplete="email" inputmode="email"></div>
+        <div class="field"><label for="auth-pass">Пароль</label><input id="auth-pass" type="password" autocomplete="current-password"></div>
+        <p class="auth-msg" id="auth-msg" aria-live="polite"></p>
+        <button class="btn primary wide" id="auth-submit" type="submit">Войти</button>
+        <button class="auth-link" id="auth-switch" type="button">Нет аккаунта? Регистрация</button>
+      </form>
+      <button class="btn wide" id="auth-guest" type="button">Играть гостем</button>
+      <button class="auth-link" id="auth-offline" type="button">Играть офлайн</button>
+    </div>
+  </div>
+
   <!-- Всплывающие сообщения -->
   <div class="toasts" id="toasts"></div>
 
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.45.4/dist/umd/supabase.js"></script>
+  <script src="js/config.js"></script>
   <script src="js/data.js"></script>
   <script src="js/classes.js"></script>
   <script src="js/stats.js"></script>
@@ -118,6 +137,7 @@
   <script src="js/ui-kit.js"></script>
   <script src="js/item-ui.js"></script>
   <script src="js/battle-ui.js"></script>
+  <script src="js/auth.js"></script>
   <script src="js/hub.js"></script>
   <script src="js/bag-ui.js"></script>
   <script src="js/forge-ui.js"></script>
