@@ -39,7 +39,8 @@
     mode = m;
     $('#auth-nick-field').hidden = m !== 'register';
     $('#auth-submit').textContent = m === 'register' ? 'Зарегистрироваться' : 'Войти';
-    $('#auth-switch').textContent = m === 'register' ? 'Уже есть аккаунт? Войти' : 'Нет аккаунта? Регистрация';
+    $('#auth-tab-login').classList.toggle('on', m === 'login');
+    $('#auth-tab-register').classList.toggle('on', m === 'register');
     $('#auth-pass').autocomplete = m === 'register' ? 'new-password' : 'current-password';
     setMsg('');
   }
@@ -81,11 +82,13 @@
 
   window.addEventListener('DOMContentLoaded', async () => {
     $('#auth-form').addEventListener('submit', submit);
-    $('#auth-switch').addEventListener('click', () => setMode(mode === 'login' ? 'register' : 'login'));
+    $('#auth-tab-login').addEventListener('click', () => setMode('login'));
+    $('#auth-tab-register').addEventListener('click', () => setMode('register'));
+    $('#auth-eye').addEventListener('click', () => { const p = $('#auth-pass'); p.type = p.type === 'password' ? 'text' : 'password'; });
     $('#auth-guest').addEventListener('click', () => run(() => auth.client.auth.signInAnonymously()));
     $('#auth-offline').addEventListener('click', () => { offlineFlag.save(true); setOverlay(false); });
     setMode('login');
-    if (!auth.client) { $('#auth-msg').textContent = 'Нет связи с сервером — доступна офлайн-игра'; $('#auth-form').hidden = true; $('#auth-guest').hidden = true; }
+    if (!auth.client) { $('#auth-msg').textContent = 'Нет связи с сервером — доступна офлайн-игра'; $('#auth-form').hidden = true; $('#auth-guest').hidden = true; document.querySelector('.auth-tabs').hidden = true; }
     else {
       try {
         const { data } = await auth.client.auth.getSession();
