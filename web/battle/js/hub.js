@@ -148,6 +148,20 @@
     setTab(b.dataset.tab);
   });
 
+  function accNote() {
+    const a = PC.auth;
+    if (!a || !a.user) return 'Не выполнен вход';
+    return `${escapeHtml(a.profile ? a.profile.nick : 'Игрок')}${a.user.is_anonymous ? ' · гость' : ''}`;
+  }
+
+  function openAccount() {
+    const a = PC.auth;
+    if (a && a.user) {
+      openModal('Аккаунт', `<p>${accNote()}</p><button class="btn danger wide" data-out>Выйти</button>`,
+        (e) => { if (e.target.closest('[data-out]')) { closeModal(); a.signOut(); } });
+    } else if (a) a.open();
+  }
+
   // Дополнительное меню (☰): разделы, которым не нужно место на нижней панели
   function openMenu() {
     const village = app.inVillage();
@@ -158,6 +172,7 @@
       ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
       ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
       ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
+      ${item('account', 'ui/gear', 'Аккаунт', accNote(), true)}
       ${item('settings', 'ui/gear', 'Настройки', 'Скоро', false)}
     </div>`, (e) => {
       const b = e.target.closest('[data-menu]');
@@ -166,6 +181,7 @@
       if (b.dataset.menu === 'forge') setTab('forge');
       if (b.dataset.menu === 'alchemist') openAlchemist();
       if (b.dataset.menu === 'stash') PC.bagUI.openStash();
+      if (b.dataset.menu === 'account') openAccount();
     });
   }
 
