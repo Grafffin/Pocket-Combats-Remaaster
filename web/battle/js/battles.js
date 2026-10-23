@@ -45,27 +45,43 @@
     load();
   }
 
-  // Публикация своего боя (вызывается при нападении на монстра)
-  // extra: { hp, diff } — здоровье монстра и сложность, чтобы другие могли вступить
+  // Публикация своего боя — сразу при нажатии «Напасть», до первого хода (вызывается из startFight).
+  // extra: { hp, diff, id } — здоровье монстра, сложность и id боя, чтобы другие могли вступить
+  const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   B.start = async function (c, mob, extra) {
     if (!online()) return;
+    const prev = mine, id = extra && extra.id;
+    mine = id || null;   // бой «наш» с момента нажатия: B.end, вызванный до конца записи, его тоже закроет
+    const cl = auth.client;
     try {
-      await B.end();
-      const cl = auth.client;
+      // Прежний бой покидаем параллельно, не задерживая запись нового
+      if (prev && prev !== id && B.coop) cl.rpc('leave_battle', { p_battle: prev }).then(null, () => {});
+      if (!B.coop) await cl.from('battles').delete().eq('owner_id', auth.user.id);
       const row = { location_id: c.location, owner_id: auth.user.id, monster_id: mob.id, monster_level: mob.level };
-      if (extra && extra.id) row.id = extra.id;
-      let res = B.coop && extra ? await cl.from('battles').insert({ ...row, diff: extra.diff || 0, base_hp: extra.hp, monster_max: extra.hp, monster_hp: extra.hp }).select('id').single() : null;
-      if (!res || noColumn(res.error)) { if (res) B.coop = false; res = await cl.from('battles').insert(row).select('id').single(); }
-      // Без миграции 0011 прежний «идущий» бой хозяина мешает новому (уникальный индекс): убираем свои брошенные бои и пробуем снова
-      if (res.error && res.error.code === '23505') {
-        const stale = new Date(Date.now() - STALE_MS).toISOString();
-        await cl.from('battles').delete().eq('owner_id', auth.user.id).eq('status', 'running').lt('updated_at', stale);
-        res = B.coop && extra ? await cl.from('battles').insert({ ...row, diff: extra.diff || 0, base_hp: extra.hp, monster_max: extra.hp, monster_hp: extra.hp }).select('id').single() : res;
+      if (id) row.id = id;
+      const full = B.coop && extra ? { ...row, diff: extra.diff || 0, base_hp: extra.hp, monster_max: extra.hp, monster_hp: extra.hp } : null;
+      const insert = async () => {
+        let res = full ? await cl.from('battles').insert(full).select('id').single() : null;
+        if (!res || noColumn(res.error)) { if (res) B.coop = false; res = await cl.from('battles').insert(row).select('id').single(); }
+        return res;
+      };
+      let res = await insert();
+      for (let attempt = 0; attempt < 2 && res.error; attempt++) {
+        const e = res.error;
+        if (e.code === '23505') {   // без миграции 0011 прежний «идущий» бой хозяина мешает новому: убираем свои брошенные бои
+          const stale = new Date(Date.now() - STALE_MS).toISOString();
+          await cl.from('battles').delete().eq('owner_id', auth.user.id).eq('status', 'running').lt('updated_at', stale);
+        } else if (/too fast/.test(e.message || '')) {   // защита 0007: не чаще боя в 2 с (быстрый повтор после бегства)
+          await sleep(2100);
+        } else break;
+        res = await insert();
       }
       const { data, error } = res;
-      if (missing(error) || error) { if (error) console.warn('battle publish', error); return; }
+      if (missing(error) || error) { if (error) console.warn('battle publish', error); if (mine === id) mine = null; return; }
+      if (id && mine !== id) { cl.rpc('leave_battle', { p_battle: data.id }).then(null, () => {}); return; }   // бой уже кончился, пока писали
       mine = data.id;
       await cl.from('battle_members').insert({ battle_id: mine, user_id: auth.user.id, nick: c.nick, level: c.level, job: c.job });
+      if (mine !== data.id) cl.rpc('leave_battle', { p_battle: data.id }).then(null, () => {});
       soon();
     } catch (e) { console.warn('battle publish', e); }
   };

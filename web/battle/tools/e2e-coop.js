@@ -51,6 +51,7 @@ function query(uid, st) {
   if (st.table === 'battle_history') return ok(null);
   if (st.table === 'battles') {
     if (st.op === 'insert') {
+      if (db.battles.some((b) => b.owner_id === st.payload.owner_id && Date.now() - Date.parse(b.started_at) < 2000)) return { data: null, error: { code: 'P0001', message: 'too fast' } };   // защита 0007
       if (process.env.OLD_INDEX === '1' && db.battles.some((b) => b.owner_id === st.payload.owner_id && b.status === 'running')) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "battles_one_running_per_owner"' } };   // индекс из 0004
       const row = { id: st.payload.id || uuid(), status: 'running', max_players: 10, started_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...st.payload };
       db.battles.push(row);
@@ -205,7 +206,13 @@ async function attack(p) {
 
     stage = 'хозяин нападает';
     await until(() => A.page.evaluate(() => !!document.querySelector('[data-attack]')), 10000, 'монстры на локации');
+    const t0 = Date.now();
     await attack(A);
+    await until(() => db.battles.some((b) => b.owner_id === 'user-a' && b.status === 'running' && db.members.some((m) => m.battle_id === b.id && m.user_id === 'user-a')), 1500, 'бой записан в базу сразу при нажатии «Напасть»');
+    const hostBattle = db.battles.find((b) => b.owner_id === 'user-a');
+    assert.ok(hostBattle.monster_hp > 0 && hostBattle.monster_hp === hostBattle.monster_max, 'бой активен, монстр ещё цел');
+    assert.ok(!(await A.page.evaluate(() => [...document.querySelectorAll('#log .entry')].some((e) => /^Ход 2/.test(e.textContent.trim())))), 'запись до первого хода');
+    console.log(`ok   бой записан в базу как активный через ${Date.now() - t0} мс после нажатия`);
     await until(() => visible(A.page, '#battle'), 15000, 'экран боя хозяина');
     console.log('ok   хозяин начал бой');
 
@@ -271,8 +278,8 @@ async function attack(p) {
     await sleep(1500);
     await A2.page.evaluate(() => { PC.app.state.char.restTick = 0; });
     await attack(A2);
+    await until(() => db.battles.filter((b) => b.owner_id === 'user-a').length === 2, 1500, 'второй бой хозяина записан в базу сразу');
     await until(() => visible(A2.page, '#battle'), 15000, 'второй бой хозяина');
-    await until(() => db.battles.filter((b) => b.owner_id === 'user-a').length === 2, 8000, 'второй бой хозяина записан в базу');
     console.log('ok   бой хозяина, вышедшего из прежнего боя, записан и попадает в список «Бои»');
 
     stage = 'оба выходят из боя';
