@@ -144,6 +144,30 @@
   B.pushMonster = (r) => { if (pch && r) pch.send({ type: 'broadcast', event: 'mon', payload: { hp: r.hp, max: r.max, status: r.status } }); };
   B.inBattle = () => !!mine;
 
+  // ---- История боёв: по записи на участника, таблица battle_history (миграция 0008) ----
+  // info: { location, monsterId, level, diff, result, turns, my, total, log: [{type,text}] }
+  const plain = (t) => String(t || '').replace(/<[^>]*>/g, '');
+  B.record = async function (c, info) {
+    if (!online() || B.hist === false) return;
+    try {
+      const names = [c.nick, ...[...party.values()].filter((x) => x.user_id !== auth.user.id).map((x) => x.nick)].filter(Boolean);
+      const log = (info.log || []).slice(-80).map((e) => ({ k: e.type, t: plain(e.text) }));
+      const { error } = await auth.client.from('battle_history').insert({
+        user_id: auth.user.id, location_id: info.location, monster_id: info.monsterId, monster_level: info.level, diff: info.diff || 0,
+        result: info.result, turns: info.turns || 0, my_damage: info.my == null ? null : Math.round(info.my), total_damage: info.total == null ? null : Math.round(info.total),
+        members: names, log,
+      });
+      if (error && (missing(error) || error.code === '42P01')) B.hist = false;
+    } catch (e) { /* не критично */ }
+  };
+  B.history = async function () {
+    if (!online() || B.hist === false) return null;
+    const { data, error } = await auth.client.from('battle_history')
+      .select('id,monster_id,monster_level,diff,result,turns,my_damage,total_damage,members,log,ended_at').order('ended_at', { ascending: false }).limit(30);
+    if (error) { if (missing(error)) B.hist = false; return null; }
+    return data || [];
+  };
+
   B.html = function () {
     if (!online()) return '';
     const rows = B.list.map((b) => {
