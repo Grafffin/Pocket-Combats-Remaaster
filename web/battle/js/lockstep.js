@@ -28,7 +28,8 @@
   const TAKEOVER_STEP = 5000;   // каждый следующий кандидат ждёт ещё столько (на случай, что предыдущий тоже закрыл страницу)
   const CATCHUP_WAIT = 1500;    // новый хозяин ждёт ходы, которые видел кто-то из остальных, но не он
   const HEARTBEAT = 3000;       // хозяин подаёт голос между ходами
-  const MAX_DESYNC = 3;         // столько раз подряд не сошёлся отпечаток после новой истории — бой обрываем
+  const MAX_DESYNC = 3;
+  const RESUME_WAIT = 5000;     // вернулся после обновления, а никто не отвечает — продолжаю бой сам по сохранённой истории         // столько раз подряд не сошёлся отпечаток после новой истории — бой обрываем
 
   // Отпечаток состояния боя: ход, длина лога, генератор случайностей, здоровье и ресурсы всех бойцов
   function checksum(b) {
@@ -50,7 +51,8 @@
     tickLeft: (now) => 10000 - (now % 10000),
   };
 
-  // o: { host, uid, tpl, monster (только хозяин), seed (только хозяин), data, send(msg), version } + необязательно часы для тестов
+  // o: { host, uid, tpl, monster (только хозяин), seed (только хозяин), data, send(msg), version,
+  //      save({ hist, epoch }) — сохранить историю (на случай обновления страницы), saved — сохранённое ранее } + необязательно часы для тестов
   function create(o) {
     const k = { ...defaults, version: PC.BUILD || 'dev', ...o };
     const S = { host: !!k.host, uid: k.uid, battle: null, turn: null, ready: false, ended: false, aborted: null, stopped: false, epoch: 0, hostUid: k.host ? k.uid : null };
@@ -58,7 +60,7 @@
     const emit = (ev, arg) => { for (const fn of subs[ev] || []) fn(arg); };
     S.on = (ev, fn) => { (subs[ev] = subs[ev] || []).push(fn); return S; };
 
-    let timer = null, helloTimer = null, watch = null, catchTimer = null, beat = null, lastHeard = k.now();
+    let resumeTimer = null, timer = null, helloTimer = null, watch = null, catchTimer = null, beat = null, lastHeard = k.now();
     let desyncs = 0;                        // отпечаток не сошёлся подряд
     // Мой бой больше не продолжение боя хозяина (сменился хозяин, не сошёлся отпечаток): ходы не применяю, пока не придёт история
     const goStale = () => { stale = true; buffer.clear(); joinBuf = []; lastResync = 0; resync(); };
@@ -78,12 +80,17 @@
       if (left < 4000) left += k.TICK;
       return left;
     };
-    const clearAll = () => { k.clearT(timer); k.clearT(catchTimer); k.clearI(helloTimer); k.clearI(watch); k.clearI(beat); };
+    const clearAll = () => { k.clearT(resumeTimer); k.clearT(timer); k.clearT(catchTimer); k.clearI(helloTimer); k.clearI(watch); k.clearI(beat); };
     const resync = () => { if (k.now() - lastResync > 1500) { lastResync = k.now(); sendHello(); } };
 
     function setTurn(n, left, carry) {
       S.turn = { n, start: k.now(), end: k.now() + left, acted: !!(carry && carry.acted), potted: !!(carry && carry.potted), joinWait: !!(carry && carry.joinWait), skill: carry && carry.skill, pot: carry && carry.pot };
       emit('turn', S.turn);
+    }
+
+    function persist() {
+      if (!k.save || !hist) return;
+      try { k.save({ hist, epoch: S.epoch }); } catch (e) { /* не критично */ }
     }
 
     function finish() {
@@ -112,6 +119,7 @@
       pj = []; pl = [];
       hist.turns.push(rec);
       b.applyTurn(rec);
+      persist();
       emit('update', rec);
       const cs = checksum(b);
       if (b.ended) {
@@ -170,6 +178,7 @@
     function applyRec(rec) {
       S.battle.applyTurn(rec);
       hist.turns.push(rec);
+      persist();
       emit('update', rec);
     }
 
@@ -246,6 +255,7 @@
         for (const rec of m.hist.turns) { S.battle.applyTurn(rec); hist.turns.push(rec); }
         for (const j of m.pj || []) S.battle.addPlayer(j.tpl, j.key);
         joinBuf = [];
+        persist();
         const first = !S.ready;
         S.ready = true;
         k.clearI(helloTimer);
@@ -293,6 +303,7 @@
     }
 
     function takeover() {
+      stale = false;
       S.epoch++;
       S.host = true;
       S.hostUid = k.uid;
@@ -334,6 +345,26 @@
 
     // ---------------- общее ----------------
 
+    // Страницу обновили, а хозяина нет (это был я, или все ушли): поднимаю бой из сохранённой истории и веду его сам.
+    // Если настоящий хозяин всё-таки есть, у него больше ходов — уступлю ему и возьму его историю.
+    function restore() {
+      const h = k.saved && k.saved.hist;
+      if (S.ready || S.stopped || !h || !h.roster) return;
+      const keys = new Set(h.roster.map((j) => j.key));
+      for (const r of h.turns) for (const j of r.joins || []) keys.add(j.key);
+      if (!keys.has(k.uid)) return;
+      const b = new PC.Battle({ players: h.roster, monster: h.monster, seed: h.seed, data: k.data, localKey: k.uid });
+      for (const rec of h.turns) b.applyTurn(rec);
+      if (b.ended || !b.player || b.player.left) return;
+      S.battle = b;
+      hist = { seed: h.seed, monster: h.monster, roster: h.roster, turns: h.turns.slice() };
+      S.ready = true;
+      k.clearI(helloTimer);
+      S.epoch = k.saved.epoch || 0; S.hostUid = null;
+      emit('ready', S.battle);
+      takeover();
+    }
+
     function heartbeat() {
       if (S.host && !waiting && !S.stopped && !S.ended && S.turn) hsend({ t: 'hb', n: S.turn.n });
     }
@@ -353,6 +384,7 @@
       }
       let tries = 0;
       sendHello();
+      if (k.saved) resumeTimer = k.setT(restore, RESUME_WAIT);
       helloTimer = k.setI(() => { if (S.ready) return; if (++tries > 28) return abort('nohost'); sendHello(); }, 1000);
       watch = k.setI(checkHost, 1000);
       beat = k.setI(heartbeat, HEARTBEAT);
