@@ -29,6 +29,7 @@
     auth.profile = data || null;
   }
 
+  const announce = () => window.dispatchEvent(new Event('pc-auth'));
   function setOverlay(on) { $('#auth').hidden = !on; }
   function setMsg(t, bad = true) { const m = $('#auth-msg'); m.textContent = t || ''; m.classList.toggle('bad', bad); }
   function busy(on) { for (const b of document.querySelectorAll('#auth button, #auth input')) b.disabled = on; }
@@ -54,6 +55,7 @@
       await loadProfile();
       offlineFlag.save(false);
       setOverlay(false);
+      announce();
       toast(`Вы вошли как ${auth.profile ? auth.profile.nick : 'игрок'}`);
     } catch (e) { setMsg(errText(e)); } finally { busy(false); }
   }
@@ -73,6 +75,7 @@
     auth.user = auth.profile = null;
     offlineFlag.save(false);
     setMode('login'); setOverlay(true);
+    announce();
   };
   auth.open = () => { setMode('login'); setOverlay(true); };
 
@@ -91,6 +94,7 @@
       } catch (e) { /* нет сети: остаёмся без входа */ }
     }
     auth.ready = true;
+    announce();
     setOverlay(!auth.user && !offlineFlag.load());
   });
 })();

@@ -18,7 +18,15 @@
   const stashStore = storage('pc-stash', null);
   const stash = stashStore.load() || { items: new Array(STASH_SIZE).fill(null) };
   PC.progression.fixAffixLevels(stash.items);
-  const saveStash = () => stashStore.save(stash);
+  const saveStash = () => { stashStore.save(stash); if (PC.cloud) PC.cloud.touch(); };
+  app.stashApi = {
+    get: () => stash,
+    set(remote) {
+      stash.items = (remote && Array.isArray(remote.items)) ? remote.items : new Array(STASH_SIZE).fill(null);
+      PC.progression.fixAffixLevels(stash.items);
+      stashStore.save(stash);
+    },
+  };
 
   // ---------- Вкладка «Сумка» ----------
 

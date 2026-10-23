@@ -22,7 +22,16 @@
   const app = {
     state, rng,
     tabs: {},
-    save: () => charStore.save(state.char),
+    save: () => { charStore.save(state.char); if (PC.cloud) PC.cloud.touch(); },
+    // Облачная версия героя и сундука заменяет локальную (null — героя нет, нужен экран создания).
+    applyRemote(remote, remoteStash) {
+      clearTimeout(state.huntTimer);
+      if (remote) charStore.save(remote); else charStore.clear();
+      state.char = remote ? P.migrate(data, remote) : null;
+      state.pending = {}; state.fight = null;
+      if (app.stashApi) app.stashApi.set(remoteStash);
+      start();
+    },
     render,
     setTab,
     toast,
@@ -788,6 +797,7 @@
         if (!confirm(`Удалить ${c.nick} навсегда? Уровень, вещи и золото пропадут. Сундук сохранится.`)) return;
         charStore.clear();
         state.char = null;
+        if (PC.cloud) PC.cloud.touch();
         state.pending = {};
         state.create = { nick: '', gender: 'm', job: 'warrior' };
         renderCreate();
@@ -817,7 +827,7 @@
 
   // ---------- Старт ----------
 
-  window.addEventListener('DOMContentLoaded', () => {
+  function start() {
     if (state.char) {
       W.releaseAll(state.char);
       app.save();
@@ -827,7 +837,8 @@
       renderCreate();
       show('create');
     }
-  });
+  }
+  window.addEventListener('DOMContentLoaded', start);
 
   void openSheet;
 })();
