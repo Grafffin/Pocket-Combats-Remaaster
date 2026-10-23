@@ -84,16 +84,24 @@
   // ---------- Бой ----------
 
   class Battle {
-    constructor({ player, monster, seed, data }) {
+    // Один игрок (player) или несколько (players: [{ key, tpl }]); localKey — какой из них «мой» (battle.player).
+    // Бой детерминирован (seed): если на всех машинах подать те же вызовы в том же порядке, получится один и тот же бой.
+    constructor({ player, players, monster, seed, data, localKey }) {
       this.data = data;
       this.rng = makeRng(seed != null ? seed : Date.now());
-      this.player = createFighter({ ...player, isPlayer: true }, 'p', 1, data);
       this.monster = createFighter(monster, 'm', 2, data);
-      this.fighters = [this.player, this.monster];
+      this.baseHp = this.monster.maxHp;
+      this.players = [];
+      this.fighters = [this.monster];
+      this.player = null;
+      this.localKey = localKey != null ? localKey : 'me';
+      this.nextPid = 0;
       this.turn = 1;
       this.log = [];
       this.ended = false;
-      this.winner = null;
+      this.totalDealt = 0;
+      const list = players || [{ key: this.localKey, tpl: player }];
+      for (const e of list) this.spawn(e.tpl, e.key);
       this.say('poetry', this.rng.pick(data.haiku));
       for (const f of this.fighters) {
         if (f.legendary.has('boneShield')) this.addShield(f, Math.round(f.maxHp * 0.15), 99, 'Костяной щит');
@@ -101,7 +109,30 @@
       this.say('turn', String(this.turn));
     }
 
-    opponentOf(f) { return f === this.player ? this.monster : this.player; }
+    spawn(tpl, key) {
+      const f = createFighter({ ...tpl, isPlayer: true }, this.players.length || this.nextPid ? `p${this.nextPid}` : 'p', 1, this.data);
+      this.nextPid++;
+      f.key = key;
+      f.dealt = 0;
+      this.players.push(f);
+      this.fighters.splice(this.players.length - 1, 0, f);   // игроки идут перед монстром
+      if (key === this.localKey) this.player = f;
+      return f;
+    }
+
+    playerByKey(key) { return this.players.find((f) => f.key === key) || null; }
+    alivePlayers() { return this.players.filter((f) => f.hp > 0 && !f.left); }
+
+    // Победитель с точки зрения «моего» бойца: я, если монстр пал, а я жив; иначе монстр
+    get winner() {
+      if (!this.ended) return null;
+      return this.monster.dead && this.player && this.player.hp > 0 && !this.player.left ? this.player : this.monster;
+    }
+
+    opponentOf(f) {
+      if (f.team === 1) return this.monster;
+      return this.target && this.target.hp > 0 && !this.target.left ? this.target : (this.alivePlayers()[0] || this.players[0]);
+    }
     roll(p) { return this.rng.next() < p; }
 
     // Каждая запись хранит снимок состояния, чтобы UI мог проигрывать бой по строчкам
@@ -460,10 +491,9 @@
     checkDeath(f) {
       if (f.hp > 0 || f.dead) return;
       f.dead = true;
-      const killer = this.opponentOf(f);
+      const killer = f.isPlayer ? this.monster : (this.acting && this.acting.isPlayer ? this.acting : this.opponentOf(f));
       this.say('death', this.phrase(f.isPlayer ? 'deathPlayer' : 'deathMonster', killer, f));
-      this.ended = true;
-      this.winner = killer;
+      if (!f.isPlayer || !this.alivePlayers().length) this.ended = true;
     }
 
     // ---- Зелья: не тратят ход; одно за ход и затем откат POTION_CD ходов ----
@@ -506,6 +536,7 @@
         { actor: this.player, skillId },
         { actor: this.monster, skillId: this.autoAction(this.monster) },
       ];
+      this.target = this.player;
       for (const a of actions) a.init = this.speedOf(a.actor) * this.rng.float(0.9, 1.1);
       actions.sort((x, y) => y.init - x.init);
 
@@ -516,6 +547,67 @@
       }
       if (!this.ended) this.endTurn();
       return true;
+    }
+
+    // ---- Общий бой (несколько игроков, один монстр) ----
+
+    // Монстр бьёт одного из живых игроков: последний, кто его ранил, или случайный
+    pickTarget() {
+      const alive = this.alivePlayers();
+      if (alive.length <= 1) return alive[0] || null;
+      if (this.aggro && alive.includes(this.aggro) && this.rng.chance(40)) return this.aggro;
+      return this.rng.pick(alive);
+    }
+
+    // Новый участник посреди боя; здоровье монстра вырастает на 60% от базового
+    addPlayer(tpl, key) {
+      if (this.ended || this.playerByKey(key)) return null;
+      const f = this.spawn(tpl, key);
+      const add = Math.round(this.baseHp * 0.6);
+      this.monster.maxHp += add;
+      this.monster.hp += add;
+      this.say('passed', this.fill('{A} вступает в бой!', f, this.monster));
+      return f;
+    }
+
+    removePlayer(key) {
+      const f = this.playerByKey(key);
+      if (!f || f.left || f.hp <= 0) return;
+      f.left = true;
+      f.hp = 0;
+      f.dead = true;
+      this.say('passed', this.fill('{A} покидает бой.', f, this.monster));
+      if (!this.alivePlayers().length) this.ended = true;
+    }
+
+    // Один ход общего боя. actions: { [key]: skillId | null } (null или нет записи — игрок не успел).
+    resolveTurn(actions = {}) {
+      if (this.ended) return;
+      const acts = this.alivePlayers().map((f) => ({ actor: f, skillId: actions[f.key] == null ? null : actions[f.key], monster: false }));
+      acts.push({ actor: this.monster, skillId: this.autoAction(this.monster), monster: true });
+      for (const a of acts) a.init = this.speedOf(a.actor) * this.rng.float(0.9, 1.1);
+      acts.sort((x, y) => y.init - x.init);
+      for (const a of acts) {
+        if (this.ended) break;
+        if (a.monster) {
+          this.target = this.pickTarget();
+          if (!this.target) break;
+          this.act(this.monster, a.skillId);
+        } else if (a.skillId == null) this.skip(a.actor);
+        else this.act(a.actor, a.skillId);
+      }
+      if (!this.ended) this.endTurn();
+    }
+
+    // Запись хода целиком: { joins: [{key, tpl}], leaves: [key], pots: {key: itemId}, actions }
+    applyTurn(rec) {
+      for (const j of rec.joins || []) this.addPlayer(j.tpl, j.key);
+      for (const k of rec.leaves || []) this.removePlayer(k);
+      for (const [k, id] of Object.entries(rec.pots || {})) {
+        const f = this.playerByKey(k);
+        if (f && f.hp > 0 && !this.ended && this.canUseConsumable(f)) this.useConsumable(f, id);
+      }
+      this.resolveTurn(rec.actions || {});
     }
 
     // ---- Бой в реальном времени тика ----
@@ -530,8 +622,12 @@
     act(actor, skillId) {
       if (this.ended || actor.hp <= 0) return false;
       if (skillId !== 'basic' && skillId !== 'idle' && actor.isPlayer && !actor.skills.some((s) => s.id === skillId && this.skillState(actor, s.id).usable)) skillId = 'basic';
+      const before = this.monster.hp;
+      this.acting = actor;
       this.perform(actor, skillId);
       this.extraAction(actor);
+      this.acting = null;
+      if (actor.isPlayer) { const d = Math.max(0, before - this.monster.hp); actor.dealt += d; this.totalDealt += d; if (d > 0) this.aggro = actor; }
       return true;
     }
 

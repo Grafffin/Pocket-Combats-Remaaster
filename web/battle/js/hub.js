@@ -428,10 +428,12 @@
 
   // ---------- Бой ----------
 
-  // join — строка чужого боя (из PC.battles.join): тогда дерёмся с общим запасом здоровья монстра
+  // join — строка чужого боя (из PC.battles.join): тогда вступаем в бой, который считает его хозяин.
+  // Онлайн каждый бой общий (PC.lockstep): хозяин — это тот, кто напал на монстра, остальные видят тот же бой.
   function startFight(uid, join) {
     const c = state.char;
     clearTimeout(state.huntTimer);
+    if (state.session && state.session.host && !state.session.ended && !state.session.stopped) { toast('Вы ведёте бой, в котором уже погибли — дождитесь его конца', 'bad'); return false; }
     let mob, D;
     if (join) {
       if (!join.resume && !W.canAttack(c, Date.now())) { toast(`Передышка: ${Math.ceil(W.restLeft(c, Date.now()) / 1000)} с`, 'bad'); PC.battles.end(); return false; }
@@ -445,30 +447,34 @@
     }
     state.fight = { uid, monsterId: mob.id, level: mob.level, diff: D };
     const monster = M.monsterAt(mob.id, mob.level, D);
-    let shared = null;
-    if (PC.battles) {
-      if (!join) PC.battles.start(c, mob, { hp: Math.max(1, Math.round(monster.stats.maxHp)), diff: D });
-      shared = { hp: join && join.monster_hp, max: join && join.monster_max, sync: (dmg, v) => PC.battles.sync(dmg, v), listen: (p, m) => PC.battles.listen(p, m), pushVitals: (v) => PC.battles.pushVitals(v, c), pushMonster: (r) => PC.battles.pushMonster(r) };
-    }
     app.save();
     $('#result').hidden = true;
     closeSheet();
     closeModal();
-    show('battle');
-    PC.battleUI.start({
-      player: P.toFighter(data, c),
-      monster,
-      shared,
+
+    const B = PC.battles;
+    const common = {
       settings: c.settings,
-      resume: join && join.resume,
       onSettings: () => app.save(),
-      onEnd: (battle, { fled, share }) => {
+      onEnd: (battle, { fled, share, aborted }) => {
+        const sess = state.session;
+        if (aborted) {   // бой оборвался (хозяин ушёл, мест нет): без потерь и наград
+          if (join) c.restTick = W.tickOf(Date.now()) + 1; else W.disengage(data, c, uid, false, Date.now());
+          if (B) B.end();
+          state.session = null; closeChannel();
+          app.save();
+          toast(aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился' : 'Хозяин боя ушёл — бой прерван', 'bad');
+          show('hub'); render();
+          return;
+        }
         const won = battle.winner === battle.player;
         if (join) c.restTick = W.tickOf(Date.now()) + 1; else W.disengage(data, c, uid, won, Date.now());
-        if (PC.battles) {
-          PC.battles.record(c, { location: c.location, monsterId: mob.id, level: mob.level, diff: D, result: won ? 'win' : fled ? 'fled' : 'lose',
-            turns: battle.turn, my: share && share.my, total: share && share.total, log: battle.log });
-          PC.battles.end();
+        if (B) {
+          B.record(c, { location: c.location, monsterId: mob.id, level: mob.level, diff: D, result: won ? 'win' : fled ? 'fled' : 'lose',
+            turns: battle.turn, my: share && share.my, total: share && share.total, log: battle.log,
+            members: battle.players.map((f) => String(f.name).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')) });
+          // погибший хозяин остаётся «движком» боя до его конца, потом сам закроет запись
+          if (!(sess && sess.host && !sess.ended)) B.end();
         }
         // Награда за общий бой: нужен вклад не меньше 5% от всего урона по монстру
         if (share && share.total > 0 && share.my < share.total * 0.05) state.fight.noReward = true;
@@ -477,9 +483,59 @@
         app.save();
         showResult(summary, battle);
       },
-    });
+    };
+
+    if (!B || !B.canCoop()) {   // офлайн (или без миграций): обычный одиночный бой
+      show('battle');
+      PC.battleUI.start({ ...common, player: P.toFighter(data, c), monster, resume: join && join.resume });
+      return true;
+    }
+    runShared(c, mob, monster, D, join, common);
     return true;
   }
+
+  // Общий бой: хозяин (напавший) считает и рассылает ходы, остальные получают их и видят то же самое
+  function closeChannel() { if (state.channel) { state.channel.close(); state.channel = null; } }
+  function runShared(c, mob, monster, D, join, common) {
+    const B = PC.battles;
+    const id = join ? join.id : (window.crypto && crypto.randomUUID ? crypto.randomUUID() : null);
+    if (!id) { show('battle'); PC.battleUI.start({ ...common, player: P.toFighter(data, c), monster }); return; }
+    const host = !join;
+    if (host) B.start(c, mob, { hp: Math.max(1, Math.round(monster.stats.maxHp)), diff: D, id });
+    closeChannel();
+    let sess = null;
+    const ch = state.channel = B.channel(id, (m) => { if (sess) sess.receive(m); });
+    const tpl = JSON.parse(JSON.stringify(P.toFighter(data, c)));
+    const uid = PC.auth.user.id;
+    ch.ready.then(() => {
+      if (state.channel !== ch) return;
+      sess = state.session = PC.lockstep.create({
+        host, uid, tpl, data, send: (m) => ch.send(m),
+        monster: host ? JSON.parse(JSON.stringify(monster)) : undefined,
+        seed: host ? Math.floor(Math.random() * 2147483647) : undefined,
+      });
+      let started = false;
+      const launch = () => {
+        if (started) return;
+        started = true;
+        show('battle');
+        PC.battleUI.start({ ...common, session: sess });
+      };
+      sess.on('ready', launch);
+      sess.on('abort', (reason) => { if (!started) { started = true; common.onEnd(null, { aborted: reason }); } });
+      if (host) {
+        // база знает состояние боя: список «Бои» и признак «бой жив»; по концу боя хозяин закрывает запись
+        sess.on('update', () => B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended));
+        sess.on('end', () => { if (!sess.stopped) { closeChannelLater(ch); B.end(); } });
+      } else {
+        sess.on('end', () => closeChannelLater(ch));
+      }
+      if (!host) toast('Вступаем в бой…');
+      sess.start();
+    });
+  }
+  // сообщения о последнем ходе должны успеть уйти
+  function closeChannelLater(ch) { setTimeout(() => { if (state.channel === ch) closeChannel(); else ch.close(); }, 2000); }
 
   // Возврат в бой после обновления страницы: row — строка боя из PC.battles.resume
   app.resumeFight = (row) => startFight(null, row);
