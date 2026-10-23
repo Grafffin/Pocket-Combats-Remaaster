@@ -77,9 +77,9 @@
     el.innerHTML = list.map((m) => {
       const pct = m.hp_max ? Math.max(0, Math.min(1, m.hp / m.hp_max)) : 1;
       const rp = m.res_max ? Math.max(0, Math.min(1, m.res / m.res_max)) : null;
-      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}"><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
+      return `<div class="pmate${m.hp <= 0 && m.hp != null ? ' dead' : ''}"><div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${m.hp_max ? fmt(m.hp) : '…'}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${m.res_color || '#c9a227'}"></div></div></div>` : ''}</div>
-        <div class="who"><div class="name">${escapeHtml(m.nick)}</div><div class="lvl">${m.level} ур.</div></div></div>`;
+        </div>`;
     }).join('');
   }
   const vitals = () => {
@@ -172,12 +172,12 @@
 
   function fighterHtml(f) {
     const res = f.resource ? data.resources[f.resource] : null;
-    // Слева полоски здоровья и ресурса, справа имя и уровень (скорость не показываем)
+    // Имя и уровень слева, справа полоски здоровья и ресурса (скорость не показываем)
     return `<div class="head">${avatar(f)}
+        <div class="who"><div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур.</div></div>
         <div class="vit"><div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div><span class="v"></span></div></div>
-        ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div>
-        <div class="who"><div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур.</div></div></div>
-      <div class="effects"></div>`;
+        ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div></div>
+      <div class="effects"></div>${f.isPlayer ? '<div class="party" id="party" hidden></div>' : ''}`;
   }
 
   function applySnapshot(snap) {
