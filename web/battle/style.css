@@ -476,9 +476,9 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .tile.r7 { --rc: var(--r7); border-color: transparent; background-image: radial-gradient(circle at 50% 40%, #3a2e14, #181b25); }
 .tile.r7::before {
   content: ""; position: absolute; inset: -2px; border-radius: 10px; padding: 2px; pointer-events: none;
-  background: conic-gradient(from var(--spin), #e8c26b, #fff3c4 20deg, #a8781f 90deg, #e8c26b 180deg, #fff3c4 200deg, #a8781f 270deg, #e8c26b);
+  background: conic-gradient(from var(--spin), #e8c26b, #fff3c4 45deg, #e8c26b 90deg, #a8781f 135deg, #e8c26b 180deg, #fff3c4 225deg, #e8c26b 270deg, #a8781f 315deg, #e8c26b);
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: spin 4s linear infinite;
+  animation: spin 8s linear infinite;
 }
 .modal.rar-7 { border-color: #a8781f; box-shadow: 0 0 0 1px rgba(232, 194, 107, .4), 0 0 60px rgba(232, 194, 107, .25), 0 24px 60px rgba(0, 0, 0, .65); }
 .props .uniq { color: #f2d999; }
@@ -573,6 +573,7 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 @property --spin { syntax: "<angle>"; initial-value: 0deg; inherits: false; }
 @keyframes spin { to { --spin: 360deg; } }
 @keyframes pulse3 { 50% { box-shadow: 0 0 14px rgba(178, 123, 255, .55), 0 0 6px rgba(178, 123, 255, .5) inset; } }
+@keyframes flow { to { background-position: 200% 0; } }
 @keyframes sweep { from { background-position: -150% 0, 0 0; } to { background-position: 250% 0, 0 0; } }
 @keyframes rise { 0% { transform: translateY(6px); opacity: 0; } 30% { opacity: 1; } 100% { transform: translateY(-22px); opacity: 0; } }
 
@@ -582,15 +583,15 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .tile.r4, .tile.r5, .tile.r6 { border-color: transparent; }
 .tile.r4::before, .tile.r5::before, .tile.r6::before {
   content: ""; position: absolute; inset: -2px; border-radius: 10px; padding: 2px; pointer-events: none;
-  background: conic-gradient(from var(--spin), var(--rc) 0deg, rgba(255, 255, 255, .9) 40deg, var(--rc) 80deg, var(--rc) 360deg);
+  background: conic-gradient(from var(--spin), var(--rc), color-mix(in srgb, var(--rc) 40%, #fff) 45deg, var(--rc) 110deg, var(--rc) 250deg, color-mix(in srgb, var(--rc) 55%, #fff) 300deg, var(--rc));
   -webkit-mask: linear-gradient(#000 0 0) content-box, linear-gradient(#000 0 0); -webkit-mask-composite: xor; mask-composite: exclude;
-  animation: spin 3s linear infinite;
+  animation: spin 7s linear infinite;
 }
-.tile.r5::before { animation-duration: 2.2s; background: conic-gradient(from var(--spin), var(--rc) 0deg, #ffd0d4 30deg, var(--rc) 70deg, #6b0f18 180deg, var(--rc) 250deg, #ffd0d4 290deg, var(--rc) 330deg); }
-.tile.r6::before { animation-duration: 1.8s; background: conic-gradient(from var(--spin), #3fe0d0, #f0c46a, #b27bff, #3fe0d0, #f0c46a, #b27bff, #3fe0d0); }
+.tile.r5::before { animation-duration: 6s; background: conic-gradient(from var(--spin), var(--rc), #ffc2c8 40deg, var(--rc) 95deg, #7a1420 180deg, var(--rc) 255deg, #ffc2c8 300deg, var(--rc)); }
+.tile.r6::before { animation-duration: 5s; background: conic-gradient(from var(--spin), #3fe0d0, #f0c46a 60deg, #b27bff 120deg, #3fe0d0 180deg, #f0c46a 240deg, #b27bff 300deg, #3fe0d0); }
 /* Мифическая и древняя: блик, пробегающий по предмету */
-.tile.r5 { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%), radial-gradient(circle at 50% 40%, #2b2433, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 3.2s ease-in-out infinite; }
-.tile.r6 { background-image: linear-gradient(110deg, transparent 30%, rgba(63, 224, 208, .22) 45%, rgba(240, 196, 106, .22) 55%, transparent 70%), radial-gradient(circle at 50% 40%, #173236, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 2.4s ease-in-out infinite; }
+.tile.r5 { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%), radial-gradient(circle at 50% 40%, #2b2433, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 5s ease-in-out infinite; }
+.tile.r6 { background-image: linear-gradient(110deg, transparent 30%, rgba(63, 224, 208, .22) 45%, rgba(240, 196, 106, .22) 55%, transparent 70%), radial-gradient(circle at 50% 40%, #173236, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 4.2s ease-in-out infinite; }
 
 /* Окно предмета: рамка и имя по редкости */
 .modal.rar-3 { border-color: #6b4aa8; box-shadow: 0 0 0 1px rgba(178, 123, 255, .25), 0 0 40px rgba(178, 123, 255, .18), 0 24px 60px rgba(0, 0, 0, .65); }
@@ -601,8 +602,8 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .rc4 { text-shadow: 0 0 12px rgba(255, 159, 61, .55); }
 .rc5 { text-shadow: 0 0 14px rgba(255, 77, 94, .6); }
 .item-name .rc6, .modal-head .rc6 {
-  background: linear-gradient(90deg, #3fe0d0, #f0c46a, #b27bff, #3fe0d0); background-size: 300% 100%;
-  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; animation: sweep 4s linear infinite;
+  background: linear-gradient(90deg, #3fe0d0, #f0c46a, #b27bff, #3fe0d0); background-size: 200% 100%; background-repeat: repeat;
+  -webkit-background-clip: text; background-clip: text; color: transparent; text-shadow: none; animation: flow 6s linear infinite;
 }
 /* Искры над легендарными и выше в окне предмета */
 .item-head .tile { overflow: visible; }
