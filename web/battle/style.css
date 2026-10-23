@@ -646,3 +646,11 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 /* Добыча высокой редкости на экране победы появляется со вспышкой */
 @keyframes lootIn { 0% { transform: scale(.4); opacity: 0; } 60% { transform: scale(1.15); } 100% { transform: scale(1); } }
 .loot-grid .tile.r3, .loot-grid .tile.r4, .loot-grid .tile.r5, .loot-grid .tile.r6, .loot-grid .tile.r7 { animation: lootIn .6s ease-out, var(--fx); }
+
+/* ---------- Справка по боевым качествам ---------- */
+.kv.help-row { width: 100%; background: none; border: 0; border-bottom: 1px dashed #262a38; color: inherit; text-align: left; cursor: pointer; font: inherit; font-size: 14px; }
+.kv.help-row:hover, .kv.help-row:active { background: rgba(255, 255, 255, .04); }
+.kv .chev { margin-left: 8px; color: var(--muted); font-style: normal; font-weight: 400; }
+.formula { margin: 4px 0 0; padding-left: 18px; font-size: 13px; color: #c9cfdd; }
+.formula li { margin-bottom: 4px; }
+.calc { font-size: 13px; color: var(--accent-2); margin: 4px 0 0; }
