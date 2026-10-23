@@ -60,7 +60,11 @@
     for (let i = from; i < b.log.length; i++) addEntry(b.log[i]);
     if (b.log.length) applySnapshot(finalSnap());
     const live = () => ui.session === sess && !ui.finished;
-    sess.on('update', () => { if (live()) { renderSkillbar(); pump(); } });
+    sess.on('update', () => {
+      if (!live()) return;
+      if (ui.turn) { ui.turn.monsterActed = !!ui.battle.monsterActed; if (ui.battle.hasActed(ui.battle.player.key)) ui.turn.playerActed = true; }
+      renderSkillbar(); pump();
+    });
     sess.on('turn', (t) => { if (live()) onSharedTurn(t); });
     sess.on('end', () => { if (live()) pump(); });
     sess.on('abort', (reason) => { if (live()) finish(false, reason); });
@@ -90,16 +94,18 @@
     return snap;
   }
 
+  // Ход общего боя идёт как в одиночном: удар срабатывает в момент нажатия, монстр бьёт в свой момент хода
   function onSharedTurn(t) {
-    const b = ui.battle;
-    ui.turn = { n: t.n, start: t.start, end: t.end, monsterAt: t.end, autoAt: t.start, playerActed: !!t.acted, monsterActed: false };
+    const b = ui.battle, dur = t.end - t.start;
+    clearTimers();
+    ui.turn = { n: t.n, start: t.start, end: t.end, monsterAt: t.start + dur * b.actionMoment(b.monster), autoAt: t.start + dur * b.actionMoment(b.player), playerActed: !!t.acted, monsterActed: !!b.monsterActed };
     renderSkillbar();
     updateBar();
-    if (b.ended || b.player.hp <= 0 || !ui.opts.settings.autoBattle) return;
-    sharedAuto();
+    if (b.ended || b.player.hp <= 0) return;
+    later(() => { if (ui.turn && ui.turn.n === t.n && ui.opts.settings.autoBattle) sharedAuto(); }, ui.turn.autoAt - Date.now());
   }
 
-  // Автобой в общем бою: решение принимаем в начале хода (состояние боя до конца хода не меняется)
+  // Автобой в общем бою: в свой момент хода, если сам не успел раньше
   function sharedAuto() {
     const b = ui.battle, sess = ui.session, p = b.player;
     if (!sess.turn || sess.turn.acted || b.ended || p.hp <= 0) return;
@@ -212,11 +218,13 @@
     if (!b.canUseConsumable(p)) return;
     const pick = (prefix) => ['3', '2', '1'].map((n) => p.consumables.find((c) => c.id === `${prefix}_${n}` && c.count > 0)).find(Boolean);
     const at = (ui.opts.settings.potionAt ?? 35) / 100;
+    // в общем бою зелье пьётся через хозяина, как и удар: свой бой напрямую не трогаем, иначе он разойдётся с остальными
+    const use = (id) => (ui.session ? ui.session.submitPotion(id) : b.useConsumable(p, id));
     const hp = pick('hp_potion');
-    if (hp && p.hp / p.maxHp < at) { b.useConsumable(p, hp.id); return; }
+    if (hp && p.hp / p.maxHp < at) { use(hp.id); return; }
     const mp = pick('mp_potion');
     const costs = p.skills.map((s) => b.skillCost(p, s.id)).filter((x) => x > 0);
-    if (mp && p.resource === 'mana' && costs.length && p.res < Math.min(...costs)) b.useConsumable(p, mp.id);
+    if (mp && p.resource === 'mana' && costs.length && p.res < Math.min(...costs)) use(mp.id);
   }
 
   // ---------- Отрисовка ----------
@@ -389,8 +397,7 @@
     const mark = $('#turn-mark');
     mark.style.left = `${((t.monsterAt - t.start) / dur) * 100}%`;
     mark.classList.toggle('done', t.monsterActed);
-    const jw = ui.session && ui.session.turn && ui.session.turn.joinWait && ui.session.turn.n === t.n;
-    $('#turn-txt').textContent = jw ? `Вы вступили — действуете со следующего хода · ${Math.ceil(left / 1000)} с` : t.playerActed ? `Ход сделан · следующий через ${Math.ceil(left / 1000)} с`
+    $('#turn-txt').textContent = t.playerActed ? `Ход сделан · следующий через ${Math.ceil(left / 1000)} с`
       : `Ваш ход: ${Math.ceil(left / 1000)} с${ui.opts.settings.autoBattle ? ' · автобой' : ''}`;
     $('#tick-label').textContent = `${Math.ceil(left / 1000)} с`;
   }
@@ -444,11 +451,11 @@
       return `<button class="mob" data-potion="${c.id}"><div class="ava" style="width:44px;height:44px">${art(d.art, '🧪')}</div>
         <div class="txt"><b>${d.name}</b><div class="meta">${d.desc} · есть ${c.count}</div></div></button>`;
     }).join('');
-    openModal('Зелья', `<p class="meta">Зелье не тратит ход. После него — откат ${data.POTION_CD} хода.${ui.session ? ' В общем бою оно срабатывает в конце хода.' : ''}</p><div class="list">${list}</div>`, (e) => {
+    openModal('Зелья', `<p class="meta">Зелье не тратит ход. После него — откат ${data.POTION_CD} хода.</p><div class="list">${list}</div>`, (e) => {
       const btn = e.target.closest('[data-potion]');
       if (!btn) return;
       closeModal();
-      if (ui.session) { if (ui.session.submitPotion(btn.dataset.potion)) { toast('Зелье будет выпито в конце хода'); afterAction(); } return; }
+      if (ui.session) { if (ui.session.submitPotion(btn.dataset.potion)) afterAction(); return; }
       if (b.useConsumable(p, btn.dataset.potion)) afterAction();
     });
   }

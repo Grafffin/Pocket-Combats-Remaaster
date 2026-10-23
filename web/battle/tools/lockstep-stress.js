@@ -19,7 +19,7 @@ function rand(seed) {
 
 // Сеть: у каждой посылки своя задержка (сообщения обгоняют друг друга), часть теряется, клиента можно «отключить»
 function makeWorld(r, { lat = [30, 400], drop = 0.02 } = {}) {
-  const w = { t: 1000000, timers: [], seq: 0, peers: new Map(), off: new Set() };
+  const w = { t: 1000000, timers: [], seq: 0, peers: new Map(), off: new Set(), back: {} };
   w.now = () => w.t;
   w.setT = (fn, ms) => { const id = ++w.seq; w.timers.push({ id, at: w.t + ms, fn, every: 0 }); return id; };
   w.setI = (fn, ms) => { const id = ++w.seq; w.timers.push({ id, at: w.t + ms, fn, every: ms }); return id; };
@@ -38,6 +38,7 @@ function makeWorld(r, { lat = [30, 400], drop = 0.02 } = {}) {
     if (each) each();
   };
   w.deliver = (from, msg) => {
+    if (process.env.TRACE && msg.t !== 'hb') console.log(((w.t - 1000000) / 1000).toFixed(3), from, w.off.has(from) ? 'OFF' : '', msg.t, msg.g ?? '', msg.e ? JSON.stringify(msg.e).slice(0, 40) : '', msg.ep ?? '', msg.len ?? '', msg.uid || '', msg.to || '');
     if (w.off.has(from)) return;
     const copy = JSON.stringify(msg);
     for (const [uid, s] of w.peers) {
@@ -49,7 +50,7 @@ function makeWorld(r, { lat = [30, 400], drop = 0.02 } = {}) {
 }
 
 const tpls = {};
-const tplOf = (uid, job) => tpls[uid] || (tpls[uid] = PC.progression.toFighter(data, PC.progression.newCharacter(data, { nick: uid, job })));
+const tplOf = (uid, job) => tpls[uid + job] || (tpls[uid + job] = PC.progression.toFighter(data, PC.progression.newCharacter(data, { nick: uid, job })));
 const monster = (idx, lvl, mult) => { const m = PC.monsters.monsterAt(Object.keys(data.monsters)[idx], lvl, 0); m.stats = { ...m.stats, maxHp: Math.round(m.stats.maxHp * mult) }; return m; };
 
 // Клиент: страница игрока. Автобой жмёт умение в случайный момент хода (или не успевает), иногда пьёт зелье.
@@ -90,12 +91,19 @@ function compare(a, b) {
     if (x.text !== y.text) return `лог #${i}: «${x.text}» ≠ «${y.text}»`;
     if (JSON.stringify(x.snap) !== JSON.stringify(y.snap)) return `снимок #${i} («${x.text}»)`;
   }
-  if (la.length === lb.length && a.battle.turn === b.battle.turn && PC.lockstep.checksum(a.battle) !== PC.lockstep.checksum(b.battle)) return 'отпечаток боя';
+  if (a.evCount === b.evCount && PC.lockstep.checksum(a.battle) !== PC.lockstep.checksum(b.battle)) {
+    const d = (x) => JSON.stringify([x.battle.rng.state(), x.battle.tank && x.battle.tank.id, x.battle.fighters.map((f) => [f.id, f.key, Math.round(f.hp), f.maxHp, Math.round(f.res || 0), Math.round(f.dealt || 0), !!f.left, f.effects.length])]);
+    return `отпечаток боя${process.env.TRACE ? `\n${d(a)}\n${d(b)}` : ''}`;
+  }
   return null;
 }
 
 // Живые, вошедшие в бой клиенты; «вышедшие» и закрытые страницы не сравниваем
 const live = (w) => [...w.peers.values()].filter((s) => s.ready && s.battle && !s.stopped && !s.aborted && !w.off.has(s.uid));
+// сравниваем только тех, кто считает себя в общем бою: отрезанный связью и ждущий историю после обрыва сам знает, что отстал
+// (связь вернулась — даём RECONCILE мс, чтобы он узнал о настоящем хозяине и взял его историю)
+const RECONCILE = 5000;
+const synced = (w) => live(w).filter((s) => !s.stale && !(w.back[s.uid] > w.t - RECONCILE));
 
 function run(name, seed, script) {
   const r = rand(seed * 7919 + name.length);
@@ -103,7 +111,7 @@ function run(name, seed, script) {
   const errors = [];
   let checks = 0;
   const check = () => {
-    const ls = live(w);
+    const ls = synced(w);
     for (let i = 0; i < ls.length; i++) for (let j = i + 1; j < ls.length; j++) {
       checks++;
       const e = compare(ls[i], ls[j]);
@@ -248,7 +256,7 @@ const scenarios = {
         if (!s || s.stopped) { if (x < 0.5) join(uid); }
         else if (x < 0.1) s.leave();
         else if (x < 0.3) s.stop();
-        else if (x < 0.4) { w.off.add(uid); w.setT(() => w.off.delete(uid), r.int(2000, 25000)); }   // пропала связь
+        else if (x < 0.4) { w.off.add(uid); w.setT(() => { w.off.delete(uid); w.back[uid] = w.t; }, r.int(2000, 25000)); }   // пропала связь
       }
       for (const h of live(w).filter((s) => s.host)) if (r.chance(0.5)) h.stop();
       wait(120000);
@@ -258,8 +266,9 @@ const scenarios = {
 
 let failed = 0, total = 0, checks = 0;
 for (const [name, sc] of Object.entries(scenarios)) {
+  if (process.env.ONLY && !name.includes(process.env.ONLY)) continue;
   const bad = [];
-  for (let seed = 1; seed <= SEEDS; seed++) {
+  for (let seed = +process.env.SEED || 1; seed <= (+process.env.SEED || SEEDS); seed++) {
     total++;
     let res;
     try { res = run(name, seed, sc); } catch (e) { res = { errors: [String(e && e.stack || e)], checks: 0 }; }

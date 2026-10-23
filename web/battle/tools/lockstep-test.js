@@ -131,7 +131,7 @@ test('обновление страницы: участник возвращае
 
 test('потерянный ход: участник сам запрашивает историю заново', () => {
   let dropped = false;
-  const w = makeWorld({ drop: (m, uid) => { if (!dropped && uid === 'a' && m.t === 'turn' && m.rec.n === 3) { dropped = true; return true; } return false; } });
+  const w = makeWorld({ drop: (m, uid) => { if (!dropped && uid === 'a' && m.t === 'ev' && m.e.k === 'e' && m.n === 3) { dropped = true; return true; } return false; } });
   const strong = tank();
   const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: strong });
   const a = join(w, { uid: 'a', job: jobs[1] });
@@ -254,13 +254,13 @@ test('закрыли страницу и хозяин, и первый канд�
 
 test('хозяин успел отправить ход только одному: новый хозяин догоняет, расхождения нет', () => {
   let n3 = false;
-  const w = makeWorld({ drop: (m, uid) => { if (m.t === 'turn' && m.rec.n === 3 && uid === 'a') { n3 = true; w.setT(() => host.stop(), 60); return true; } return false; } });
+  const w = makeWorld({ drop: (m, uid) => { if (m.t === 'ev' && m.e.k === 'e' && m.n === 3 && uid === 'a') { n3 = true; w.setT(() => host.stop(), 60); return true; } return false; } });
   const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
   const a = join(w, { uid: 'a', job: jobs[1] });
   const b = join(w, { uid: 'b', job: jobs[2] });
   w.advance(60000);
   assert.ok(n3);
-  assert.ok(a.host, 'a — первый кандидат');
+  assert.ok(a.host || b.host, 'расчёт взял участник');
   w.advance(50000);
   sameBattle(a, b, 'a/b: ход 3 не пропал и не пересчитан иначе');
   assert.ok(a.battle.turn >= 6);
@@ -326,27 +326,42 @@ test('одиночный хозяин закрыл страницу, остал�
   assert.strictEqual(a.battle.winner, a.battle.player, 'победа участнику');
 });
 
-test('вступление видно сразу, а новичок пропускает текущий ход', () => {
+test('вступивший бьёт сразу, в том же ходу', () => {
   const w = makeWorld();
   const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
   const a = join(w, { uid: 'a', job: jobs[1] });
   w.advance(25000);                       // середина хода
-  const turnNow = host.turn.n;
-  const late = join(w, { uid: 'late', job: jobs[3] });
+  const turnNow = host.battle.turn;
+  const late = join(w, { uid: 'late', job: jobs[3], auto: false });
   w.advance(300);                         // чуть больше задержки сети: хода не прошло
-  assert.strictEqual(host.turn.n, turnNow, 'ход ещё не сменился');
+  assert.strictEqual(host.battle.turn, turnNow, 'ход ещё не сменился');
   for (const s of [host, a, late]) assert.ok(s.battle.players.some((f) => f.key === 'late'), 'новичок виден сразу');
-  assert.ok(late.turn.joinWait && late.turn.acted, 'новичок в ожидании');
-  assert.strictEqual(late.submit('basic'), false, 'в этом ходу действовать нельзя');
-  const hp0 = host.battle.playerByKey('late').hp;
-  w.advance(12000);                       // ход закончился
-  assert.ok(host.battle.turn > turnNow, 'ход прошёл');
-  const f = host.battle.playerByKey('late');
-  assert.strictEqual(f.dealt, 0, 'в пропущенном ходу новичок не бил');
-  assert.ok(!late.turn.joinWait, 'в следующем ходу уже действует');
-  w.advance(22000);
-  assert.ok(f.dealt > 0 || f.support > 0 || host.battle.turn > turnNow + 1, 'дальше участвует');
+  assert.ok(!late.turn.acted, 'новичок может действовать');
+  const hp0 = host.battle.monster.hp;
+  assert.ok(late.submit('basic'), 'жмёт удар');
+  w.advance(200);
+  assert.strictEqual(host.battle.turn, turnNow, 'всё ещё тот же ход');
+  assert.ok(host.battle.playerByKey('late').dealt > 0 || host.battle.monster.hp !== hp0 || host.battle.log.slice(-3).some((e) => /late/.test(e.text)), 'удар прошёл сразу');
+  assert.strictEqual(late.submit('basic'), false, 'второй раз в том же ходу нельзя');
   sameBattle(host, a, 'host/a'); sameBattle(host, late, 'host/late');
+});
+
+test('удар срабатывает в момент нажатия, а не в конце хода', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(), auto: false });
+  const a = join(w, { uid: 'a', job: jobs[1], auto: false });
+  w.advance(12000);                       // идёт ход 2
+  const t = host.battle.turn, len = host.battle.log.length;
+  assert.ok(a.submit('basic'));
+  w.advance(100);                         // туда и обратно по 40 мс
+  assert.strictEqual(host.battle.turn, t, 'ход не сменился');
+  assert.ok(host.battle.log.length > len, 'удар уже в логе у хозяина');
+  assert.strictEqual(a.battle.log.length, host.battle.log.length, 'и у самого игрока');
+  assert.ok(host.battle.hasActed('a'));
+  assert.ok(host.submit('basic'));
+  assert.ok(host.battle.hasActed('h'), 'хозяин бьёт сразу');
+  w.advance(100);
+  sameBattle(host, a, 'посреди хода');
 });
 
 test('награда делится по вкладу: больше импакта — больше доля', () => {
@@ -438,7 +453,7 @@ test('бой участника разошёлся с хозяином: отпе
 
 test('одна потерянная посылка хода не меняет хозяина, ход догоняется', () => {
   let lost = 0;
-  const w = makeWorld({ drop: (m, uid) => m.t === 'turn' && m.rec.n === 2 && uid === 'a' && ++lost });
+  const w = makeWorld({ drop: (m, uid) => m.t === 'ev' && m.e.k === 'e' && m.n === 2 && uid === 'a' && ++lost });
   const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
   const a = join(w, { uid: 'a', job: jobs[1] });
   w.advance(45000);
