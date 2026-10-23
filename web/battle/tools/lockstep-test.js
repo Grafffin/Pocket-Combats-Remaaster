@@ -8,7 +8,7 @@ const PC = globalThis.PC, data = PC.data;
 const jobs = Object.keys(data.classes);
 
 // ---- подставные часы и сеть ----
-function makeWorld({ latency = 40, drop = null } = {}) {
+function makeWorld({ latency = 40, drop = null, delay = null } = {}) {
   const w = { t: 1000000, timers: [], seq: 0, peers: new Map(), sent: [] };
   w.now = () => w.t;
   w.setT = (fn, ms) => { const id = ++w.seq; w.timers.push({ id, at: w.t + ms, fn, every: 0 }); return id; };
@@ -32,7 +32,7 @@ function makeWorld({ latency = 40, drop = null } = {}) {
     for (const [uid, s] of w.peers) {
       if (uid === from) continue;
       if (drop && drop(msg, uid)) continue;
-      w.setT(() => { if (w.peers.get(uid) === s) s.receive(JSON.parse(copy)); }, latency);
+      w.setT(() => { if (w.peers.get(uid) === s) s.receive(JSON.parse(copy)); }, (delay && delay(msg, uid)) || latency);
     }
   };
   return w;
@@ -444,6 +444,38 @@ test('одна потерянная посылка хода не меняет х
   assert.ok(host.host && !a.host, 'хозяин прежний');
   assert.strictEqual(host.epoch, 0, 'смены хозяина не было');
   sameBattle(host, a, 'после потери');
+});
+
+test('сообщения о вступлении пришли вразнобой: порядок бойцов у всех как у хозяина', () => {
+  const w = makeWorld({ delay: (m) => (m.t === 'join' && m.key === 'b' ? 900 : 0) });   // о вступлении b узнают позже, чем о c
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(12000);
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(10);
+  const c = join(w, { uid: 'c', job: jobs[3] });
+  w.advance(30000);
+  for (const s of [a, b, c]) assert.deepStrictEqual(s.battle.players.map((f) => f.key), host.battle.players.map((f) => f.key));
+  for (const s of [a, b, c]) assert.ok(!s.events.some((e) => e.startsWith('desync')), `${s.uid || ''} не расходился с хозяином`);
+  sameBattle(host, a, 'host/a'); sameBattle(host, c, 'host/c');
+});
+
+test('связь пропала надолго, участник взял расчёт на себя: после возвращения хозяин один, бой у всех общий', () => {
+  let cut = false;
+  const w = makeWorld({ drop: (m, uid) => cut && (uid === 'a' || (m.uid === 'a' || m.h === 'a')) });
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  const b = join(w, { uid: 'b', job: jobs[2] });
+  w.advance(25000);
+  cut = true;
+  w.advance(40000);
+  assert.ok(a.host, 'отрезанный участник сам себе хозяин');
+  cut = false;
+  w.advance(30000);
+  const hosts = [host, a, b].filter((s) => s.host);
+  assert.strictEqual(hosts.length, 1, 'хозяин один');
+  assert.ok(host.host, 'остался хозяин большинства (у него больше ходов)');
+  sameBattle(host, a, 'h/a'); sameBattle(host, b, 'h/b');
 });
 
 console.log(`\nвсе тесты прошли: ${n}`);
