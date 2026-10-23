@@ -590,8 +590,8 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .tile.r5::before { animation-duration: 6s; background: conic-gradient(from var(--spin), var(--rc), #ffc2c8 40deg, var(--rc) 95deg, #7a1420 180deg, var(--rc) 255deg, #ffc2c8 300deg, var(--rc)); }
 .tile.r6::before { animation-duration: 5s; background: conic-gradient(from var(--spin), #3fe0d0, #f0c46a 60deg, #b27bff 120deg, #3fe0d0 180deg, #f0c46a 240deg, #b27bff 300deg, #3fe0d0); }
 /* Мифическая и древняя: блик, пробегающий по предмету */
-.tile.r5 { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%), radial-gradient(circle at 50% 40%, #2b2433, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 5s ease-in-out infinite; }
-.tile.r6 { background-image: linear-gradient(110deg, transparent 30%, rgba(63, 224, 208, .22) 45%, rgba(240, 196, 106, .22) 55%, transparent 70%), radial-gradient(circle at 50% 40%, #173236, #181b25); background-size: 250% 100%, 100% 100%; animation: sweep 4.2s ease-in-out infinite; }
+.tile.r5 { background-image: linear-gradient(110deg, transparent 35%, rgba(255, 255, 255, .16) 50%, transparent 65%), radial-gradient(circle at 50% 40%, #2b2433, #181b25); background-size: 250% 100%, 100% 100%; background-repeat: no-repeat; animation: sweep 5s ease-in-out infinite; }
+.tile.r6 { background-image: linear-gradient(110deg, transparent 30%, rgba(63, 224, 208, .22) 45%, rgba(240, 196, 106, .22) 55%, transparent 70%), radial-gradient(circle at 50% 40%, #173236, #181b25); background-size: 250% 100%, 100% 100%; background-repeat: no-repeat; animation: sweep 4.2s ease-in-out infinite; }
 
 /* Окно предмета: рамка и имя по редкости */
 .modal.rar-3 { border-color: #6b4aa8; box-shadow: 0 0 0 1px rgba(178, 123, 255, .25), 0 0 40px rgba(178, 123, 255, .18), 0 24px 60px rgba(0, 0, 0, .65); }
