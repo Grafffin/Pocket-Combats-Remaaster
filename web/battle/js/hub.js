@@ -317,10 +317,27 @@
     if (!act) return;
     if (act.dataset.act === 'join-battle') {
       if (act.disabled) return;
+      if (state.session && state.session.host && !state.session.ended && !state.session.stopped) return toast('Вы ведёте бой, в котором уже погибли — дождитесь его конца', 'bad');
+      if (!W.canAttack(c, Date.now())) return toast(`Передышка: ${Math.ceil(W.restLeft(c, Date.now()) / 1000)} с`, 'bad');
       act.disabled = true;
+      const row = PC.battles.list.find((b) => b.id === act.dataset.battle);
+      let cancelled = false;
+      const back = () => { PC.battleUI.stop(); show('hub'); render(); };
+      if (row) {   // окно боя открываем сразу, историю боя догоняем в фоне
+        clearTimeout(state.huntTimer);
+        closeSheet(); closeModal();
+        show('battle');
+        PC.battleUI.preview({ player: P.toFighter(data, c), monster: M.monsterAt(row.monster_id, row.monster_level, row.diff || 0), hp: row.monster_hp, maxHp: row.monster_max,
+          settings: c.settings, onSettings: () => app.save(), onCancel: () => {
+            cancelled = true;
+            if (state.session && !state.session.host) { state.session.leave(); state.session = null; closeChannel(); PC.battles.end(); }
+            back();
+          } });
+      }
       PC.battles.join(c, act.dataset.battle).then((r) => {
-        if (r.error) { act.disabled = false; return toast(r.error, 'bad'); }
-        if (!startFight(null, r)) act.disabled = false;
+        if (cancelled) { if (!r.error) PC.battles.end(); return; }
+        if (r.error) { act.disabled = false; if (row) back(); return toast(r.error, 'bad'); }
+        if (!startFight(null, r)) { act.disabled = false; if (row) back(); }
       });
       return;
     }
