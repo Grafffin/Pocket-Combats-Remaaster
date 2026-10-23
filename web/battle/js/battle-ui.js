@@ -404,7 +404,9 @@
     $('#tick-label').textContent = '';
     const b = ui.battle, me = b.player;
     const share = ui.session && me ? { my: me.dealt, total: b.totalDealt } : null;
-    if (ui.session && (fled || aborted || !ui.session.host)) ui.session.leave();   // хозяин при победе/гибели остаётся движком боя
+    const rejoin = aborted === 'version' || aborted === 'desync';   // страница перезагрузится и вернётся в бой: героя из боя не выводим
+    if (ui.session && rejoin) ui.session.stop();
+    else if (ui.session && (fled || aborted || !ui.session.host)) ui.session.leave();   // хозяин при победе/гибели остаётся движком боя
     ui.opts.onEnd(b, { fled, share, aborted: aborted || null });
   }
 

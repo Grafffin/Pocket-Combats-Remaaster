@@ -20,6 +20,7 @@
       int: (min, max) => min + Math.floor(next() * (max - min + 1)),
       float: (min, max) => min + next() * (max - min),
       pick: (arr) => arr[Math.floor(next() * arr.length)],
+      state: () => s,   // для сверки боя между клиентами
     };
   }
 

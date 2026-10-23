@@ -43,16 +43,16 @@ const weakMonster = () => PC.monsters.monsterAt(Object.keys(data.monsters)[0], 1
 // живучий, но слабо бьющий монстр: бой длится много ходов
 const tank = (mult = 60) => { const m = weakMonster(); m.stats = { ...m.stats, maxHp: m.stats.maxHp * mult }; return m; };
 
-function join(w, { host = false, uid, job, monster, seed = 7, auto = true }) {
+function join(w, { host = false, uid, job, monster, seed = 7, auto = true, version }) {
   const tpl = mkTpl(uid, job);
   const s = PC.lockstep.create({
-    host, uid, tpl, monster, seed, data,
+    host, uid, tpl, monster, seed, data, version,
     send: (m) => w.deliver(uid, m),
     now: w.now, setT: w.setT, clearT: w.clear, setI: w.setI, clearI: w.clear,
     tickLeft: (now) => 10000 - (now % 10000),
   });
   s.events = [];
-  s.on('end', () => s.events.push('end')).on('abort', (r) => s.events.push(`abort:${r}`));
+  s.on('end', () => s.events.push('end')).on('abort', (r) => s.events.push(`abort:${r}`)).on('desync', (n) => s.events.push(`desync:${n}`));
   s.on('turn', () => {   // автобой: выбираем первое готовое умение в начале хода
     if (!auto) return;
     const b = s.battle, me = b && b.player;
@@ -405,6 +405,45 @@ test('агро одинаково у хозяина и участников', ()
   assert.strictEqual(ids(a), ids(host), 'цели монстра совпадают (a)');
   assert.strictEqual(ids(c), ids(host), 'цели монстра совпадают (c)');
   assert.ok(host.battle.log.some((e) => e.snap.$tank), 'цель записана');
+});
+
+test('другая версия игры: в бой не пускаем ни новичка к старому хозяину, ни старого к новому', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(), version: 'new' });
+  const old = join(w, { uid: 'old', job: jobs[1], version: 'old' });
+  w.advance(3000);
+  assert.deepStrictEqual(old.events, ['abort:version']);
+  assert.ok(!host.battle.playerByKey('old'), 'в бой не добавлен');
+  const ok = join(w, { uid: 'a', job: jobs[2], version: 'new' });
+  w.advance(3000);
+  assert.ok(ok.ready && host.battle.playerByKey('a'));
+});
+
+test('бой участника разошёлся с хозяином: отпечаток не сошёлся, участник сам берёт историю заново', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(25000);
+  a.battle.rng.next();                  // как если бы у участника ход посчитался иначе (другой код, ошибка)
+  a.battle.monster.hp -= 7;
+  w.advance(15000);
+  assert.ok(a.events.some((e) => e.startsWith('desync:')), 'расхождение замечено');
+  assert.ok(!a.events.includes('abort:desync'));
+  w.advance(12000);
+  sameBattle(host, a, 'после восстановления');
+  assert.strictEqual(PC.lockstep.checksum(host.battle), PC.lockstep.checksum(a.battle));
+});
+
+test('одна потерянная посылка хода не меняет хозяина, ход догоняется', () => {
+  let lost = 0;
+  const w = makeWorld({ drop: (m, uid) => m.t === 'turn' && m.rec.n === 2 && uid === 'a' && ++lost });
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(45000);
+  assert.ok(lost);
+  assert.ok(host.host && !a.host, 'хозяин прежний');
+  assert.strictEqual(host.epoch, 0, 'смены хозяина не было');
+  sameBattle(host, a, 'после потери');
 });
 
 console.log(`\nвсе тесты прошли: ${n}`);

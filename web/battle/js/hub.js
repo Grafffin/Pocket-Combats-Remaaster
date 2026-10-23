@@ -475,12 +475,27 @@
       onSettings: () => app.save(),
       onEnd: (battle, { fled, share, aborted }) => {
         const sess = state.session;
+        if (aborted === 'version' || aborted === 'desync') {
+          // Другая версия игры или бой разошёлся с боем хозяина: один раз перезагружаем страницу (свежий код,
+          // возврат в бой из базы). Не помогло — значит старая версия у хозяина, выходим без потерь.
+          const key = 'pc-reload-battle', bid = join ? join.id : B && B.mineId();
+          let again = false;
+          try { again = sessionStorage.getItem(key) === String(bid); sessionStorage.setItem(key, String(bid)); } catch (e) { again = true; }
+          if (!again) {
+            state.session = null; closeChannel();
+            app.save();
+            toast(aborted === 'version' ? 'Вышла новая версия игры — обновляем страницу' : 'Бой разошёлся с остальными — переподключаемся', 'bad');
+            setTimeout(() => location.reload(), 1200);
+            return;
+          }
+        }
         if (aborted) {   // бой оборвался (хозяин ушёл, мест нет): без потерь и наград
           if (join) c.restTick = W.tickOf(Date.now()) + 1; else W.disengage(data, c, uid, false, Date.now());
           if (B) B.end();
           state.session = null; closeChannel();
           app.save();
-          toast(aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился или некому его вести' : 'Бой прерван', 'bad');
+          toast(aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился или некому его вести'
+            : aborted === 'version' ? 'У ведущего бой другая версия игры — вступить нельзя' : aborted === 'desync' ? 'Бой разошёлся с остальными участниками' : 'Бой прерван', 'bad');
           show('hub'); render();
           return;
         }

@@ -1,0 +1,17 @@
+name: Tests
+
+on:
+  pull_request:
+    paths: ['web/**', '.github/workflows/**']
+  workflow_dispatch:
+
+jobs:
+  battle:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Общий бой (lockstep)
+        run: node web/battle/tools/lockstep-test.js
