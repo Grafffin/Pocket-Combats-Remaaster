@@ -174,9 +174,30 @@
     if (loc !== B.loc) watch(loc);
   }, 1000);
 
-  window.addEventListener('pagehide', () => {
-    if (!mine || !online()) return;
-    try { auth.client.rpc('leave_battle', { p_battle: mine }); } catch (e) { /* не критично */ }
-  });
+  // Обновление страницы не выводит из боя: участник остаётся в базе, а при загрузке игра возвращает в бой.
+  // Брошенный бой (не заходили дольше STALE_MS) не возвращаем.
+  B.resume = async function (c) {
+    if (!online() || !B.coop || mine) return null;
+    try {
+      const since = new Date(Date.now() - STALE_MS).toISOString();
+      const { data, error } = await auth.client.from('battle_members')
+        .select('hp,hp_max,res,res_max,battles!inner(id,monster_id,monster_level,diff,monster_hp,monster_max,status,updated_at)')
+        .eq('user_id', auth.user.id).eq('battles.status', 'running').gt('battles.monster_hp', 0).gt('battles.updated_at', since).limit(1);
+      if (error || !data || !data.length) return null;
+      const m = data[0], b = m.battles;
+      if (!PC.data.monsters[b.monster_id]) return null;
+      mine = b.id;
+      openParty(mine);
+      soon();
+      return { ...b, resume: { hp: m.hp, hpMax: m.hp_max, res: m.res } };
+    } catch (e) { return null; }
+  };
+  let resumeTried = false;
+  setInterval(() => {
+    const app = PC.app, c = app && app.state.char;
+    if (resumeTried || !auth.user || !c || !c.nick || c.transit || !app.resumeFight || app.state.fight || mine) return;
+    resumeTried = true;
+    B.resume(c).then((row) => { if (row && !app.state.fight && !app.resumeFight(row)) B.end(); });
+  }, 1000);
   window.addEventListener('pc-auth', () => { if (!auth.user) watch(null); });
 })();

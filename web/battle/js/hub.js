@@ -413,7 +413,7 @@
     clearTimeout(state.huntTimer);
     let mob, D;
     if (join) {
-      if (!W.canAttack(c, Date.now())) { toast(`Передышка: ${Math.ceil(W.restLeft(c, Date.now()) / 1000)} с`, 'bad'); PC.battles.end(); return false; }
+      if (!join.resume && !W.canAttack(c, Date.now())) { toast(`Передышка: ${Math.ceil(W.restLeft(c, Date.now()) / 1000)} с`, 'bad'); PC.battles.end(); return false; }
       mob = { id: join.monster_id, level: join.monster_level };
       D = join.diff || 0;
     } else {
@@ -439,6 +439,7 @@
       monster,
       shared,
       settings: c.settings,
+      resume: join && join.resume,
       onSettings: () => app.save(),
       onEnd: (battle, { fled, share }) => {
         const won = battle.winner === battle.player;
@@ -454,6 +455,9 @@
     });
     return true;
   }
+
+  // Возврат в бой после обновления страницы: row — строка боя из PC.battles.resume
+  app.resumeFight = (row) => startFight(null, row);
 
   // Автоохота: после передышки — на живого монстра локации (боссов не трогает)
   function scheduleHunt() {

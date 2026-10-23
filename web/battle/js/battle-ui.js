@@ -21,6 +21,12 @@
     stop();
     ui.opts = opts;
     ui.battle = new Battle({ player: opts.player, monster: opts.monster, data });
+    const rs = opts.resume;   // вернулись в бой после обновления страницы: берём сохранённые здоровье и ресурс
+    if (rs && rs.hp > 0) {
+      const p = ui.battle.player;
+      p.hp = Math.max(1, Math.min(p.maxHp, rs.hp));
+      if (rs.res != null && p.resMax) p.res = Math.max(0, Math.min(p.resMax, rs.res));
+    }
     ui.shown = 0;
     ui.finished = false;
     $('#log').innerHTML = '';
