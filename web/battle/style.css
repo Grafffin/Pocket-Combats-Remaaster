@@ -100,7 +100,7 @@ img { -webkit-user-drag: none; user-select: none; }
   transition: transform .06s, background .15s, border-color .15s;
 }
 .btn:hover:not(:disabled) { border-color: #3d4458; background: var(--card-3); }
-.btn:active:not(:disabled) { transform: translateY(1px); }
+.btn:active:not(:disabled) { transform: translateY(1px) scale(.97); }
 .btn.primary { background: linear-gradient(180deg, var(--accent-2), var(--accent)); color: var(--accent-ink); border-color: transparent; }
 .btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #ffd27a, #e4ae4a); }
 .btn.danger { background: #3a1c22; border-color: #5c2731; color: #ffb3bb; }
@@ -363,8 +363,50 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .fighter.hit { animation: shake .3s; }
 .fighter.dead { opacity: .45; filter: grayscale(.9); }
 @keyframes shake { 25% { transform: translateX(-4px); } 50% { transform: translateX(4px); } 75% { transform: translateX(-2px); } }
-.float { position: absolute; left: 50%; top: 30%; transform: translateX(-50%); font-weight: 800; font-size: 20px; pointer-events: none; animation: floatUp .9s ease-out forwards; text-shadow: 0 2px 6px #000; }
-@keyframes floatUp { to { transform: translate(-50%, -36px); opacity: 0; } }
+.float { position: absolute; left: 50%; top: 30%; z-index: 3; transform: translateX(-50%); font-weight: 800; font-size: 20px; pointer-events: none; animation: floatUp .9s ease-out forwards; text-shadow: 0 2px 6px #000; }
+@keyframes floatUp { 0% { transform: translate(-50%, 4px) scale(.7); opacity: 0; } 15% { transform: translate(-50%, 0) scale(1.1); opacity: 1; } 30% { transform: translate(-50%, -6px) scale(1); } 100% { transform: translate(-50%, -38px); opacity: 0; } }
+.float.crit { font-size: 26px; animation-name: floatCrit; animation-duration: 1s; }
+@keyframes floatCrit { 0% { transform: translate(-50%, 0) scale(.5) rotate(-8deg); opacity: 0; } 18% { transform: translate(-50%, -4px) scale(1.35) rotate(3deg); opacity: 1; } 35% { transform: translate(-50%, -8px) scale(1) rotate(0); } 100% { transform: translate(-50%, -42px); opacity: 0; } }
+.float.grow { top: 55%; font-size: 15px; }
+
+/* Вспышки на карточке бойца: цвет берётся из --fx (стихия удара, лечение, щит) */
+.fighter { transition: opacity .5s, filter .5s; }
+.fighter.ally .head { animation: fighterIn .35s ease-out backwards; }
+.fighter.foe .head { animation: fighterInR .35s ease-out backwards; }
+@keyframes fighterIn { from { opacity: 0; transform: translateX(-14px); } }
+@keyframes fighterInR { from { opacity: 0; transform: translateX(14px); } }
+.fighter::after { content: ""; position: absolute; inset: -1px; border-radius: inherit; pointer-events: none; opacity: 0; }
+.fighter.hit::after { animation: fxFlash .35s ease-out; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--fx, #fff) 30%, transparent), transparent 70%); }
+.fighter.hit-crit { animation: shakeHard .4s; }
+.fighter.hit-crit::after { animation: fxFlash .45s ease-out; background: radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--fx, #fff) 45%, transparent), transparent 75%); box-shadow: 0 0 0 2px var(--fx, #fff) inset; }
+.fighter.glow::after { animation: fxGlow .7s ease-out; box-shadow: 0 0 16px var(--fx, #6fe28f), 0 0 0 1px var(--fx, #6fe28f) inset; background: linear-gradient(0deg, color-mix(in srgb, var(--fx, #6fe28f) 22%, transparent), transparent 70%); }
+.fighter.dodged { animation: dodge .35s ease-out; }
+.fighter.ally-join::after { animation: fxGlow 1.1s ease-out; box-shadow: 0 0 20px var(--ally), 0 0 0 1px var(--ally) inset; }
+@keyframes fxFlash { 0% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes fxGlow { 0% { opacity: 0; } 25% { opacity: 1; } 100% { opacity: 0; } }
+@keyframes shakeHard { 15% { transform: translateX(-6px) rotate(-1deg); } 35% { transform: translateX(6px) rotate(1deg); } 55% { transform: translateX(-4px); } 75% { transform: translateX(2px); } }
+@keyframes dodge { 40% { transform: translateX(8px) skewX(-4deg); opacity: .75; } }
+/* Светлый след: показывает, сколько здоровья только что снесли, и догоняет полоску */
+.meter .lag { position: absolute; top: 0; left: 0; height: 100%; border-radius: 4px; background: rgba(255, 230, 200, .55); transition: width .45s ease-in .35s; }
+.meter.hp .fill { position: relative; }
+
+/* Кто-то вступил в общий бой */
+.arena { position: relative; }
+.join-banner {
+  position: absolute; left: 50%; bottom: -22px; z-index: 5; display: flex; align-items: center; gap: 6px; max-width: calc(100% - 24px);
+  padding: 5px 12px 5px 6px; border-radius: 999px; font-size: 12px; white-space: nowrap; color: var(--text); pointer-events: none;
+  background: linear-gradient(110deg, transparent 30%, rgba(255, 255, 255, .22) 50%, transparent 70%) no-repeat, linear-gradient(90deg, #1d3157, #24345a 50%, #1d3157);
+  background-size: 250% 100%, 100% 100%; border: 1px solid var(--ally); box-shadow: 0 0 18px rgba(111, 168, 255, .45), 0 6px 18px rgba(0, 0, 0, .5);
+  animation: joinIn .45s cubic-bezier(.2, 1.4, .4, 1) both, joinShine 1s .3s ease-out both, joinOut .35s 1.8s ease-in forwards;
+}
+.join-banner span { overflow: hidden; text-overflow: ellipsis; }
+.join-banner b { color: var(--ally); }
+.join-banner .ava { flex: none; border-radius: 50%; overflow: hidden; box-shadow: 0 0 0 2px var(--ally); }
+@keyframes joinIn { from { opacity: 0; transform: translate(-50%, 12px) scale(.7); } to { opacity: 1; transform: translate(-50%, 0) scale(1); } }
+@keyframes joinShine { from { background-position: 120% 0, 0 0; } to { background-position: -120% 0, 0 0; } }
+@keyframes joinOut { to { opacity: 0; transform: translate(-50%, -8px) scale(.95); } }
+.pmate.joining { animation: mateIn 1.4s ease-out both; border-radius: 8px; }
+@keyframes mateIn { 0% { opacity: 0; transform: translateX(-16px); background: rgba(111, 168, 255, .35); } 25% { opacity: 1; transform: none; } 100% { background: transparent; } }
 
 .log { flex: 1; overflow-y: auto; padding: 8px 14px 12px; margin: 0 12px 8px; background: var(--card); border: 1px solid var(--line); border-radius: 14px; font-size: 14px; }
 .entry { padding: 4px 0; animation: fadeIn .25s; color: #c9cfdc; }
@@ -392,6 +434,12 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .sk.basic { background: linear-gradient(180deg, #2c3142, #222634); }
 .sk.ready { border-color: #5a4720; box-shadow: 0 0 0 1px rgba(217, 164, 65, .25) inset; }
 .sk:disabled { opacity: .45; cursor: default; }
+.sk { transition: transform .08s, opacity .2s, border-color .2s, box-shadow .2s; }
+.sk:active:not(:disabled) { transform: scale(.93); }
+.sk.ready img { transition: transform .2s; }
+.sk.ready:active img { transform: scale(1.15); }
+.turnbar .fill.low { animation: lowPulse .8s ease-in-out infinite alternate; }
+@keyframes lowPulse { to { filter: brightness(1.35); } }
 .sk .cd { position: absolute; inset: 0; display: grid; place-items: center; background: rgba(10, 12, 16, .7); font-size: 18px; font-weight: 800; color: #fff; }
 .sk .count { position: absolute; top: 3px; right: 5px; font-size: 11px; font-weight: 800; color: var(--accent-2); }
 
@@ -741,3 +789,11 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 
 .hist-log { max-height: 55vh; overflow-y: auto; font-size: 13px; }
 .hist-log p { margin: 2px 0; }
+
+/* ---------- Появление экранов и уважение к настройке «меньше движения» ---------- */
+.screen:not([hidden]) { animation: fade .2s ease-out; }
+.mob, .tile { transition: transform .08s, border-color .15s; }
+.mob:active:not(:disabled) { transform: scale(.98); }
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; transition-delay: 0s !important; }
+}

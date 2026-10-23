@@ -584,7 +584,7 @@
       const add = Math.round(this.baseHp * 0.6);
       this.monster.maxHp += add;
       this.monster.hp += add;
-      this.say('passed', this.fill('{A} вступает в бой!', f, this.monster));
+      this.say('passed', this.fill('{A} вступает в бой!', f, this.monster), { type: 'join', target: f.id, amount: add });
       return f;
     }
 

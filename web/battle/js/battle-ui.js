@@ -15,6 +15,7 @@
     battle: null, opts: null, shown: 0, finished: false,
     turn: null,            // { start, end, monsterAt, autoAt, playerActed, monsterActed }
     timers: [], barTimer: null, pumping: false,
+    joinedAt: new Map(),   // id участника → когда он вступил (для анимации строки в плашке союзников)
   };
 
   // opts.session — общий бой (PC.lockstep): мир, здоровье монстра и лог общие для всех участников, ходы приходят от хозяина.
@@ -32,6 +33,7 @@
     }
     ui.shown = 0;
     ui.finished = false;
+    ui.joinedAt.clear();
     $('#log').innerHTML = '';
     $('#turn-title').textContent = 'Ход 1';
     const b = ui.battle;
@@ -122,15 +124,22 @@
     if (!el || !ui.session) return;
     const mates = b.players.filter((f) => f !== b.player);
     el.hidden = !mates.length;
+    const now = Date.now();
+    let fresh = false;
     el.innerHTML = mates.map((f) => {
+      // строка перерисовывается на каждой записи лога: отрицательная задержка продолжает анимацию, а не запускает её заново
+      const ago = now - (ui.joinedAt.get(f.id) || 0);
+      const join = ago < 1400 ? ` joining" style="animation-delay:-${ago}ms` : '';
+      if (join) fresh = true;
       const s = snap[f.id] || { hp: f.hp, res: f.res };
       const pct = Math.max(0, Math.min(1, s.hp / f.maxHp));
       const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
       const col = f.resource ? (data.resources[f.resource] || {}).color : '';
       const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
-      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
+      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
+    if (fresh) el.scrollTop = el.scrollHeight;
   }
 
   // ---------- Ход ----------
@@ -215,7 +224,7 @@
     // Имя и уровень слева, справа полоски здоровья и ресурса (скорость не показываем)
     return `<div class="head">${avatar(f)}
         <div class="who"><div class="name">${f.name}</div><div class="lvl">${f.diff ? `<span style="color:${data.difficulties[f.diff].color}">${data.difficulties[f.diff].name}</span> · ` : ''}${f.boss ? 'Босс · ' : ''}${f.level} ур.</div></div>
-        <div class="vit"><div class="meter hp"><div class="track"><div class="fill"></div><div class="shield-fill"></div><span class="v"></span></div></div>
+        <div class="vit"><div class="meter hp"><div class="track"><div class="lag"></div><div class="fill"></div><div class="shield-fill"></div><span class="v"></span></div></div>
         ${res ? `<div class="meter res" title="${res.name}"><div class="track"><div class="fill" style="background:${res.color}"></div></div></div>` : ''}</div>
         <div class="effects"></div></div>${f.isPlayer ? '<div class="party" id="party" hidden></div>' : ''}`;
   }
@@ -237,6 +246,7 @@
       const pct = s.hp / f.maxHp;
       const fill = el.querySelector('.hp .fill');
       fill.style.width = `${pct * 100}%`;
+      el.querySelector('.hp .lag').style.width = `${pct * 100}%`;   // светлый «след» догоняет полоску с задержкой
       fill.style.backgroundColor = pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)';
       el.querySelector('.hp .shield-fill').style.width = `${Math.min(1, s.shield / f.maxHp) * 100}%`;
       el.querySelector('.hp .v').textContent = `${fmt(s.hp)}${s.shield ? ` +${fmt(s.shield)}` : ''}`;
@@ -274,20 +284,61 @@
 
   const FLOAT = { normal: '#f2f4f8', crit: '#ff6b5e', block: '#b9a3ff', critblock: '#ffb347', poison: '#9fd34c', bleed: '#ff5d6c', burn: '#ff9a4d', fire: '#ff9a4d', cold: '#8fd3ff', lightning: '#f7e26b', magic: '#c39bff', arcane: '#c39bff' };
 
+  const CRIT = { crit: 1, critblock: 1 };
+
+  // Короткий класс-вспышка на карточке: снимаем и ставим заново, чтобы анимация проигралась ещё раз
+  function flash(el, cls, color) {
+    if (color) el.style.setProperty('--fx', color);
+    el.classList.remove(cls);
+    void el.offsetWidth;
+    el.classList.add(cls);
+  }
+
   function animateEvent(ev) {
     if (!ev) return;
+    if (ev.type === 'join') return animateJoin(ev);
     const el = elOf(ev.target);
     if (!el) return;
-    if (ev.type === 'damage') { el.classList.remove('hit'); void el.offsetWidth; el.classList.add('hit'); }
     const fl = document.createElement('div');
     fl.className = 'float';
-    if (ev.type === 'miss') { fl.textContent = 'мимо'; fl.style.color = '#8b93a7'; fl.style.fontSize = '15px'; }
-    else if (ev.type === 'heal') { fl.textContent = `+${fmt(ev.amount)}`; fl.style.color = '#6fe28f'; }
-    else if (ev.type === 'mana') { fl.textContent = `+${ev.amount}`; fl.style.color = '#7fb0ff'; }
-    else if (ev.type === 'shield') { fl.textContent = `⛨ ${fmt(ev.amount)}`; fl.style.color = '#8fd3ff'; }
+    if (ev.type === 'damage') {
+      const crit = CRIT[ev.kind];
+      el.classList.remove('hit', 'hit-crit');
+      flash(el, crit ? 'hit-crit' : 'hit', FLOAT[ev.kind] || '#fff');
+      if (crit) fl.classList.add('crit');
+    }
+    if (ev.type === 'miss') { flash(el, 'dodged'); fl.textContent = 'мимо'; fl.style.color = '#8b93a7'; fl.style.fontSize = '15px'; }
+    else if (ev.type === 'heal') { flash(el, 'glow', '#6fe28f'); fl.textContent = `+${fmt(ev.amount)}`; fl.style.color = '#6fe28f'; }
+    else if (ev.type === 'mana') { flash(el, 'glow', '#7fb0ff'); fl.textContent = `+${ev.amount}`; fl.style.color = '#7fb0ff'; }
+    else if (ev.type === 'shield') { flash(el, 'glow', '#8fd3ff'); fl.textContent = `⛨ ${fmt(ev.amount)}`; fl.style.color = '#8fd3ff'; }
     else { fl.textContent = `-${fmt(ev.amount)}`; fl.style.color = FLOAT[ev.kind] || '#fff'; }
     el.appendChild(fl);
-    setTimeout(() => fl.remove(), 900);
+    setTimeout(() => fl.remove(), 1000);
+  }
+
+  // Кто-то вступил в общий бой: плашка над ареной, новая строка в списке союзников, враг набирает силу
+  function animateJoin(ev) {
+    const b = ui.battle;
+    const f = b.fighters.find((x) => x.id === ev.target);
+    if (!f || f === b.player) return;
+    flash($('#f-p'), 'ally-join');
+    const m = $('#f-m');
+    if (ev.amount) {
+      flash(m, 'glow', '#e0a060');
+      const fl = document.createElement('div');
+      fl.className = 'float grow';
+      fl.textContent = `+${fmt(ev.amount)}`;
+      fl.style.color = '#e0a060';
+      m.appendChild(fl);
+      setTimeout(() => fl.remove(), 1000);
+    }
+    const arena = $('#arena');
+    arena.querySelectorAll('.join-banner').forEach((x) => x.remove());
+    const ban = document.createElement('div');
+    ban.className = 'join-banner';
+    ban.innerHTML = `${avatar(f, 22)}<span><b>${f.name}</b> вступает в бой!</span>`;
+    arena.appendChild(ban);
+    setTimeout(() => ban.remove(), 2200);
   }
 
   // Показывает новые записи лога по одной. Действия не ждут показа — показ лишь догоняет события.
@@ -304,6 +355,7 @@
         return;
       }
       const entry = battle.log[ui.shown++];
+      if (entry.ev && entry.ev.type === 'join') ui.joinedAt.set(entry.ev.target, Date.now());
       addEntry(entry);
       applySnapshot(entry.snap);
       animateEvent(entry.ev);
