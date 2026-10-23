@@ -12,8 +12,11 @@
 //                   { t:'sync', to, hist, cur }            вся история для вступившего, вернувшегося или отставшего
 //                   { t:'host', n }                        я новый хозяин, жду ход n
 //                   { t:'resign' }                         хозяин вышел из боя, пусть выберут нового
-//                   { t:'full', to }                       мест нет или вернуться нельзя
-//   участник → хозяин: { t:'hello', uid, tpl }  хочу в бой / догнать;  { t:'act', n, uid, skill, pot };
+//                   { t:'full', to, why? }                 мест нет, вернуться нельзя или why:'version' — другая версия игры
+//                   { t:'hb', n }                          «я жив, идёт ход n» каждые HEARTBEAT мс: одна потерянная посылка не вызывает смену хозяина
+// Версия игры (v) едет в hello и sync: клиенты с разным кодом боя считают по-разному, поэтому в один бой их не пускаем.
+// Каждый turn и sync несёт cs — отпечаток состояния боя у хозяина; не совпал у участника — он берёт историю заново.
+//   участник → хозяин: { t:'hello', uid, tpl, v }  хочу в бой / догнать;  { t:'act', n, uid, skill, pot };
 //                      { t:'catchup', to, recs } ходы, которых не хватает новому хозяину
 //   любой → все:       { t:'leave', uid }                 я выхожу из боя (герой уходит, а не стоит AFK)
 (function (root) {
@@ -24,6 +27,17 @@
   const HOST_SILENCE = 15000;   // хозяин молчит дольше — выбираем нового
   const TAKEOVER_STEP = 5000;   // каждый следующий кандидат ждёт ещё столько (на случай, что предыдущий тоже закрыл страницу)
   const CATCHUP_WAIT = 1500;    // новый хозяин ждёт ходы, которые видел кто-то из остальных, но не он
+  const HEARTBEAT = 3000;       // хозяин подаёт голос между ходами
+  const MAX_DESYNC = 3;         // столько раз подряд не сошёлся отпечаток после новой истории — бой обрываем
+
+  // Отпечаток состояния боя: ход, длина лога, генератор случайностей, здоровье и ресурсы всех бойцов
+  function checksum(b) {
+    let str = `${b.turn}|${b.log.length}|${b.rng.state ? b.rng.state() : ''}|${b.ended ? 1 : 0}|${b.tank ? b.tank.id : ''}`;
+    for (const f of b.fighters) str += `|${f.id}:${f.key || ''}:${Math.round(f.hp)}:${f.maxHp}:${Math.round(f.res || 0)}:${Math.round(f.dealt || 0)}:${f.left ? 1 : 0}:${f.effects.length}`;
+    let h = 2166136261;
+    for (let i = 0; i < str.length; i++) h = Math.imul(h ^ str.charCodeAt(i), 16777619);
+    return (h >>> 0).toString(36);
+  }
 
   const defaults = {
     now: () => Date.now(),
@@ -36,15 +50,16 @@
     tickLeft: (now) => 10000 - (now % 10000),
   };
 
-  // o: { host, uid, tpl, monster (только хозяин), seed (только хозяин), data, send(msg) } + необязательно часы для тестов
+  // o: { host, uid, tpl, monster (только хозяин), seed (только хозяин), data, send(msg), version } + необязательно часы для тестов
   function create(o) {
-    const k = { ...defaults, ...o };
+    const k = { ...defaults, version: PC.BUILD || 'dev', ...o };
     const S = { host: !!k.host, uid: k.uid, battle: null, turn: null, ready: false, ended: false, aborted: null, stopped: false, epoch: 0, hostUid: k.host ? k.uid : null };
     const subs = {};
     const emit = (ev, arg) => { for (const fn of subs[ev] || []) fn(arg); };
     S.on = (ev, fn) => { (subs[ev] = subs[ev] || []).push(fn); return S; };
 
-    let timer = null, helloTimer = null, watch = null, catchTimer = null, lastHeard = k.now();
+    let timer = null, helloTimer = null, watch = null, catchTimer = null, beat = null, lastHeard = k.now();
+    let desyncs = 0;                        // отпечаток не сошёлся подряд
     const buffer = new Map();               // пришедшие вперёд ходы
     let lastResync = 0;
     const knownLeaves = new Set();          // кто сказал, что выходит (нужно, если хозяин успел сказать это только остальным)
@@ -59,7 +74,8 @@
       if (left < 4000) left += k.TICK;
       return left;
     };
-    const clearAll = () => { k.clearT(timer); k.clearT(catchTimer); k.clearI(helloTimer); k.clearI(watch); };
+    const clearAll = () => { k.clearT(timer); k.clearT(catchTimer); k.clearI(helloTimer); k.clearI(watch); k.clearI(beat); };
+    const resync = () => { if (k.now() - lastResync > 1500) { lastResync = k.now(); sendHello(); } };
 
     function setTurn(n, left, carry) {
       S.turn = { n, start: k.now(), end: k.now() + left, acted: !!(carry && carry.acted), potted: !!(carry && carry.potted), joinWait: !!(carry && carry.joinWait), skill: carry && carry.skill, pot: carry && carry.pot };
@@ -93,14 +109,15 @@
       hist.turns.push(rec);
       b.applyTurn(rec);
       emit('update', rec);
+      const cs = checksum(b);
       if (b.ended) {
-        hsend({ t: 'turn', rec, next: null });
+        hsend({ t: 'turn', rec, next: null, cs });
         for (const uid of waiters) hsend({ t: 'full', to: uid });
         waiters.clear();
         return finish();
       }
       const left = nextLeft();
-      hsend({ t: 'turn', rec, next: { left } });
+      hsend({ t: 'turn', rec, next: { left }, cs });
       beginTurn(n + 1, left, false);
       for (const uid of waiters) sendSync(uid);
       waiters.clear();
@@ -115,7 +132,7 @@
     }
 
     function sendSync(uid) {
-      hsend({ t: 'sync', to: uid, hist, pj: pj.slice(), cur: { n: S.turn.n, left: Math.max(0, S.turn.end - k.now()) } });
+      hsend({ t: 'sync', to: uid, hist, pj: pj.slice(), cur: { n: S.turn.n, left: Math.max(0, S.turn.end - k.now()) }, v: k.version, cs: checksum(S.battle) });
     }
 
     function hostReceive(m) {
@@ -125,6 +142,7 @@
         if (m.skill != null) pend.actions[m.uid] = m.skill;
         if (m.pot) pend.pots[m.uid] = m.pot;
       } else if (m.t === 'hello') {
+        if (m.v !== k.version) return hsend({ t: 'full', to: m.uid, why: 'version' });
         const f = b.playerByKey(m.uid);
         if (f) { if (f.left) hsend({ t: 'full', to: m.uid }); else if (!waiting) sendSync(m.uid); else waiters.add(m.uid); return; }
         if (pj.some((j) => j.key === m.uid)) { if (waiting) waiters.add(m.uid); else sendSync(m.uid); return; }
@@ -143,7 +161,7 @@
 
     // ---------------- участник ----------------
 
-    function sendHello() { k.send({ t: 'hello', uid: k.uid, tpl: k.tpl }); }
+    function sendHello() { k.send({ t: 'hello', uid: k.uid, tpl: k.tpl, v: k.version }); }
 
     function applyRec(rec) {
       S.battle.applyTurn(rec);
@@ -156,6 +174,14 @@
         const m = buffer.get(expected());
         buffer.delete(expected());
         applyRec(m.rec);
+        if (m.cs && m.cs !== checksum(S.battle)) {   // мой бой разошёлся с боем хозяина: дальше не считаем, берём историю заново
+          emit('desync', m.rec.n);
+          buffer.clear();
+          if (++desyncs > MAX_DESYNC) return abort('desync');
+          lastResync = 0;
+          return resync();
+        }
+        if (m.cs) desyncs = 0;
         if (S.battle.ended) return finish();
         if (m.next) setTurn(m.rec.n + 1, m.next.left);
         for (const j of joinBuf.filter((x) => x.n === expected())) if (!S.battle.playerByKey(j.key)) S.battle.addPlayer(j.tpl, j.key);
@@ -186,6 +212,7 @@
 
     function peerReceive(m) {
       if (m.t === 'sync') {
+        if (m.v !== k.version) return abort('version');
         buffer.clear();
         S.battle = new PC.Battle({ players: m.hist.roster, monster: m.hist.monster, seed: m.hist.seed, data: k.data, localKey: k.uid });
         hist = { seed: m.hist.seed, monster: m.hist.monster, roster: m.hist.roster, turns: [] };
@@ -195,23 +222,27 @@
         const first = !S.ready;
         S.ready = true;
         k.clearI(helloTimer);
+        if (m.cs && m.cs !== checksum(S.battle)) { emit('desync', expected() - 1); if (++desyncs > MAX_DESYNC) return abort('desync'); }
         if (S.battle.ended) { emit(first ? 'ready' : 'reset', S.battle); return finish(); }
         const waitJoin = (m.pj || []).some((j) => j.key === k.uid) && !hist.turns.some((r) => (r.joins || []).some((j) => j.key === k.uid));
         setTurn(expected(), m.cur.left, waitJoin ? { acted: true, joinWait: true } : null);
         emit(first ? 'ready' : 'reset', S.battle);
       } else if (m.t === 'full') {
-        abort('full');
+        abort(m.why === 'version' ? 'version' : 'full');
       } else if (!S.ready) {
         // ждём sync
       } else if (m.t === 'ts') {
         if (m.n === expected()) setTurn(m.n, m.left);
+        else if (m.n > expected()) resync();
+      } else if (m.t === 'hb') {
+        if (m.n > expected() && !buffer.has(expected())) resync();   // ход потерялся по дороге
       } else if (m.t === 'join') {
         if (m.n === expected()) { if (!S.battle.playerByKey(m.key)) { S.battle.addPlayer(m.tpl, m.key); emit('update', { n: m.n, join: m.key }); } }
         else if (m.n > expected()) joinBuf.push(m);
       } else if (m.t === 'turn') {
         if (m.rec.n < expected()) return;
         buffer.set(m.rec.n, m);
-        if (m.rec.n > expected() && k.now() - lastResync > 1500) { lastResync = k.now(); sendHello(); }   // потеряли ход: просим историю заново
+        if (m.rec.n > expected()) resync();   // потеряли ход: просим историю заново
         drain();
       } else if (m.t === 'host') {
         // новый хозяин ждёт ход m.n: если мы видели больше, отдаём недостающее; своё действие в этом ходу присылаем заново
@@ -273,6 +304,10 @@
 
     // ---------------- общее ----------------
 
+    function heartbeat() {
+      if (S.host && !waiting && !S.stopped && !S.ended && S.turn) hsend({ t: 'hb', n: S.turn.n });
+    }
+
     S.start = function () {
       if (S.host) {
         S.battle = new PC.Battle({ players: [{ key: k.uid, tpl: k.tpl }], monster: k.monster, seed: k.seed, data: k.data, localKey: k.uid });
@@ -283,12 +318,14 @@
         if (left < 5000) left += k.TICK;
         beginTurn(1, left, true);
         watch = k.setI(checkHost, 1000);   // после возврата роли можно снова стать участником
+        beat = k.setI(heartbeat, HEARTBEAT);
         return S;
       }
       let tries = 0;
       sendHello();
       helloTimer = k.setI(() => { if (S.ready) return; if (++tries > 28) return abort('nohost'); sendHello(); }, 1000);
       watch = k.setI(checkHost, 1000);
+      beat = k.setI(heartbeat, HEARTBEAT);
       return S;
     };
 
@@ -331,6 +368,6 @@
     return S;
   }
 
-  PC.lockstep = { create, MAX_PLAYERS, HOST_SILENCE, TAKEOVER_STEP };
+  PC.lockstep = { create, checksum, MAX_PLAYERS, HOST_SILENCE, TAKEOVER_STEP };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

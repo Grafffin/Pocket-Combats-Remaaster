@@ -23,6 +23,16 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Battle tests
+        run: node web/battle/tools/lockstep-test.js
+      # Версия сборки в коде и в адресах скриптов: после выкладки браузер берёт свежие файлы,
+      # а игроки со старой страницей не попадают в общий бой с новыми (см. js/version.js)
+      - name: Stamp build version
+        run: |
+          V="${GITHUB_SHA::10}"
+          sed -i "s/__BUILD__/$V/" web/battle/js/version.js
+          sed -i -E "s#(src=\"js/[a-z0-9-]+\.js)\"#\1?v=$V\"#; s#href=\"style\.css\"#href=\"style.css?v=$V\"#" web/battle/index.html
+          grep -c "?v=$V" web/battle/index.html
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
