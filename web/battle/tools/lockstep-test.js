@@ -43,10 +43,12 @@ const weakMonster = () => PC.monsters.monsterAt(Object.keys(data.monsters)[0], 1
 // живучий, но слабо бьющий монстр: бой длится много ходов
 const tank = (mult = 60) => { const m = weakMonster(); m.stats = { ...m.stats, maxHp: m.stats.maxHp * mult }; return m; };
 
-function join(w, { host = false, uid, job, monster, seed = 7, auto = true, version }) {
+const disk = {};   // «localStorage» каждого игрока
+function join(w, { host = false, uid, job, monster, seed = 7, auto = true, version, resume = false }) {
   const tpl = mkTpl(uid, job);
   const s = PC.lockstep.create({
     host, uid, tpl, monster, seed, data, version,
+    saved: resume ? JSON.parse(disk[uid] || 'null') : null, save: (d) => { disk[uid] = JSON.stringify(d); },
     send: (m) => w.deliver(uid, m),
     now: w.now, setT: w.setT, clearT: w.clear, setI: w.setI, clearI: w.clear,
     tickLeft: (now) => 10000 - (now % 10000),
@@ -476,6 +478,35 @@ test('связь пропала надолго, участник взял рас
   assert.strictEqual(hosts.length, 1, 'хозяин один');
   assert.ok(host.host, 'остался хозяин большинства (у него больше ходов)');
   sameBattle(host, a, 'h/a'); sameBattle(host, b, 'h/b');
+});
+
+test('один в бою обновил страницу: бой поднимается из сохранённой истории и идёт дальше', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'solo', job: jobs[0], monster: tank(4) });
+  w.advance(35000);
+  const t0 = host.battle.turn, hp0 = host.battle.monster.hp;
+  host.stop();
+  w.advance(2000);
+  const back = join(w, { uid: 'solo', job: jobs[0], resume: true });
+  w.advance(8000);
+  assert.ok(back.ready && back.host, 'вернулся и ведёт бой сам');
+  assert.ok(!back.events.includes('abort:nohost'));
+  assert.strictEqual(back.battle.monster.hp, hp0, 'то же здоровье монстра');
+  w.advance(600000);
+  assert.ok(back.battle.ended && back.battle.turn > t0 + 2, 'бой доигран');
+});
+
+test('хозяин обновил страницу при живых участниках: хозяин один, бой общий', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank(30) });
+  const a = join(w, { uid: 'a', job: jobs[1] });
+  w.advance(35000);
+  host.stop();
+  w.advance(1000);
+  const h2 = join(w, { uid: 'h', job: jobs[0], resume: true });
+  w.advance(60000);
+  assert.strictEqual([h2, a].filter((s) => s.host).length, 1, 'хозяин один');
+  sameBattle(h2, a, 'после возвращения хозяина');
 });
 
 console.log(`\nвсе тесты прошли: ${n}`);

@@ -54,7 +54,9 @@ const monster = (idx, lvl, mult) => { const m = PC.monsters.monsterAt(Object.key
 
 // Клиент: страница игрока. Автобой жмёт умение в случайный момент хода (или не успевает), иногда пьёт зелье.
 function client(w, r, { host = false, uid, job, mob, seed }) {
+  w.disk = w.disk || {};   // localStorage каждого игрока: история боя для возврата после обновления
   const s = PC.lockstep.create({
+    saved: host ? null : JSON.parse(w.disk[uid] || 'null'), save: (d) => { w.disk[uid] = JSON.stringify(d); },
     host, uid, tpl: JSON.parse(JSON.stringify(tplOf(uid, job))), monster: mob, seed, data,
     send: (m) => w.deliver(uid, m), now: w.now, setT: w.setT, clearT: w.clear, setI: w.setI, clearI: w.clear,
   });
@@ -185,6 +187,19 @@ const scenarios = {
       wait(r.int(8000, 20000));
       const nh = live(w).find((s) => s.host);
       if (nh) nh.stop();
+      wait(900000);
+    },
+  },
+  'один в бою обновил страницу, потом вступили другие': {
+    ends: true,
+    body: ({ join, wait, r }) => {
+      const h = join('h', { host: true, mob: monster(1, 4, 6), seed: r.int(1, 1e9) });
+      wait(r.int(12000, 40000));
+      h.stop();
+      wait(r.int(500, 5000));
+      join('h');
+      wait(r.int(8000, 30000));
+      join('a'); join('b');
       wait(900000);
     },
   },

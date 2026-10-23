@@ -545,8 +545,16 @@
     const uid = PC.auth.user.id;
     ch.ready.then(() => {
       if (state.channel !== ch) return;
+      // история боя в браузере: если страницу обновят, а вести бой будет некому, бой поднимется из неё
+      const key = `pc-battle-hist:${id}`;
+      let saved = null;
+      try {
+        if (!host) saved = JSON.parse(localStorage.getItem(key) || 'null');
+        for (let i = localStorage.length - 1; i >= 0; i--) { const k = localStorage.key(i); if (k && k.startsWith('pc-battle-hist:') && k !== key) localStorage.removeItem(k); }
+      } catch (e) { saved = null; }
       sess = state.session = PC.lockstep.create({
-        host, uid, tpl, data, send: (m) => ch.send(m),
+        host, uid, tpl, data, send: (m) => ch.send(m), saved,
+        save: (d) => { try { localStorage.setItem(key, JSON.stringify(d)); } catch (e) { /* нет места — не критично */ } },
         monster: host ? JSON.parse(JSON.stringify(monster)) : undefined,
         seed: host ? Math.floor(Math.random() * 2147483647) : undefined,
       });
@@ -561,6 +569,7 @@
       sess.on('abort', (reason) => { if (!started) { started = true; common.onEnd(null, { aborted: reason }); } });
       // расчёт боя может перейти к другому участнику (хозяин закрыл страницу), поэтому роль проверяем в момент события
       sess.on('update', () => { if (sess.host) B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended); });
+      sess.on('end', () => { try { localStorage.removeItem(key); } catch (e) { /* не критично */ } });
       sess.on('end', () => { if (sess.host && !sess.stopped) { closeChannelLater(ch); B.end(); } else closeChannelLater(ch); });
       if (!host) toast('Вступаем в бой…');
       sess.start();
