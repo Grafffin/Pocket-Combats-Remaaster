@@ -40,6 +40,7 @@ function match(row, filters) {
     if (op === 'eq') return val === v;
     if (op === 'is') return v === null ? val == null : val === v;
     if (op === 'gt') return val > v;
+    if (op === 'lt') return val < v;
     return true;
   });
 }
@@ -50,6 +51,7 @@ function query(uid, st) {
   if (st.table === 'battle_history') return ok(null);
   if (st.table === 'battles') {
     if (st.op === 'insert') {
+      if (process.env.OLD_INDEX === '1' && db.battles.some((b) => b.owner_id === st.payload.owner_id && b.status === 'running')) return { data: null, error: { code: '23505', message: 'duplicate key value violates unique constraint "battles_one_running_per_owner"' } };   // индекс из 0004
       const row = { id: st.payload.id || uuid(), status: 'running', max_players: 10, started_at: new Date().toISOString(), updated_at: new Date().toISOString(), ...st.payload };
       db.battles.push(row);
       pgChange('battles');
@@ -113,7 +115,7 @@ const INIT = `
     const st = { table, op: 'select', filters: [], payload: null };
     const b = {
       select(c) { st.cols = c; return b; }, insert(v) { st.op = 'insert'; st.payload = v; return b; }, delete() { st.op = 'delete'; return b; },
-      eq(k, v) { st.filters.push(['eq', k, v]); return b; }, is(k, v) { st.filters.push(['is', k, v]); return b; }, gt(k, v) { st.filters.push(['gt', k, v]); return b; },
+      eq(k, v) { st.filters.push(['eq', k, v]); return b; }, is(k, v) { st.filters.push(['is', k, v]); return b; }, gt(k, v) { st.filters.push(['gt', k, v]); return b; }, lt(k, v) { st.filters.push(['lt', k, v]); return b; },
       order() { return b; }, limit() { return b; }, single() { st.single = true; return b; }, maybeSingle() { st.single = true; return b; },
       then(res, rej) { return call('q', st).then((r) => { if (st.single && Array.isArray(r.data)) r = { ...r, data: r.data[0] || null }; return r; }).then(res, rej); },
     };
@@ -260,6 +262,18 @@ async function attack(p) {
     assert.deepStrictEqual(tail(await logOf(A2.page)), tail(await logOf(B.page)), 'вернувшийся видит тот же бой');
     assert.strictEqual(await monHp(A2.page), await monHp(B.page), 'здоровье монстра одинаково');
     console.log('ok   вернувшийся хозяин вернулся в тот же бой участником');
+
+    stage = 'хозяин вышел из общего боя и начал новый — он виден в списке';
+    await A2.page.evaluate(() => { window.confirm = () => true; document.querySelector('#leave').click(); });
+    await sleep(2000);
+    assert.strictEqual(db.battles.filter((b) => b.owner_id === 'user-a').length, 1, 'бой 1 идёт у участника, хозяин из него вышел');
+    await A2.page.evaluate(() => { document.querySelector('#to-camp') && document.querySelector('#to-camp').click(); });
+    await sleep(1500);
+    await A2.page.evaluate(() => { PC.app.state.char.restTick = 0; });
+    await attack(A2);
+    await until(() => visible(A2.page, '#battle'), 15000, 'второй бой хозяина');
+    await until(() => db.battles.filter((b) => b.owner_id === 'user-a').length === 2, 8000, 'второй бой хозяина записан в базу');
+    console.log('ok   бой хозяина, вышедшего из прежнего боя, записан и попадает в список «Бои»');
 
     stage = 'оба выходят из боя';
     for (const p of [A2, B]) await p.page.evaluate(() => { window.confirm = () => true; document.querySelector('#leave').click(); });
