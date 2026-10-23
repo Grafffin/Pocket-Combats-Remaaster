@@ -31,7 +31,8 @@
     B.list = data || [];
     draw();
   }
-  const soon = () => { clearTimeout(loadTimer); loadTimer = setTimeout(load, 1200); };
+  // не сбрасываем таймер при каждом событии: в оживлённой локации обновление иначе откладывалось бы бесконечно
+  const soon = () => { if (!loadTimer) loadTimer = setTimeout(() => { loadTimer = null; load(); }, 1200); };
 
   function watch(loc) {
     if (channel) { auth.client.removeChannel(channel); channel = null; }
@@ -55,8 +56,14 @@
       if (extra && extra.id) row.id = extra.id;
       let res = B.coop && extra ? await cl.from('battles').insert({ ...row, diff: extra.diff || 0, base_hp: extra.hp, monster_max: extra.hp, monster_hp: extra.hp }).select('id').single() : null;
       if (!res || noColumn(res.error)) { if (res) B.coop = false; res = await cl.from('battles').insert(row).select('id').single(); }
+      // Без миграции 0011 прежний «идущий» бой хозяина мешает новому (уникальный индекс): убираем свои брошенные бои и пробуем снова
+      if (res.error && res.error.code === '23505') {
+        const stale = new Date(Date.now() - STALE_MS).toISOString();
+        await cl.from('battles').delete().eq('owner_id', auth.user.id).eq('status', 'running').lt('updated_at', stale);
+        res = B.coop && extra ? await cl.from('battles').insert({ ...row, diff: extra.diff || 0, base_hp: extra.hp, monster_max: extra.hp, monster_hp: extra.hp }).select('id').single() : res;
+      }
       const { data, error } = res;
-      if (missing(error) || error) return;
+      if (missing(error) || error) { if (error) console.warn('battle publish', error); return; }
       mine = data.id;
       await cl.from('battle_members').insert({ battle_id: mine, user_id: auth.user.id, nick: c.nick, level: c.level, job: c.job });
       soon();
