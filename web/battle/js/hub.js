@@ -254,6 +254,7 @@
         ${loc.safe ? '' : `<div class="row-actions"><button class="btn ${c.settings.autoHunt ? 'primary' : ''}" data-act="hunt">${c.settings.autoHunt ? 'Автоохота включена' : 'Начать автоохоту'}</button>
           <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
+      ${loc.safe || !PC.battles ? '' : PC.battles.html()}
       <div class="card section"><p class="loc-desc">${loc.desc}</p></div>
       ${PC.presence ? PC.presence.html() : ''}`;
   }
@@ -405,6 +406,7 @@
     const mob = res.mob;
     const D = W.diffOf(c, c.location);
     state.fight = { uid, monsterId: mob.id, level: mob.level, diff: D };
+    if (PC.battles) PC.battles.start(c, mob);
     app.save();
     $('#result').hidden = true;
     closeSheet();
@@ -418,6 +420,7 @@
       onEnd: (battle, { fled }) => {
         const won = battle.winner === battle.player;
         W.disengage(data, c, uid, won, Date.now());
+        if (PC.battles) PC.battles.end();
         const summary = P.applyBattleResult(data, c, battle, state.fight, rng, { fled });
         for (const it of summary.items) it.fresh = true;
         app.save();
