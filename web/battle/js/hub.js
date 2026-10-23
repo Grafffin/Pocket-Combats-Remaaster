@@ -254,7 +254,8 @@
         ${loc.safe ? '' : `<div class="row-actions"><button class="btn ${c.settings.autoHunt ? 'primary' : ''}" data-act="hunt">${c.settings.autoHunt ? 'Автоохота включена' : 'Начать автоохоту'}</button>
           <button class="btn" data-act="auto-settings">Настройки</button></div>`}
       </div>
-      <div class="card section"><p class="loc-desc">${loc.desc}</p></div>`;
+      <div class="card section"><p class="loc-desc">${loc.desc}</p></div>
+      ${PC.presence ? PC.presence.html() : ''}`;
   }
 
   function mobRow(m, now, rest) {

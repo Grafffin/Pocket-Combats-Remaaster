@@ -665,3 +665,9 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .auth-msg { min-height: 18px; margin: 0; font-size: 13px; color: var(--good); }
 .auth-msg.bad { color: var(--bad); }
 .auth-link { background: none; border: 0; color: var(--muted); font-size: 14px; padding: 8px; text-decoration: underline; cursor: pointer; }
+
+/* Игроки на локации */
+.player-list { display: flex; flex-direction: column; gap: 6px; }
+.player { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; padding: 6px 10px; border-radius: 8px; background: rgba(255,255,255,.04); }
+.player.me b { color: var(--accent, #e8c36a); }
+.player.busy .meta { color: #e07a5f; }
