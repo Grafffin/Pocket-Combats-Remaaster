@@ -102,6 +102,8 @@
       this.totalDealt = 0;
       const list = players || [{ key: this.localKey, tpl: player }];
       for (const e of list) this.spawn(e.tpl, e.key);
+      // напавший начинает бой с запасом агро: чтобы перетянуть монстра, остальным нужно его перебить
+      if (this.players[0]) { this.players[0].opening = Math.round(this.baseHp * 0.1); this.tank = this.players[0]; }
       this.say('poetry', this.rng.pick(data.haiku));
       for (const f of this.fighters) {
         if (f.legendary.has('boneShield')) this.addShield(f, Math.round(f.maxHp * 0.15), 99, 'Костяной щит');
@@ -161,6 +163,7 @@
           effects: f.effects.map((e) => ({ id: e.id, name: e.name, kind: e.kind, turns: e.turns, disable: e.disable })),
         };
       }
+      snap.$tank = this.tank ? this.tank.id : null;   // кого сейчас бьёт монстр (для подсветки в общем бою)
       this.log.push({ id: this.log.length + 1, turn: this.turn, type, text, ev: ev || null, snap });
     }
 
@@ -569,12 +572,18 @@
 
     // ---- Общий бой (несколько игроков, один монстр) ----
 
-    // Монстр бьёт одного из живых игроков: последний, кто его ранил, или случайный
+    // Агро как в WoW: вклад в бой (урон и половина лечения/щитов) плюс стартовый запас напавшего.
+    threatOf(f) { return (f.opening || 0) + this.impactOf(f); }
+
+    // Обычными ударами монстр бьёт одного — того, у кого больше агро. Текущую цель он сменит,
+    // только если кто-то обогнал её больше чем на 10%, чтобы цель не скакала от каждого удара.
     pickTarget() {
       const alive = this.alivePlayers();
-      if (alive.length <= 1) return alive[0] || null;
-      if (this.aggro && alive.includes(this.aggro) && this.rng.chance(40)) return this.aggro;
-      return this.rng.pick(alive);
+      let best = null;
+      for (const f of alive) if (!best || this.threatOf(f) > this.threatOf(best)) best = f;
+      const cur = this.tank && alive.includes(this.tank) ? this.tank : null;
+      this.tank = cur && best && this.threatOf(best) <= this.threatOf(cur) * 1.1 ? cur : best;
+      return this.tank;
     }
 
     // Новый участник посреди боя; здоровье монстра вырастает на 60% от базового
@@ -646,7 +655,7 @@
       this.perform(actor, skillId);
       this.extraAction(actor);
       this.acting = null;
-      if (actor.isPlayer) { const d = Math.max(0, before - this.monster.hp); actor.dealt += d; this.totalDealt += d; if (d > 0) this.aggro = actor; }
+      if (actor.isPlayer) { const d = Math.max(0, before - this.monster.hp); actor.dealt += d; this.totalDealt += d; }
       return true;
     }
 
@@ -687,7 +696,15 @@
       this.say('skill', this.fill('{A} {a:применяет|применяет} {skill}.', actor, target, { skill: `<skill>${def.name}</skill>` }));
       const lvl = actor.isPlayer ? (actor.skills.find((s) => s.id === skillId) || { lvl: 1 }).lvl : 1;
       this.current = { actor, skillId };
-      def.run(this, actor, target, def.v ? def.v(lvl) : {});
+      if (def.aoe && !actor.isPlayer) {
+        // особые умения монстра бьют всех участников общего боя, а не только цель с агро
+        for (const t of this.alivePlayers()) {
+          if (this.ended || actor.hp <= 0) break;
+          this.target = t;
+          def.run(this, actor, t, {});
+        }
+        this.target = this.tank && this.tank.hp > 0 && !this.tank.left ? this.tank : target;
+      } else def.run(this, actor, target, def.v ? def.v(lvl) : {});
       this.current = null;
     }
 

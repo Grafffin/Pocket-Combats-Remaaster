@@ -360,4 +360,51 @@ test('награда делится по вкладу: больше импакт
   assert.ok(b.rewardMult(z).share > 0.15, 'лечение и щиты тоже считаются');
 });
 
+test('агро: напавший держит монстра, пока его не перебьют больше чем на 10%', () => {
+  const b = new PC.Battle({ players: [{ key: 'x', tpl: mkTpl('x', jobs[0]) }, { key: 'y', tpl: mkTpl('y', jobs[1]) }], monster: tank(), seed: 5, data, localKey: 'x' });
+  const [x, y] = b.players;
+  assert.ok(x.opening > 0 && !y.opening, 'стартовое агро только у напавшего');
+  assert.strictEqual(b.pickTarget(), x, 'бьёт напавшего');
+  y.dealt = x.opening * 1.05;
+  assert.strictEqual(b.pickTarget(), x, 'небольшой перевес цель не меняет');
+  y.dealt = x.opening * 1.2;
+  assert.strictEqual(b.pickTarget(), y, 'перебил агро — монстр переключился');
+  x.dealt = y.dealt * 1.05 - x.opening;   // x обогнал, но меньше чем на 10%
+  assert.strictEqual(b.pickTarget(), y, 'текущая цель держится');
+  y.hp = 0;
+  assert.strictEqual(b.pickTarget(), x, 'цель погибла — монстр бьёт следующего по агро');
+});
+
+test('агро: обычные удары монстра идут только в цель, особые — по всем', () => {
+  const b = new PC.Battle({ players: [{ key: 'x', tpl: mkTpl('x', jobs[0]) }, { key: 'y', tpl: mkTpl('y', jobs[1]) }, { key: 'z', tpl: mkTpl('z', jobs[2]) }], monster: tank(), seed: 9, data, localKey: 'x' });
+  b.monster.monsterSkills = [];
+  for (let i = 0; i < 6; i++) b.resolveTurn({ x: 'basic', y: 'basic', z: 'basic' });
+  const hitMates = new Set(b.log.filter((e) => e.ev && e.ev.type === 'damage' && e.ev.target !== b.monster.id && /^p/.test(e.ev.target)).map((e) => e.ev.target));
+  const top = b.players.reduce((p, f) => (b.threatOf(f) > b.threatOf(p) ? f : p));
+  assert.ok(hitMates.size <= 2, 'обычными ударами монстр не бьёт всех подряд');
+  assert.ok(b.log.every((e) => '$tank' in e.snap), 'в записях лога есть текущая цель');
+  b.monster.monsterSkills = ['wail'];
+  b.monster.cooldowns = {};
+  const from = b.log.length;
+  b.target = b.pickTarget();
+  b.perform(b.monster, 'wail');
+  const hit = new Set(b.log.slice(from).filter((e) => e.ev && (e.ev.type === 'damage' || e.ev.type === 'miss')).map((e) => e.ev.target));
+  assert.strictEqual(hit.size, 3, `Стенание задело всех (${[...hit]})`);
+  assert.ok(top, 'есть лидер по агро');
+});
+
+test('агро одинаково у хозяина и участников', () => {
+  const w = makeWorld();
+  const host = join(w, { host: true, uid: 'h', job: jobs[0], monster: tank() });
+  w.advance(500);
+  const a = join(w, { uid: 'a', job: jobs[2] });
+  w.advance(500);
+  const c = join(w, { uid: 'c', job: jobs[3] });
+  w.advance(90000);
+  const ids = (s) => s.battle.log.map((e) => e.snap.$tank).join(',');
+  assert.strictEqual(ids(a), ids(host), 'цели монстра совпадают (a)');
+  assert.strictEqual(ids(c), ids(host), 'цели монстра совпадают (c)');
+  assert.ok(host.battle.log.some((e) => e.snap.$tank), 'цель записана');
+});
+
 console.log(`\nвсе тесты прошли: ${n}`);

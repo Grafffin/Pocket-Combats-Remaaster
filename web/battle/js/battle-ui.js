@@ -86,6 +86,7 @@
   function finalSnap() {
     const b = ui.battle, snap = {};
     for (const f of b.fighters) snap[f.id] = { hp: f.hp, res: f.res, shield: b.shieldOf(f), effects: f.effects.map((e) => ({ id: e.id, name: e.name, kind: e.kind, turns: e.turns, disable: e.disable })) };
+    snap.$tank = b.tank ? b.tank.id : null;
     return snap;
   }
 
@@ -125,6 +126,7 @@
     const mates = b.players.filter((f) => f !== b.player);
     el.hidden = !mates.length;
     const now = Date.now();
+    const tank = tankOf(snap);
     let fresh = false;
     el.innerHTML = mates.map((f) => {
       // строка перерисовывается на каждой записи лога: отрицательная задержка продолжает анимацию, а не запускает её заново
@@ -136,7 +138,7 @@
       const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
       const col = f.resource ? (data.resources[f.resource] || {}).color : '';
       const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
-      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
+      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${tank === f.id ? ' aggro' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
     if (fresh) el.scrollTop = el.scrollHeight;
@@ -237,8 +239,18 @@
     return null;
   }
 
+  // Кого бьёт монстр — подсвечиваем, только когда живых участников больше одного
+  function tankOf(snap) {
+    const b = ui.battle;
+    if (!ui.session || !snap.$tank) return null;
+    const alive = b.players.filter((f) => !f.left && (snap[f.id] ? snap[f.id].hp : f.hp) > 0);
+    return alive.length > 1 && alive.some((f) => f.id === snap.$tank) ? snap.$tank : null;
+  }
+
   function applySnapshot(snap) {
     renderParty(snap);
+    const me = $('#f-p > .head');
+    if (me) me.classList.toggle('aggro', !!ui.battle.player && tankOf(snap) === ui.battle.player.id);
     for (const f of ui.battle.fighters) {
       const s = snap[f.id];
       const el = elOf(f.id);

@@ -237,6 +237,16 @@ async function attack(p) {
     assert.ok(/Бета/.test(partyA), `у хозяина виден союзник: ${partyA}`);
     assert.ok(/Альфа/.test(partyB), `у вступившего виден хозяин: ${partyB}`);
     assert.ok(la.some((t) => /вступает в бой/.test(t)) || lb.some((t) => /вступает в бой/.test(t)), 'в логе есть вступление');
+    // подсветка цели монстра: у обоих один и тот же игрок, ровно одна обводка на экране
+    const aggroOf = (pg) => pg.evaluate(() => {
+      const me = document.querySelector('#f-p > .head.aggro') ? PC.app.state.char.nick : null;
+      const mates = [...document.querySelectorAll('#party .pmate.aggro .name')].map((e) => e.textContent);
+      return me ? [me, ...mates] : mates;
+    });
+    const ga = await aggroOf(A.page), gb = await aggroOf(B.page);
+    assert.strictEqual(ga.length, 1, `у хозяина подсвечен один игрок: ${ga}`);
+    assert.deepStrictEqual(ga, gb, 'цель монстра подсвечена одинаково у обоих');
+    console.log(`ok   цель монстра подсвечена одинаково у обоих: ${ga[0]}`);
     await A.page.screenshot({ path: '/tmp/claude-0/e2e-a.png', clip: { x: 0, y: 0, width: 375, height: 420 } });
     await B.page.screenshot({ path: '/tmp/claude-0/e2e-b.png', clip: { x: 0, y: 0, width: 375, height: 420 } });
     console.log('ok   общий лог, одно здоровье монстра, оба героя на экране друг друга');
