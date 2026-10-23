@@ -29,6 +29,11 @@
     $('#f-p').innerHTML = fighterHtml(b.player);
     $('#f-m').innerHTML = fighterHtml(b.monster);
     $('#f-m').classList.toggle('boss', b.monster.boss);
+    ui.syncing = false;
+    const sh = opts.shared;
+    if (sh && sh.hp) { b.monster.maxHp = Number(sh.max); b.monster.hp = Number(sh.hp); }   // вступили в чужой бой: общий запас здоровья
+    ui.lastHp = b.monster.hp;
+    if (sh) ui.syncTimer = setInterval(syncShared, 3000);
     renderToggles();
     ui.barTimer = setInterval(updateBar, 100);
     const now = Date.now();
@@ -45,6 +50,33 @@
     ui.finished = true;
     clearTimers();
     clearInterval(ui.barTimer);
+    clearInterval(ui.syncTimer);
+  }
+
+  // Общий бой: отправляем нанесённый монстру урон и берём общий остаток его здоровья
+  function applyShared(r, sentHp) {
+    const b = ui.battle, m = b.monster;
+    const delta = m.hp - sentHp;                        // что изменилось у нас, пока шёл запрос
+    m.maxHp = r.max;
+    m.hp = Math.max(0, Math.min(r.max, r.hp + Math.min(0, delta)));
+    ui.lastHp = r.hp;
+    if (r.hp <= 0 || r.status === 'finished') m.hp = 0;
+    if (m.hp <= 0) b.checkDeath(m);
+    const last = b.log[b.log.length - 1];
+    if (last) {
+      applySnapshot({ ...last.snap, [m.id]: { ...last.snap[m.id], hp: m.hp } });
+      if (b.ended) pump();
+    }
+  }
+  function syncShared() {
+    const b = ui.battle, sh = ui.opts && ui.opts.shared;
+    if (!sh || !b || b.ended || ui.finished || ui.syncing) return;
+    const sentHp = b.monster.hp;
+    ui.syncing = true;
+    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - sentHp))).then((r) => {
+      ui.syncing = false;
+      if (r && b === ui.battle && !b.ended && !ui.finished) applyShared(r, sentHp);
+    }, () => { ui.syncing = false; });
   }
 
   // ---------- Ход ----------
@@ -230,7 +262,13 @@
     closeSheet();
     closeModal();
     $('#tick-label').textContent = '';
-    ui.opts.onEnd(ui.battle, { fled });
+    const b = ui.battle, sh = ui.opts.shared;
+    if (!sh) return ui.opts.onEnd(b, { fled });
+    // Общий бой: последний отчёт об уроне, чтобы узнать свою долю
+    let done = false;
+    const end = (share) => { if (!done) { done = true; ui.opts.onEnd(b, { fled, share }); } };
+    const timeout = setTimeout(() => end(null), 4000);
+    Promise.resolve(sh.sync(Math.max(0, ui.lastHp - b.monster.hp))).then((r) => { clearTimeout(timeout); end(r); }, () => { clearTimeout(timeout); end(null); });
   }
 
   // ---------- Панель умений ----------

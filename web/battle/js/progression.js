@@ -232,6 +232,7 @@
       char.maxTier = Math.max(char.maxTier || 1, loc.tier);
     }
 
+    if (fight.noReward) return summary;   // вступил в общий бой, но почти не участвовал
     summary.exp = Math.max(1, Math.round(PC.monsters.rewards.exp(monsterId, level) * expMultiplier(char.level, level) * (1 + (stats.expPct || 0)) * dd.exp));
     Object.assign(summary, grantExp(data, char, summary.exp));
     const [g0, g1] = PC.monsters.rewards.gold(monsterId, level);

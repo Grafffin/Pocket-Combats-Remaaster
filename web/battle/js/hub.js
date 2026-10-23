@@ -294,6 +294,15 @@
     }
     const act = e.target.closest('[data-act]');
     if (!act) return;
+    if (act.dataset.act === 'join-battle') {
+      if (act.disabled) return;
+      act.disabled = true;
+      PC.battles.join(c, act.dataset.battle).then((r) => {
+        if (r.error) { act.disabled = false; return toast(r.error, 'bad'); }
+        if (!startFight(null, r)) act.disabled = false;
+      });
+      return;
+    }
     if (act.dataset.act === 'cancel-travel') { W.cancelTravel(c); app.save(); render(); }
     if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { Object.assign(c.settings, patch); app.save(); render(); });
     if (act.dataset.act === 'hunt') {
@@ -398,15 +407,28 @@
 
   // ---------- Бой ----------
 
-  function startFight(uid) {
+  // join — строка чужого боя (из PC.battles.join): тогда дерёмся с общим запасом здоровья монстра
+  function startFight(uid, join) {
     const c = state.char;
     clearTimeout(state.huntTimer);
-    const res = W.engage(data, c, uid, Date.now());
-    if (!res.ok) { toast(res.reason, 'bad'); return false; }
-    const mob = res.mob;
-    const D = W.diffOf(c, c.location);
+    let mob, D;
+    if (join) {
+      if (!W.canAttack(c, Date.now())) { toast(`Передышка: ${Math.ceil(W.restLeft(c, Date.now()) / 1000)} с`, 'bad'); PC.battles.end(); return false; }
+      mob = { id: join.monster_id, level: join.monster_level };
+      D = join.diff || 0;
+    } else {
+      const res = W.engage(data, c, uid, Date.now());
+      if (!res.ok) { toast(res.reason, 'bad'); return false; }
+      mob = res.mob;
+      D = W.diffOf(c, c.location);
+    }
     state.fight = { uid, monsterId: mob.id, level: mob.level, diff: D };
-    if (PC.battles) PC.battles.start(c, mob);
+    const monster = M.monsterAt(mob.id, mob.level, D);
+    let shared = null;
+    if (PC.battles) {
+      if (!join) PC.battles.start(c, mob, { hp: Math.max(1, Math.round(monster.stats.maxHp)), diff: D });
+      shared = { hp: join && join.monster_hp, max: join && join.monster_max, sync: (dmg) => PC.battles.sync(dmg) };
+    }
     app.save();
     $('#result').hidden = true;
     closeSheet();
@@ -414,13 +436,16 @@
     show('battle');
     PC.battleUI.start({
       player: P.toFighter(data, c),
-      monster: M.monsterAt(mob.id, mob.level, D),
+      monster,
+      shared,
       settings: c.settings,
       onSettings: () => app.save(),
-      onEnd: (battle, { fled }) => {
+      onEnd: (battle, { fled, share }) => {
         const won = battle.winner === battle.player;
-        W.disengage(data, c, uid, won, Date.now());
+        if (join) c.restTick = W.tickOf(Date.now()) + 1; else W.disengage(data, c, uid, won, Date.now());
         if (PC.battles) PC.battles.end();
+        // Награда за общий бой: нужен вклад не меньше 5% от всего урона по монстру
+        if (share && share.total > 0 && share.my < share.total * 0.05) state.fight.noReward = true;
         const summary = P.applyBattleResult(data, c, battle, state.fight, rng, { fled });
         for (const it of summary.items) it.fresh = true;
         app.save();
@@ -457,6 +482,7 @@
     let html = '';
     if (sum.win) {
       const need = P.expToNext(c.level);
+      if (state.fight.noReward) html += '<p class="meta">Вы почти не помогли в бою — награда не выдана.</p>';
       html += `<p>+${fmtNum(sum.exp)} опыта · +${fmtNum(sum.gold)} 💰 · ${battle.turn} ${plural(battle.turn, 'ход', 'хода', 'ходов')}</p>
         <div class="progress"><div style="width:${c.level >= P.MAX_LEVEL ? 100 : (c.exp / need) * 100}%"></div></div>
         <p class="meta">${c.level} уровень · ${fmtNum(c.exp)} / ${fmtNum(need)}</p>`;
