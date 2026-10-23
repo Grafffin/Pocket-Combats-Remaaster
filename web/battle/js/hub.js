@@ -476,8 +476,12 @@
           // погибший хозяин остаётся «движком» боя до его конца, потом сам закроет запись
           if (!(sess && sess.host && !sess.ended)) B.end();
         }
-        // Награда за общий бой: нужен вклад не меньше 5% от всего урона по монстру
-        if (share && share.total > 0 && share.my < share.total * 0.05) state.fight.noReward = true;
+        // Награда за общий бой делится между выжившими пропорционально вкладу (урон, лечение, щиты)
+        if (won && battle.players.length > 1) {
+          const r = battle.rewardMult(battle.player);
+          state.fight.lootMult = r.mult;
+          state.fight.contrib = { pct: Math.round(r.share * 100), pool: r.pool, n: battle.players.length };
+        }
         const summary = P.applyBattleResult(data, c, battle, state.fight, rng, { fled });
         for (const it of summary.items) it.fresh = true;
         app.save();
@@ -563,7 +567,7 @@
     let html = '';
     if (sum.win) {
       const need = P.expToNext(c.level);
-      if (state.fight.noReward) html += '<p class="meta">Вы почти не помогли в бою — награда не выдана.</p>';
+      if (state.fight.contrib) html += `<p class="meta">Общий бой, ${state.fight.contrib.n} ${plural(state.fight.contrib.n, 'игрок', 'игрока', 'игроков')}: ваш вклад ${state.fight.contrib.pct}% от награды выживших, она растёт на 60% за каждого участника.</p>`;
       html += `<p>+${fmtNum(sum.exp)} опыта · +${fmtNum(sum.gold)} 💰 · ${battle.turn} ${plural(battle.turn, 'ход', 'хода', 'ходов')}</p>
         <div class="progress"><div style="width:${c.level >= P.MAX_LEVEL ? 100 : (c.exp / need) * 100}%"></div></div>
         <p class="meta">${c.level} уровень · ${fmtNum(c.exp)} / ${fmtNum(need)}</p>`;

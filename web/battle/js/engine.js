@@ -113,7 +113,10 @@
       const f = createFighter({ ...tpl, isPlayer: true }, this.players.length || this.nextPid ? `p${this.nextPid}` : 'p', 1, this.data);
       this.nextPid++;
       f.key = key;
-      f.dealt = 0;
+      f.tpl = tpl;
+      f.dealt = 0;      // урон монстру
+      f.support = 0;    // лечение и щиты, которые игрок наложил на себя действием
+      f.joinedTurn = this.players.length ? this.turn : 0;   // вступивший посреди боя действует со следующего хода
       this.players.push(f);
       this.fighters.splice(this.players.length - 1, 0, f);   // игроки идут перед монстром
       if (key === this.localKey) this.player = f;
@@ -122,6 +125,19 @@
 
     playerByKey(key) { return this.players.find((f) => f.key === key) || null; }
     alivePlayers() { return this.players.filter((f) => f.hp > 0 && !f.left); }
+
+    // Вклад в бой: урон монстру плюс половина лечения и щитов
+    impactOf(f) { return f.dealt + 0.5 * (f.support || 0); }
+
+    // Награда победителю f: общий «котёл» растёт на 60% за каждого участника (как здоровье монстра),
+    // и делится между выжившими пропорционально вкладу. Один игрок получает ровно 1 (обычную награду).
+    rewardMult(f) {
+      const pool = 1 + 0.6 * (this.players.length - 1);
+      const winners = this.players.filter((p) => p.hp > 0 && !p.left);
+      const total = winners.reduce((s, p) => s + this.impactOf(p), 0);
+      const share = total > 0 ? this.impactOf(f) / total : 1 / Math.max(1, winners.length);
+      return { mult: pool * share, share, pool };
+    }
 
     // Победитель с точки зрения «моего» бойца: я, если монстр пал, а я жив; иначе монстр
     get winner() {
@@ -274,6 +290,7 @@
     }
 
     addShield(f, amount, turns, name = 'Щит') {
+      if (this.acting === f) f.support += amount;
       this.addEffect(f, { id: 'shield', name, kind: 'buff', turns, shieldHp: amount, say: false }, f);
       this.say('effect', this.fill(`{A} {a:окружил|окружила} себя щитом <dmg k="heal">${PC.fmtBig(amount)}</dmg>.`, f, f), { type: 'shield', target: f.id, amount });
     }
@@ -484,6 +501,7 @@
       const n = Math.min(amount, f.maxHp - f.hp);
       if (n <= 0) return;
       f.hp += n;
+      if (this.acting === f) f.support += n;   // лечение умением учитывается во вкладе в бой
       if (text) this.say('heal', this.fill(text, f, f, { heal: `<dmg k="heal">+${PC.fmtBig(n)}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
       else this.say('heal', this.fill('{A} {a:восстановил|восстановила} силы {heal} {hp}.', f, f, { heal: `<dmg k="heal">+${PC.fmtBig(n)}</dmg>`, hp: this.hpTag(f) }), { type: 'heal', target: f.id, amount: n });
     }
@@ -584,7 +602,7 @@
     // Один ход общего боя. actions: { [key]: skillId | null } (null или нет записи — игрок не успел).
     resolveTurn(actions = {}) {
       if (this.ended) return;
-      const acts = this.alivePlayers().map((f) => ({ actor: f, skillId: actions[f.key] == null ? null : actions[f.key], monster: false }));
+      const acts = this.alivePlayers().filter((f) => f.joinedTurn !== this.turn).map((f) => ({ actor: f, skillId: actions[f.key] == null ? null : actions[f.key], monster: false }));
       acts.push({ actor: this.monster, skillId: this.autoAction(this.monster), monster: true });
       for (const a of acts) a.init = this.speedOf(a.actor) * this.rng.float(0.9, 1.1);
       acts.sort((x, y) => y.init - x.init);

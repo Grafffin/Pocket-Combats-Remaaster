@@ -162,36 +162,38 @@
   // Шансы выпадения за обычного монстра (босс — гарантированные вещи)
   const DROP = { item: 32, bossItems: 3, potion: 5, stone1: 8, stone2: 3, essence: 12, main: 35, zoneMat: 45 };
 
-  function rollDrops(data, char, monsterId, level, stats, rng, D = 0) {
+  function rollDrops(data, char, monsterId, level, stats, rng, D = 0, k = 1) {
     const m = data.monsters[monsterId];
     const drops = { items: [], materials: {} };
     if (m.ai === 'idle') return drops;
     const addMat = (k, n) => { drops.materials[k] = (drops.materials[k] || 0) + n; };
     const dd = data.difficulties[D] || data.difficulties[0];
     const mf = (stats.mf || 0) + dd.mf;
-    const itemCount = m.boss ? DROP.bossItems : (rng.chance(DROP.item * (1 + mf / 200)) ? 1 : 0);
+    // k — доля награды в общем бою (вклад игрока): шансы выпадения растут и падают вместе с ней
+    const ch = (p) => rng.chance(Math.min(100, p * k));
+    const itemCount = m.boss ? Math.round(DROP.bossItems * k) : (ch(DROP.item * (1 + mf / 200)) ? 1 : 0);
     for (let i = 0; i < itemCount; i++) {
       const cls = rng.chance(80) ? char.job : rng.pick(Object.keys(data.classes));
       drops.items.push(I().generate(data, { ilvl: level + dd.ilvl, cls, mf, boss: m.boss, rarityFloor: m.boss ? 2 : 0 }, rng));
     }
     const tier = I().maxTierFor(data, level);
-    if (rng.chance(DROP.main)) addMat(rng.pick(['ore', 'leather']), rng.int(1, 1 + Math.floor(tier / 2)));
-    if (rng.chance(DROP.essence)) addMat('essence', rng.int(1, tier));
-    if (rng.chance(DROP.stone1)) addMat('stone1', 1);
-    if (tier >= 3 && rng.chance(DROP.stone2)) addMat('stone2', 1);
-    if (rng.chance(DROP.potion)) addMat('hp_potion_1', 1);
+    if (ch(DROP.main)) addMat(rng.pick(['ore', 'leather']), rng.int(1, 1 + Math.floor(tier / 2)));
+    if (ch(DROP.essence)) addMat('essence', rng.int(1, tier));
+    if (ch(DROP.stone1)) addMat('stone1', 1);
+    if (tier >= 3 && ch(DROP.stone2)) addMat('stone2', 1);
+    if (ch(DROP.potion)) addMat('hp_potion_1', 1);
     const zone = data.locations[char.location];
-    if (zone && zone.mats && rng.chance(DROP.zoneMat)) addMat(rng.pick(zone.mats), rng.int(1, 2));
+    if (zone && zone.mats && ch(DROP.zoneMat)) addMat(rng.pick(zone.mats), rng.int(1, 2));
     // Уники: только с «своих» боссов и с нужной сложности; шанс растёт с находкой
     if (m.boss) {
       for (const u of Object.values(data.uniques)) {
         if (u.boss !== monsterId || u.minDiff > D) continue;
-        if (rng.chance(data.UNIQUE_CHANCE * (1 + mf / 300))) drops.items.push(I().generateUnique(data, u.id, { ilvl: level + dd.ilvl }, rng));
+        if (ch(data.UNIQUE_CHANCE * (1 + mf / 300))) drops.items.push(I().generateUnique(data, u.id, { ilvl: level + dd.ilvl }, rng));
       }
     }
-    if (D && rng.chance(dd.stone3)) addMat('stone3', 1);
-    if (D >= 2 && rng.chance(10 + 3 * D)) addMat('protect', 1);
-    if (m.boss) { addMat('stone2', 1 + D); if ((tier >= 5 || D) && rng.chance(30 + 8 * D)) addMat('stone3', 1); addMat('reroll', 1 + Math.floor(D / 2)); }
+    if (D && ch(dd.stone3)) addMat('stone3', 1);
+    if (D >= 2 && ch(10 + 3 * D)) addMat('protect', 1);
+    if (m.boss) { addMat('stone2', 1 + D); if ((tier >= 5 || D) && ch(30 + 8 * D)) addMat('stone3', 1); addMat('reroll', 1 + Math.floor(D / 2)); }
     return drops;
   }
 
@@ -232,14 +234,15 @@
       char.maxTier = Math.max(char.maxTier || 1, loc.tier);
     }
 
-    if (fight.noReward) return summary;   // вступил в общий бой, но почти не участвовал
-    summary.exp = Math.max(1, Math.round(PC.monsters.rewards.exp(monsterId, level) * expMultiplier(char.level, level) * (1 + (stats.expPct || 0)) * dd.exp));
+    const k = fight.lootMult == null ? 1 : fight.lootMult;   // доля награды в общем бою пропорциональна вкладу
+    if (k <= 0) return summary;
+    summary.exp = Math.max(1, Math.round(PC.monsters.rewards.exp(monsterId, level) * expMultiplier(char.level, level) * (1 + (stats.expPct || 0)) * dd.exp * k));
     Object.assign(summary, grantExp(data, char, summary.exp));
     const [g0, g1] = PC.monsters.rewards.gold(monsterId, level);
-    summary.gold = Math.round(rng.int(g0, g1) * (1 + (stats.goldPct || 0)) * dd.gold);
+    summary.gold = Math.round(rng.int(g0, g1) * (1 + (stats.goldPct || 0)) * dd.gold * k);
     char.gold += summary.gold;
 
-    const drops = rollDrops(data, char, monsterId, level, stats, rng, D);
+    const drops = rollDrops(data, char, monsterId, level, stats, rng, D, k);
     for (const [k, n] of Object.entries(drops.materials)) char.materials[k] = (char.materials[k] || 0) + n;
     summary.materials = drops.materials;
     for (const item of drops.items) {

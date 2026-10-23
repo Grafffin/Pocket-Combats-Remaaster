@@ -49,6 +49,7 @@
     let lastResync = 0;
     const knownLeaves = new Set();          // кто сказал, что выходит (нужно, если хозяин успел сказать это только остальным)
     let hist = null;                        // у всех: seed, монстр, первый состав и все ходы — по ним можно восстановить бой
+    let joinBuf = [];                       // «вступил» для ходов, до которых мы ещё не дошли
     let pend = null, pj = [], pl = [], waiters = new Set(), waiting = false;
 
     const expected = () => hist.turns.length + 1;
@@ -61,7 +62,7 @@
     const clearAll = () => { k.clearT(timer); k.clearT(catchTimer); k.clearI(helloTimer); k.clearI(watch); };
 
     function setTurn(n, left, carry) {
-      S.turn = { n, start: k.now(), end: k.now() + left, acted: !!(carry && carry.acted), potted: !!(carry && carry.potted), skill: carry && carry.skill, pot: carry && carry.pot };
+      S.turn = { n, start: k.now(), end: k.now() + left, acted: !!(carry && carry.acted), potted: !!(carry && carry.potted), joinWait: !!(carry && carry.joinWait), skill: carry && carry.skill, pot: carry && carry.pot };
       emit('turn', S.turn);
     }
 
@@ -105,8 +106,16 @@
       waiters.clear();
     }
 
+    // Вступление видно сразу: боец появляется в бою между ходами, но в текущем ходу не действует (с хода n он «ждёт»)
+    function admit(j) {
+      if (S.battle.playerByKey(j.key)) return;
+      S.battle.addPlayer(j.tpl, j.key);
+      hsend({ t: 'join', n: S.turn.n, key: j.key, tpl: j.tpl });
+      emit('update', { n: S.turn.n, join: j.key });
+    }
+
     function sendSync(uid) {
-      hsend({ t: 'sync', to: uid, hist, cur: { n: S.turn.n, left: Math.max(0, S.turn.end - k.now()) } });
+      hsend({ t: 'sync', to: uid, hist, pj: pj.slice(), cur: { n: S.turn.n, left: Math.max(0, S.turn.end - k.now()) } });
     }
 
     function hostReceive(m) {
@@ -118,10 +127,13 @@
       } else if (m.t === 'hello') {
         const f = b.playerByKey(m.uid);
         if (f) { if (f.left) hsend({ t: 'full', to: m.uid }); else if (!waiting) sendSync(m.uid); else waiters.add(m.uid); return; }
-        if (pj.some((j) => j.key === m.uid)) { waiters.add(m.uid); return; }
-        if (b.ended || b.players.length + pj.length >= MAX_PLAYERS) return hsend({ t: 'full', to: m.uid });
-        pj.push({ key: m.uid, tpl: m.tpl });
-        waiters.add(m.uid);
+        if (pj.some((j) => j.key === m.uid)) { if (waiting) waiters.add(m.uid); else sendSync(m.uid); return; }
+        if (b.ended || b.players.length + pj.filter((j) => !b.playerByKey(j.key)).length >= MAX_PLAYERS) return hsend({ t: 'full', to: m.uid });
+        const j = { key: m.uid, tpl: m.tpl };
+        pj.push(j);
+        if (waiting) return void waiters.add(m.uid);   // новый хозяин ещё собирает ходы: впустим, когда начнёт ход
+        admit(j);
+        sendSync(m.uid);
       } else if (m.t === 'leave') {
         if (b.playerByKey(m.uid) && !pl.includes(m.uid)) pl.push(m.uid);
       } else if (m.t === 'catchup' && waiting) {
@@ -146,6 +158,8 @@
         applyRec(m.rec);
         if (S.battle.ended) return finish();
         if (m.next) setTurn(m.rec.n + 1, m.next.left);
+        for (const j of joinBuf.filter((x) => x.n === expected())) if (!S.battle.playerByKey(j.key)) S.battle.addPlayer(j.tpl, j.key);
+        joinBuf = joinBuf.filter((x) => x.n > expected());
       }
     }
 
@@ -176,11 +190,14 @@
         S.battle = new PC.Battle({ players: m.hist.roster, monster: m.hist.monster, seed: m.hist.seed, data: k.data, localKey: k.uid });
         hist = { seed: m.hist.seed, monster: m.hist.monster, roster: m.hist.roster, turns: [] };
         for (const rec of m.hist.turns) { S.battle.applyTurn(rec); hist.turns.push(rec); }
+        for (const j of m.pj || []) S.battle.addPlayer(j.tpl, j.key);
+        joinBuf = [];
         const first = !S.ready;
         S.ready = true;
         k.clearI(helloTimer);
         if (S.battle.ended) { emit(first ? 'ready' : 'reset', S.battle); return finish(); }
-        setTurn(expected(), m.cur.left);
+        const waitJoin = (m.pj || []).some((j) => j.key === k.uid) && !hist.turns.some((r) => (r.joins || []).some((j) => j.key === k.uid));
+        setTurn(expected(), m.cur.left, waitJoin ? { acted: true, joinWait: true } : null);
         emit(first ? 'ready' : 'reset', S.battle);
       } else if (m.t === 'full') {
         abort('full');
@@ -188,6 +205,9 @@
         // ждём sync
       } else if (m.t === 'ts') {
         if (m.n === expected()) setTurn(m.n, m.left);
+      } else if (m.t === 'join') {
+        if (m.n === expected()) { if (!S.battle.playerByKey(m.key)) { S.battle.addPlayer(m.tpl, m.key); emit('update', { n: m.n, join: m.key }); } }
+        else if (m.n > expected()) joinBuf.push(m);
       } else if (m.t === 'turn') {
         if (m.rec.n < expected()) return;
         buffer.set(m.rec.n, m);
@@ -215,7 +235,10 @@
       S.epoch++;
       S.host = true;
       S.hostUid = k.uid;
-      pend = { actions: {}, pots: {} }; pj = []; waiters = new Set(); buffer.clear();
+      pend = { actions: {}, pots: {} }; waiters = new Set(); buffer.clear();
+      const recorded = new Set(hist.roster.map((j) => j.key));
+      for (const r of hist.turns) for (const j of r.joins || []) recorded.add(j.key);
+      pj = S.battle.players.filter((f) => !recorded.has(f.key)).map((f) => ({ key: f.key, tpl: f.tpl }));   // вступили, но хозяин не успел записать
       pl = [...knownLeaves].filter((key) => { const f = S.battle.playerByKey(key); return f && !f.left; });
       waiting = true;
       const carry = S.turn && S.turn.n === expected() ? S.turn : null;
@@ -226,6 +249,7 @@
         waiting = false;
         if (S.stopped || S.ended) return;
         beginTurn(expected(), nextLeft(), true, carry);
+        for (const j of pj) admit(j);
         for (const uid of waiters) sendSync(uid);
         waiters.clear();
       }, CATCHUP_WAIT);
