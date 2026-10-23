@@ -568,7 +568,8 @@
       sess.on('ready', launch);
       sess.on('abort', (reason) => { if (!started) { started = true; common.onEnd(null, { aborted: reason }); } });
       // расчёт боя может перейти к другому участнику (хозяин закрыл страницу), поэтому роль проверяем в момент события
-      sess.on('update', () => { if (sess.host) B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended); });
+      // база узнаёт здоровье монстра в конце хода, при вступлении и в конце боя (не на каждый удар)
+      sess.on('update', (e) => { if (sess.host && (!e || e.k === 'e' || e.k === 'j' || sess.battle.ended)) B.state(id, sess.battle.monster.hp, sess.battle.monster.maxHp, sess.battle.ended); });
       sess.on('end', () => { try { localStorage.removeItem(key); } catch (e) { /* не критично */ } });
       sess.on('end', () => { if (sess.host && !sess.stopped) { closeChannelLater(ch); B.end(); } else closeChannelLater(ch); });
       if (!host) toast('Вступаем в бой…');

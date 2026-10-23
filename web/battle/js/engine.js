@@ -639,6 +639,45 @@
       this.resolveTurn(rec.actions || {});
     }
 
+    // ---- Общий бой в реальном времени: поток событий ----
+    // Хозяин применяет событие сразу (игрок нажал умение, монстру пришёл его момент хода) и рассылает его.
+    // Остальные применяют те же события в том же порядке — бой выходит одинаковым.
+    //   { k:'a', key, s }  игрок key действует умением s (раз за ход)
+    //   { k:'m' }          монстр действует (раз за ход, по цели с агро)
+    //   { k:'p', key, id } игрок пьёт зелье
+    //   { k:'j', key, tpl } вступил игрок — действовать может сразу
+    //   { k:'l', key }     игрок вышел из боя
+    //   { k:'e' }          конец хода: кто не успел — замешкался, монстр бьёт, если ещё не бил
+    hasActed(key) { return !!(this.turnActs && this.turnActs.has(key)); }
+    applyEvent(e) {
+      if (this.ended || !e) return;
+      if (!this.turnActs) this.turnActs = new Set();
+      if (e.k === 'j') this.addPlayer(e.tpl, e.key);
+      else if (e.k === 'l') this.removePlayer(e.key);
+      else if (e.k === 'p') {
+        const f = this.playerByKey(e.key);
+        if (f && f.hp > 0 && !f.left && this.canUseConsumable(f)) this.useConsumable(f, e.id);
+      } else if (e.k === 'a') {
+        const f = this.playerByKey(e.key);
+        if (!f || f.hp <= 0 || f.left || this.turnActs.has(e.key)) return;
+        this.turnActs.add(e.key);
+        this.act(f, e.s);
+      } else if (e.k === 'm') this.monsterMove();
+      else if (e.k === 'e') {
+        this.monsterMove();
+        for (const f of this.alivePlayers()) if (!this.ended && !this.turnActs.has(f.key)) this.skip(f);
+        if (!this.ended) this.endTurn();
+        this.turnActs = new Set();
+        this.monsterActed = false;
+      }
+    }
+    monsterMove() {
+      if (this.ended || this.monsterActed) return;
+      this.monsterActed = true;
+      this.target = this.pickTarget();
+      if (this.target) this.act(this.monster, this.autoAction(this.monster));
+    }
+
     // ---- Бой в реальном времени тика ----
     // Ход = один тик. Игрок действует, когда нажмёт; монстр — в момент, зависящий от соотношения скоростей.
     // Возвращает долю тика (0…1), когда действует боец f: чем он быстрее соперника, тем раньше.
