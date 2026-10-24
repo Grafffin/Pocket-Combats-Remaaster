@@ -169,8 +169,13 @@ function ledger(w) {
     await w3.call(A, 'tradeOffer', { id: id3, items: [{ uid: x.uid }], gold: 0 });
     await w3.call(B, 'tradeOffer', { id: id3, items: [], gold: 10 });
     w3.hero(B).location = 'forest_edge';
-    await w3.expect('not_here', A, 'tradeConfirm', { id: id3, ver: w3.trades.get(id3).ver }, 'партнёр ушёл — подтвердить нельзя');
-    await w3.call(A, 'tradeCancel', { id: id3 });
+    const ver3 = w3.trades.get(id3).ver;
+    await w3.call(A, 'tradeConfirm', { id: id3, ver: ver3 });   // партнёр ушёл — сделка отменяется, ничего не завершается
+    assert.strictEqual(w3.trades.get(id3).state, 'cancel', 'уход партнёра отменяет сделку');
+    await w3.call(A, 'tradeClaim', { id: id3 });
+    assert.ok(w3.hero(A).bag.some((q) => q && q.uid === x.uid), 'залог вернулся');
+    await w3.call(B, 'tradeClaim', { id: id3 });
+    assert.strictEqual(w3.hero(B).gold, 5000);
     console.log('ok   посторонние, занятость, локация');
   }
 
