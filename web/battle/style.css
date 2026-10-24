@@ -958,3 +958,10 @@ p.bag-expand { text-align: center; margin: 0; }
 /* Кузница и сумки в окнах: десятки вещей сразу — вращающиеся рамки и свечение редких вещей не анимируем (роняли fps) */
 .picker .tile, .picker .tile::before, .picker .tile::after, .modal-grid .tile, .modal-grid .tile::before { animation: none !important; }
 .picker .tile::before, .modal-grid .tile::before { filter: none !important; }
+
+/* Листание вкладок свайпом */
+#hub-body { touch-action: pan-y; overflow-x: hidden; }
+.tab.slide-l { animation: tabInL .24s cubic-bezier(.2, .8, .3, 1); }
+.tab.slide-r { animation: tabInR .24s cubic-bezier(.2, .8, .3, 1); }
+@keyframes tabInL { from { transform: translateX(46px); opacity: .25; } to { transform: none; opacity: 1; } }
+@keyframes tabInR { from { transform: translateX(-46px); opacity: .25; } to { transform: none; opacity: 1; } }

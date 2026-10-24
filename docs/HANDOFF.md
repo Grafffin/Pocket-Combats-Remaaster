@@ -107,6 +107,7 @@ NODE_PATH=$(npm root -g) node web/battle/tools/e2e-coop.js   # сквозной 
 SERVER=1 NODE_PATH=$(npm root -g) node web/battle/tools/e2e-coop.js   # то же с подставной функцией game
 node web/battle/tools/trade-test.js               # обмен между игроками: мошеннические схемы (в CI)
 NODE_PATH=$(npm root -g) node web/battle/tools/e2e-trade.js   # обмен в браузере: карточка игрока → сделка → итог
+NODE_PATH=$(npm root -g) node web/battle/tools/e2e-swipe.js   # листание вкладок Мир/Герой/Сумка свайпом
 node web/battle/tools/server-smoke.js <версия>    # живой Supabase; только в Actions после деплоя
 node web/battle/tools/sim.js | compare.js | uniques.js [боёв] [фильтр]   # баланс
 node web/battle/tools/armor.js [боёв] [--variants] [--acc]   # материалы брони по уровням 5…35
