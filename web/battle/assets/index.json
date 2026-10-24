@@ -22,7 +22,8 @@
     "skeleton": "monsters/skeleton.svg",
     "ghoul": "monsters/ghoul.svg",
     "wraith": "monsters/wraith.svg",
-    "lich": "monsters/lich.svg"
+    "lich": "monsters/lich.svg",
+    "scorpion": "monsters/scorpion.svg"
   },
   "npcs": {
     "shopkeeper": "npcs/shopkeeper.svg",

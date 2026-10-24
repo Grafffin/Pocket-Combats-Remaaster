@@ -230,9 +230,15 @@
   const MAT_SOURCE = {
     stone1: 'Падает с монстров, продаётся в лавке, выпадает при разборе.', stone2: 'Падает с монстров с Гоблинской стоянки и боссов, продаётся в лавке.',
     stone3: 'Боссы поздних зон, разбор мифических вещей.', protect: 'Лавка.', reroll: 'Лавка, боссы, разбор легендарных вещей.',
-    essence: 'Монстры и разбор редких вещей.', ore: 'Монстры и разбор металлических вещей.', leather: 'Монстры и разбор кожаных вещей.',
-    cloth: 'Монстры и разбор тканевых вещей.', chitin: 'Монстры и разбор хитиновых вещей.',
+    essence: 'Любые монстры (заклинатели — чаще) и разбор редких вещей.', ore: 'Разбор металлических вещей.', leather: 'Разбор кожаных вещей.',
+    cloth: 'Разбор тканевых вещей.', chitin: 'Разбор хитиновых вещей.',
   };
+  // Кто роняет ресурс для ковки (monsters.js, loot) — перед разбором
+  for (const id of Object.keys(MAT_SOURCE)) {
+    const drop = Object.values(data.monsters).filter((m) => (m.loot || []).includes(id));
+    const who = drop.filter((m) => !m.boss).map((m) => m.name), boss = drop.filter((m) => m.boss).map((m) => m.name);
+    if (who.length) MAT_SOURCE[id] = `${who.join(', ')}${boss.length ? `; боссы: ${boss.join(', ')}` : ''}. ${MAT_SOURCE[id]}`;
+  }
 
   function openInfo(id) {
     const c = PC.app.state.char;

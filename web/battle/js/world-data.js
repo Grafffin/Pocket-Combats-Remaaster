@@ -46,8 +46,8 @@
     },
     stone_hills: {
       name: 'Каменные холмы', levels: [20, 27], tier: 5, art: 'locations/stone_hills',
-      desc: 'Валуны размером с избу. Говорят, один из них иногда встаёт и уходит.',
-      monsters: [['golem', 20, 24], ['harpy', 21, 25], ['stone_troll', 23, 27]], mats: ['rune_dust', 'golem_heart'],
+      desc: 'Валуны размером с избу. Говорят, один из них иногда встаёт и уходит. Между камней шуршат скорпионы.',
+      monsters: [['golem', 20, 24], ['scorpion', 21, 25], ['stone_troll', 23, 27]], mats: ['rune_dust', 'golem_heart'],
       boss: ['troll_elder', 28],
       routes: { old_road: 16, flooded_crypt: 18 },
     },
