@@ -105,7 +105,7 @@ const PC = globalThis.PC, data = PC.data;
   // каждое действие, которое вызывает клиент, есть на сервере
   const jsDir = path.join(root, 'web', 'battle', 'js');
   for (const f of fs.readdirSync(jsDir)) {
-    for (const m of fs.readFileSync(path.join(jsDir, f), 'utf8').matchAll(/\.act\('([a-zA-Z]+)'/g)) assert.ok(ops[m[1]], `${f}: нет действия ${m[1]} на сервере`);
+    for (const m of fs.readFileSync(path.join(jsDir, f), 'utf8').matchAll(/\.act\('([a-zA-Z]+)'/g)) assert.ok(ops[m[1]] || PC.trade.OPS.includes(m[1]), `${f}: нет действия ${m[1]} на сервере`);
   }
 
   // ---- действия вне боя: читерские аргументы отклоняются, честные работают ----
