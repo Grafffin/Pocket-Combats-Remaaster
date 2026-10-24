@@ -928,3 +928,9 @@ p.bag-expand { text-align: center; margin: 0; }
 .sheet-wrap.centered { align-items: center; padding: 14px; }
 .sheet-wrap.centered .sheet { max-width: 440px; border: 1px solid #3a4055; border-radius: 16px; padding: 14px 16px 16px; background: linear-gradient(180deg, #1d2130, #171a23); box-shadow: 0 0 0 1px rgba(217, 164, 65, .12), 0 24px 60px rgba(0, 0, 0, .65); animation: pop .16s ease-out; }
 .sheet-wrap.centered .sheet-grip { display: none; }
+
+/* Иконка чата: перенос долгим тапом */
+.chat-fab { touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+.chat-fab.moving { transform: scale(1.15); box-shadow: 0 0 0 3px rgba(232, 195, 106, .5), 0 6px 18px rgba(0, 0, 0, .6); }
+.chat-item { display: inline; padding: 0 3px; border: 1px solid var(--line); border-radius: 6px; background: #0e1015; font: inherit; font-weight: 600; cursor: pointer; }
+.chat-item.rc0 { color: #b8bfcc; }
