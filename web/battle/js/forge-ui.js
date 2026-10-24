@@ -48,7 +48,7 @@
 
     const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel }[f.sub](c);
     root.innerHTML = `<div class="forge-tabs">${tabs}</div>${modeHead}${flash}${body}${picker}
-      <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', 'ore', 'leather'].map((k) => [k, null])))}</div>`;
+      <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', 'ore', 'leather', 'cloth', 'chitin'].map((k) => [k, null])))}</div>`;
   }
   app.tabs.forge = render;
 
@@ -164,18 +164,31 @@
 
   // ---------- Ковка ----------
   function craftPanel(c) {
-    const kinds = ['weapon', 'offhand', 'head', 'body', 'hands', 'feet', 'belt', 'amulet', 'ring'];
-    const types = kinds.flatMap((k) => I.typesFor(data, k, c.job));
-    if (!f.craftType || !types.some((t) => t.id === f.craftType)) f.craftType = types[0].id;
+    const kinds = ['weapon', 'offhand', 'head', 'body', 'hands', 'feet', 'belt', 'amulet', 'ring'].filter((k) => I.typesFor(data, k, c.job).length);
+    const KIND_NAMES = { weapon: 'Оружие', offhand: 'Левая рука', head: 'Голова', body: 'Тело', hands: 'Руки', feet: 'Ноги', belt: 'Пояс', amulet: 'Амулет', ring: 'Кольцо' };
+    const cur = f.craftType && data.types[f.craftType];
+    if (!cur || !I.typesFor(data, cur.kind, c.job).includes(cur)) f.craftType = I.typesFor(data, kinds[0], c.job)[0].id;
+    const type = data.types[f.craftType];
+    // Для брони сначала материал, затем вариация; у остального — сразу база
+    const sameKind = I.typesFor(data, type.kind, c.job);
+    const mats = [...new Set(sameKind.map((t) => t.armor).filter(Boolean))];
+    const bases = type.armor ? sameKind.filter((t) => t.armor === type.armor) : sameKind;
     f.craftTier = Math.min(f.craftTier, c.maxTier || 1);
-    const typeOpts = types.map((t) => `<option value="${t.id}" ${t.id === f.craftType ? 'selected' : ''}>${data.slots[I.slotsFor(data, { type: t.id })[0]].name}: ${t.name}</option>`).join('');
+    const kindOpts = kinds.map((k) => `<option value="${k}" ${k === type.kind ? 'selected' : ''}>${KIND_NAMES[k]}</option>`).join('');
+    const matOpts = mats.map((m) => `<option value="${m}" ${m === type.armor ? 'selected' : ''}>${data.armorMaterials[m].name}</option>`).join('');
+    const baseOpts = bases.map((t) => `<option value="${t.id}" ${t.id === type.id ? 'selected' : ''}>${t.name}${t.note ? ` — ${t.note}` : ''}</option>`).join('');
     const tierOpts = Array.from({ length: c.maxTier || 1 }, (_, i) => i + 1).map((t) => `<option value="${t}" ${t === f.craftTier ? 'selected' : ''}>T${t} · с ${data.TIER_LEVEL[t]} ур.</option>`).join('');
-    const preview = `${data.adjectives[data.types[f.craftType].mat][f.craftTier - 1][data.types[f.craftType].g]} ${data.types[f.craftType].name}`;
+    const preview = `${data.adjectives[type.mat][f.craftTier - 1][type.g]} ${type.name}`;
+    const stats = I.baseLines(data, { type: type.id, tier: f.craftTier, quality: 50, enhance: 0, rank: 0, ilvl: data.TIER_LEVEL[f.craftTier] })
+      .map((l) => `<span class="${l.neg ? 'neg' : ''}">${l.text}</span>`).join(' · ');
     return `<div class="card section"><h3>Ковка</h3>
       <p class="meta">Кузнец выкует вещь выбранной базы. Редкость — не ниже «Необычной» и чаще высокая, чем у добычи. Тиры открываются по мере прохождения зон.</p>
-      <div class="field"><label>База</label><select data-craft-type style="width:100%">${typeOpts}</select></div>
+      <div class="field"><label>Вид</label><select data-craft-kind style="width:100%">${kindOpts}</select></div>
+      ${mats.length ? `<div class="field"><label>Материал</label><select data-craft-mat style="width:100%">${matOpts}</select></div>
+        <p class="meta">${data.armorMaterials[type.armor].desc}</p>` : ''}
+      <div class="field"><label>База</label><select data-craft-type style="width:100%">${baseOpts}</select></div>
       <div class="field"><label>Тир</label><select data-craft-tier style="width:100%">${tierOpts}</select></div>
-      <p>Получится: <b>${preview}</b></p>
+      <p>Получится: <b>${preview}</b><br><span class="meta craft-stats">${stats}</span></p>
       ${costHtml(I.craftCost(data, f.craftType, f.craftTier))}
       <div class="row-actions"><button class="btn primary" data-act="craft">Выковать</button></div></div>`;
   }
@@ -280,6 +293,12 @@
     }
     if (e.target.matches('[data-protect]')) { f.protect = e.target.checked; return; }
     if (e.target.matches('[data-val]')) { f.valueIdx = Number(e.target.dataset.val); return app.render(); }
+    if (e.target.matches('[data-craft-kind]')) { f.craftType = I.typesFor(data, e.target.value, app.state.char.job)[0].id; return app.render(); }
+    if (e.target.matches('[data-craft-mat]')) {
+      const t = data.types[f.craftType];
+      f.craftType = I.typesFor(data, t.kind, app.state.char.job).find((x) => x.armor === e.target.value && x.variant === t.variant).id;
+      return app.render();
+    }
     if (e.target.matches('[data-craft-type]')) { f.craftType = e.target.value; return app.render(); }
     if (e.target.matches('[data-craft-tier]')) { f.craftTier = Number(e.target.value); return app.render(); }
   });

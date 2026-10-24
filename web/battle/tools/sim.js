@@ -1,4 +1,4 @@
-// Проверка баланса: node web/battle/tools/sim.js [боёв] [--career] [--rarity=2] [--enhance=3] [--log]
+// Проверка баланса: node web/battle/tools/sim.js [боёв] [--career] [--rarity=2] [--enhance=3] [--armor=plate] [--log]
 // По умолчанию — таблица: персонаж каждого класса на уровне монстра с типичной экипировкой зоны
 // (редкость --rarity, заточка --enhance) против каждого монстра каждой зоны.
 // --career — «прохождение» с нуля: бот охотится в подходящей зоне, надевает лучшее, точит, раскидывает очки.
@@ -45,13 +45,16 @@ function autoBuild(char) {
   P.setSlots(data, char, actives.slice(-4).reverse().map((s) => s.id));
 }
 
-// Лучшая база в каждый слот для класса на уровне L
+// Первая база в каждый слот для класса на уровне L; броня — первая вариация «своего» материала (--armor=chitin — другого)
+const ARMOR = (args.find((a) => a.startsWith('--armor=')) || '').split('=')[1];
 function typicalGear(char, rng) {
   const tier = I.maxTierFor(data, char.level);
+  const mat = ARMOR || data.classes[char.job].armor;
   char.equipment = {};
   for (const slot of Object.keys(data.slots)) {
     const kind = data.slots[slot].kind;
-    const types = I.typesFor(data, kind, char.job);
+    const all = I.typesFor(data, kind, char.job);
+    const types = all.some((t) => t.armor) ? all.filter((t) => t.armor === mat) : all;
     if (!types.length) continue;
     const w = char.equipment.weapon && data.types[char.equipment.weapon.type];
     if (kind === 'offhand' && w && w.twoHanded) continue;
@@ -121,15 +124,18 @@ if (!career) {
       battles++;
       streak = res.win ? 0 : streak + 1;
       if (streak >= 2) { penalty = Math.min(penalty + 1, ok.length - 1); streak = 0; } else if (res.win && penalty && rng.chance(10)) penalty--;
-      // Надеваем то, что сильнее надетого, остальное разбираем; точим оружие до +5
+      // Надеваем то, что поднимает боевую оценку героя (как окно сравнения вещей), остальное разбираем; точим до +5
+      const rate = (ch) => PC.stats.combatScore(PC.stats.compute(data, ch));
       for (let i = 0; i < c.bag.length; i++) {
         const it = c.bag[i];
-        if (!it) continue;
+        if (!it || it.stack) continue;
         const slot = I.slotsFor(data, it).find((s) => !c.equipment[s]) || I.slotsFor(data, it)[0];
-        const cur = c.equipment[slot];
-        if (I.canEquip(data, c, it, slot).ok && (!cur || I.power(data, it) > I.power(data, cur))) I.equip(data, c, i, slot);
+        if (!I.canEquip(data, c, it, slot).ok) continue;
+        const trial = { ...c, equipment: { ...c.equipment, [slot]: it } };
+        if (data.types[it.type].twoHanded) delete trial.equipment.offhand;
+        if (rate(trial) > rate(c)) I.equip(data, c, i, slot);
       }
-      for (const it of [...c.bag]) if (it) I.salvage(data, c, it.uid, rng);
+      for (const it of [...c.bag]) if (it && !it.stack) I.salvage(data, c, it.uid, rng);
       for (const it of Object.values(c.equipment)) {
         const info = I.enhanceInfo(data, it);
         if (!info.capped && !info.maxed && info.next <= 5 && I.matCount(data, c, 'stone1') > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);

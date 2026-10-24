@@ -68,7 +68,11 @@
     "belt": "items/belt.svg",
     "ring": "items/ring.svg",
     "amulet": "items/amulet.svg",
-    "earring": "items/earring.svg"
+    "earring": "items/earring.svg",
+    "helmet_chitin": "items/helmet_chitin.svg",
+    "armor_chitin": "items/armor_chitin.svg",
+    "gloves_chitin": "items/gloves_chitin.svg",
+    "boots_chitin": "items/boots_chitin.svg"
   },
   "materials": {
     "gold": "materials/gold.svg",
@@ -103,7 +107,9 @@
     "potion_mp_2": "materials/potion_mp_2.svg",
     "potion_mp_3": "materials/potion_mp_3.svg",
     "elixir_power": "materials/elixir_power.svg",
-    "elixir_fortune": "materials/elixir_fortune.svg"
+    "elixir_fortune": "materials/elixir_fortune.svg",
+    "cloth": "materials/cloth.svg",
+    "chitin": "materials/chitin.svg"
   },
   "stats": {
     "atk": "stats/atk.svg",

@@ -44,6 +44,10 @@
       adj('Шёлковый', 'Шёлковая', 'Шёлковое', 'Шёлковые'), adj('Зачарованный', 'Зачарованная', 'Зачарованное', 'Зачарованные'),
       adj('Звёздный', 'Звёздная', 'Звёздное', 'Звёздные'), adj('Драконий', 'Драконья', 'Драконье', 'Драконьи'),
       adj('Древний', 'Древняя', 'Древнее', 'Древние')],
+    chitin: [adj('Хрупкий', 'Хрупкая', 'Хрупкое', 'Хрупкие'), adj('Жучиный', 'Жучиная', 'Жучиное', 'Жучиные'),
+      adj('Роговой', 'Роговая', 'Роговое', 'Роговые'), adj('Скорпионий', 'Скорпионья', 'Скорпионье', 'Скорпионьи'),
+      adj('Королевский', 'Королевская', 'Королевское', 'Королевские'), adj('Драконий', 'Драконья', 'Драконье', 'Драконьи'),
+      adj('Древний', 'Древняя', 'Древнее', 'Древние')],
     jewel: [adj('Медный', 'Медная', 'Медное', 'Медные'), adj('Серебряный', 'Серебряная', 'Серебряное', 'Серебряные'),
       adj('Золотой', 'Золотая', 'Золотое', 'Золотые'), adj('Рунный', 'Рунная', 'Рунное', 'Рунные'),
       adj('Мифриловый', 'Мифриловая', 'Мифриловое', 'Мифриловые'), adj('Драконий', 'Драконья', 'Драконье', 'Драконьи'),
@@ -70,24 +74,159 @@
     wand: { name: 'жезл', g: 'm', kind: 'weapon', cls: ['mage'], mat: 'wood', salvage: 'essence', art: 'items/wand', base: (t) => ({ dmg: [1, 2], matk: Math.round(wAvg(t) * 0.7) }) },
     shield: { name: 'щит', g: 'm', kind: 'offhand', cls: ['warrior'], mat: 'metal', salvage: 'ore', art: 'items/shield', isShield: true, base: (t) => ({ def: Math.round(aDef(t) * 0.5), block: 12 + 2 * t }) },
     orb: { name: 'сфера', g: 'f', kind: 'offhand', cls: ['mage'], mat: 'jewel', salvage: 'essence', art: 'items/orb', base: (t) => ({ matk: Math.round(wAvg(t) * 0.45), mp: 8 * t }) },
-
-    helm: { name: 'шлем', g: 'm', kind: 'head', armor: 'heavy', mat: 'metal', salvage: 'ore', art: 'items/helmet_heavy', base: (t) => ({ def: Math.round(aDef(t) * 0.45) }) },
-    hood: { name: 'капюшон', g: 'm', kind: 'head', armor: 'light', mat: 'leather', salvage: 'leather', art: 'items/helmet_light', base: (t) => ({ def: Math.round(aDef(t) * 0.3), eva: 3 * t }) },
-    hat: { name: 'колпак', g: 'm', kind: 'head', armor: 'cloth', mat: 'cloth', salvage: 'essence', art: 'items/helmet_light', base: (t) => ({ def: Math.round(aDef(t) * 0.18), mdef: Math.round(aDef(t) * 0.3) }) },
-    plate: { name: 'латы', g: 'pl', kind: 'body', armor: 'heavy', mat: 'metal', salvage: 'ore', art: 'items/armor_heavy', base: (t) => ({ def: Math.round(aDef(t)) }) },
-    jerkin: { name: 'куртка', g: 'f', kind: 'body', armor: 'light', mat: 'leather', salvage: 'leather', art: 'items/armor_light', base: (t) => ({ def: Math.round(aDef(t) * 0.65), eva: 5 * t }) },
-    robe: { name: 'мантия', g: 'f', kind: 'body', armor: 'cloth', mat: 'cloth', salvage: 'essence', art: 'items/robe', base: (t) => ({ def: Math.round(aDef(t) * 0.55), mdef: Math.round(aDef(t) * 0.6), mp: 6 * t, hp: 6 * t }) },
-    gauntlets: { name: 'наручи', g: 'pl', kind: 'hands', armor: 'heavy', mat: 'metal', salvage: 'ore', art: 'items/gloves_heavy', base: (t) => ({ def: Math.round(aDef(t) * 0.3) }) },
-    gloves: { name: 'перчатки', g: 'pl', kind: 'hands', armor: 'light', mat: 'leather', salvage: 'leather', art: 'items/gloves_light', base: (t) => ({ def: Math.round(aDef(t) * 0.2), acc: 4 * t }) },
-    wraps: { name: 'обмотки', g: 'pl', kind: 'hands', armor: 'cloth', mat: 'cloth', salvage: 'essence', art: 'items/gloves_light', base: (t) => ({ def: Math.round(aDef(t) * 0.12), matk: 2 * t }) },
-    sabatons: { name: 'сабатоны', g: 'pl', kind: 'feet', armor: 'heavy', mat: 'metal', salvage: 'ore', art: 'items/boots_heavy', base: (t) => ({ def: Math.round(aDef(t) * 0.35) }) },
-    boots: { name: 'сапоги', g: 'pl', kind: 'feet', armor: 'light', mat: 'leather', salvage: 'leather', art: 'items/boots_light', base: (t) => ({ def: Math.round(aDef(t) * 0.22), speed: 1 + t }) },
-    slippers: { name: 'туфли', g: 'pl', kind: 'feet', armor: 'cloth', mat: 'cloth', salvage: 'essence', art: 'items/boots_light', base: (t) => ({ def: Math.round(aDef(t) * 0.12), mdef: Math.round(aDef(t) * 0.15) }) },
-
-    belt: { name: 'пояс', g: 'm', kind: 'belt', mat: 'leather', salvage: 'leather', art: 'items/belt', base: (t) => ({ hp: 15 * t }) },
-    amulet: { name: 'амулет', g: 'm', kind: 'amulet', mat: 'jewel', salvage: 'essence', art: 'items/amulet', base: (t) => ({ mdef: 3 * t, hp: 8 * t }) },
-    ring: { name: 'кольцо', g: 'n', kind: 'ring', mat: 'jewel', salvage: 'essence', art: 'items/ring', base: (t) => ({ luk: Math.ceil(t / 2) }) },
   };
+
+  // ---------- Материалы брони ----------
+  // Любой класс носит любой материал: у каждого свои сильные стороны и минусы (GDD §4.2).
+  // def/mdef — доля «полной» защиты слота (латы = 1), plus/minus(t, s) — плюс и минус материала, s — доля слота.
+  const SHARE = { head: 0.45, body: 1, hands: 0.3, feet: 0.35 };
+  const r1 = (v) => Math.max(1, Math.round(v));
+  const pc = (v) => Math.round(v) / 100;
+  const armorMaterials = {
+    plate: {
+      name: 'Латы', adj: 'metal', salvage: 'ore', def: 1, mdef: 0, art: 'heavy',
+      plus: (t, s) => ({ hpPct: pc(4 * s) }),
+      minus: (t, s) => ({ speed: -r1(3 * s), matkPct: -pc(6 * s) }),
+      desc: 'Самая высокая защита от оружия и больше здоровья. Тяжёлые: медленнее, мешают колдовать, магию почти не держат.',
+    },
+    leather: {
+      name: 'Кожа', adj: 'leather', salvage: 'leather', def: 0.62, mdef: 0, art: 'light',
+      plus: (t, s) => ({ speed: r1(2.5 * s), crit: r1(2 * s) }),
+      minus: (t, s) => ({ mdefPct: -pc(4 * s) }),
+      desc: 'Средняя защита, зато быстрее и чаще бьёт критом; вариации добавляют уклонение, крит или меткость. Магию держит хуже остальных.',
+    },
+    cloth: {
+      name: 'Ткань', adj: 'cloth', salvage: 'cloth', def: 0.5, mdef: 0.65, art: 'cloth',
+      plus: (t, s) => ({ matkPct: pc(6 * s) }),
+      minus: (t, s) => ({ hpPct: -pc(2 * s) }),
+      desc: 'Магическая защита и сила заклинаний. Тонкая: меньше здоровья, оружие пробивает легко.',
+    },
+    chitin: {
+      name: 'Хитин', adj: 'chitin', salvage: 'chitin', def: 0.65, mdef: 0.35, art: 'chitin',
+      plus: (t, s) => ({ poisonRes: r1((4 + 1.5 * t) * s) }),
+      minus: (t, s) => ({ eva: -r1((1 + t) * s) }),
+      desc: 'Держит и оружие, и магию, бережёт от яда. Жёсткий: уклоняться труднее.',
+    },
+  };
+  for (const [id, m] of Object.entries(armorMaterials)) m.id = id;
+
+  // Бонусы вариаций (t — тир, s — доля слота)
+  const X = {
+    hp: (t, s) => ({ hp: r1(10 * t * s) }),
+    thorns: (t, s) => ({ thorns: r1(4 * t * s) }),
+    mdef: (t, s) => ({ mdef: r1(aDef(t) * 0.25 * s) }),
+    eva: (t, s) => ({ eva: r1(6 * t * s) }),
+    speed: (t, s) => ({ speed: r1(1.5 * t * s) }),
+    crit: (t, s) => ({ crit: r1(0.5 * t * s) }),
+    acc: (t, s) => ({ acc: r1(8 * t * s) }),
+    matk: (t, s) => ({ matk: r1(2.5 * t * s) }),
+    mp: (t, s) => ({ mp: r1(5 * t * s) }),
+    int: (t, s) => ({ int: r1(1.2 * t * s) }),
+    elemRes: (t, s) => ({ fireRes: r1((4 + 1.5 * t) * s), coldRes: r1((4 + 1.5 * t) * s) }),
+    hpRegen: (t, s) => ({ hpRegen: r1(0.6 * t * s) }),
+  };
+
+  // По 5 вариаций на материал. n — имена [голова, тело, руки, ноги] как 'имя/род', id — старые id первой вариации.
+  // def/mdef/minus — множители к материалу, x — бонус вариации, note — чем вариация отличается.
+  const ARMOR_KINDS = ['head', 'body', 'hands', 'feet'];
+  const armorVariants = {
+    plate: [
+      { n: ['шлем/m', 'латы/pl', 'наручи/pl', 'сабатоны/pl'], id: ['helm', 'plate', 'gauntlets', 'sabatons'], note: 'классика' },
+      { n: ['армет/m', 'кираса/f', 'рукавицы/pl', 'поножи/pl'], def: 1.2, minus: 1.5, note: 'ещё больше защиты, ещё медленнее' },
+      { n: ['бацинет/m', 'кольчуга/f', 'поручи/pl', 'солереты/pl'], def: 0.85, minus: 0.5, note: 'легче: почти не замедляет' },
+      { n: ['шишак/m', 'бригантина/f', 'кастеты/pl', 'наколенники/pl'], def: 0.9, x: X.thorns, note: 'шипы' },
+      { n: ['барбют/m', 'доспех/m', 'налокотники/pl', 'ботфорты/pl'], def: 0.85, x: X.mdef, note: 'немного маг. защиты' },
+    ],
+    leather: [
+      { n: ['капюшон/m', 'куртка/f', 'перчатки/pl', 'сапоги/pl'], id: ['hood', 'jerkin', 'gloves', 'boots'], x: X.eva, note: 'уклонение' },
+      { n: ['бандана/f', 'колет/m', 'напульсники/pl', 'мокасины/pl'], def: 0.9, x: X.speed, note: 'скорость' },
+      { n: ['маска/f', 'дублет/m', 'краги/pl', 'ботинки/pl'], def: 0.9, x: X.crit, note: 'шанс крита' },
+      { n: ['треуголка/f', 'жилет/m', 'митенки/pl', 'полусапожки/pl'], def: 0.9, x: X.acc, note: 'точность' },
+      { n: ['шапка/f', 'нагрудник/m', 'нарукавники/pl', 'унты/pl'], def: 1.05, x: X.hp, note: 'плотнее: защита и здоровье' },
+    ],
+    cloth: [
+      { n: ['колпак/m', 'мантия/f', 'обмотки/pl', 'туфли/pl'], id: ['hat', 'robe', 'wraps', 'slippers'], x: X.matk, note: 'маг. атака' },
+      { n: ['чепец/m', 'ряса/f', 'манжеты/pl', 'чулки/pl'], x: X.mp, note: 'мана' },
+      { n: ['тюрбан/m', 'халат/m', 'нарукавья/pl', 'сандалии/pl'], x: X.int, note: 'интеллект' },
+      { n: ['вуаль/f', 'хламида/f', 'бинты/pl', 'гетры/pl'], def: 1.3, mdef: 1.25, note: 'оберег: больше защиты обоих видов' },
+      { n: ['повязка/f', 'балахон/m', 'рукава/pl', 'шаровары/pl'], x: X.crit, note: 'шанс крита' },
+    ],
+    chitin: [
+      { n: ['наголовник/m', 'панцирь/m', 'щитки/pl', 'голенища/pl'], note: 'классика' },
+      { n: ['гребень/m', 'карапакс/m', 'когти/pl', 'шпоры/pl'], x: X.thorns, note: 'шипы' },
+      { n: ['купол/m', 'скорлупа/f', 'клешни/pl', 'копыта/pl'], def: 1.15, mdef: 0.85, note: 'твёрже: больше защиты от оружия' },
+      { n: ['личина/f', 'покров/m', 'хваты/pl', 'ходули/pl'], x: X.elemRes, note: 'сопротивление огню и холоду' },
+      { n: ['рогач/m', 'кокон/m', 'лапы/pl', 'ступни/pl'], x: X.hpRegen, note: 'здоровье каждый ход' },
+    ],
+  };
+  const ARMOR_ART = { head: 'helmet', body: 'armor', hands: 'gloves', feet: 'boots' };
+  const artFor = (kind, mat) => {
+    if (mat.id === 'cloth') return { head: 'items/helmet_light', body: 'items/robe', hands: 'items/gloves_light', feet: 'items/boots_light' }[kind];
+    return `items/${ARMOR_ART[kind]}_${mat.art}`;
+  };
+
+  function armorBase(mat, v, kind) {
+    const s = SHARE[kind];
+    return (t) => {
+      const out = {};
+      const def = Math.round(aDef(t) * s * mat.def * (v.def || 1));
+      const mdef = Math.round(aDef(t) * s * mat.mdef * (v.mdef || 1));
+      if (def) out.def = def;
+      if (mdef) out.mdef = mdef;
+      const add = (k, val) => { if (val) out[k] = Math.round(((out[k] || 0) + val) * 100) / 100; };
+      if (v.x) for (const [k, val] of Object.entries(v.x(t, s))) add(k, val);
+      for (const [k, val] of Object.entries(mat.plus(t, s))) add(k, val);
+      for (const [k, val] of Object.entries(mat.minus(t, s))) {
+        const m = v.minus == null ? 1 : v.minus;
+        add(k, k.endsWith('Pct') ? Math.round(val * m * 100) / 100 : Math.round(val * m));
+      }
+      return out;
+    };
+  }
+
+  for (const [matId, list] of Object.entries(armorVariants)) {
+    const mat = armorMaterials[matId];
+    list.forEach((v, vi) => {
+      ARMOR_KINDS.forEach((kind, ki) => {
+        const [name, g] = v.n[ki].split('/');
+        const id = v.id ? v.id[ki] : `${kind}_${matId}${vi + 1}`;
+        types[id] = { name, g, kind, armor: matId, variant: vi, note: v.note, mat: mat.adj, salvage: mat.salvage, art: artFor(kind, mat), base: armorBase(mat, v, kind) };
+      });
+    });
+  }
+
+  // Пояса, амулеты и кольца: по 5 вариаций со своими характеристиками
+  const accessories = {
+    belt: [
+      { id: 'belt', n: 'пояс/m', mat: 'leather', base: (t) => ({ hp: 15 * t }) },
+      { n: 'кушак/m', mat: 'cloth', base: (t) => ({ hp: 8 * t, mdef: 2 * t }) },
+      { n: 'ремень/m', mat: 'leather', base: (t) => ({ hp: 8 * t, def: Math.round(2.5 * t) }) },
+      { n: 'перевязь/f', mat: 'leather', base: (t) => ({ hp: 6 * t, crit: Math.ceil(t / 2) }) },
+      { n: 'кошель/m', mat: 'leather', base: (t) => ({ hp: 5 * t, goldPct: Math.round(3 * t) / 100 }) },
+    ],
+    amulet: [
+      { id: 'amulet', n: 'амулет/m', base: (t) => ({ mdef: 3 * t, hp: 8 * t }) },
+      { n: 'медальон/m', base: (t) => ({ hp: 14 * t }) },
+      { n: 'кулон/m', base: (t) => ({ critDmg: 4 * t }) },
+      { n: 'талисман/m', base: (t) => ({ luk: t, mf: 2 * t }) },
+      { n: 'ожерелье/n', base: (t) => ({ def: 2 * t, hp: 6 * t }) },
+    ],
+    ring: [
+      { id: 'ring', n: 'кольцо/n', base: (t) => ({ luk: Math.ceil(t / 2) }) },
+      { n: 'перстень/m', base: (t) => ({ crit: Math.ceil(t / 2) }) },
+      { n: 'печатка/f', base: (t) => ({ hp: 5 * t }) },
+      { n: 'серьга/f', art: 'items/earring', base: (t) => ({ eva: 3 * t }) },
+      { n: 'браслет/m', base: (t) => ({ def: Math.round(1.5 * t), mdef: Math.round(1.5 * t) }) },
+    ],
+  };
+  for (const [kind, list] of Object.entries(accessories)) {
+    list.forEach((v, vi) => {
+      const [name, g] = v.n.split('/');
+      const mat = v.mat || 'jewel';
+      const salvage = { leather: 'leather', cloth: 'cloth', jewel: 'essence' }[mat];
+      types[v.id || `${kind}${vi + 1}`] = { name, g, kind, variant: vi, mat, salvage, art: v.art || `items/${kind}`, base: v.base };
+    });
+  }
   for (const [id, t] of Object.entries(types)) t.id = id;
 
   // ---------- Редкость ----------
@@ -359,6 +498,8 @@
   const materials2 = {
     ore: { name: 'Железная руда', art: 'materials/ore', price: 4 },
     leather: { name: 'Выделанная кожа', art: 'materials/leather', price: 4 },
+    cloth: { name: 'Отрез ткани', art: 'materials/cloth', price: 4 },
+    chitin: { name: 'Хитиновые пластины', art: 'materials/chitin', price: 5 },
     essence: { name: 'Магическая эссенция', art: 'materials/essence', price: 10 },
     stone1: { name: 'Камень заточки I', art: 'materials/enhance_stone_1', price: 30, desc: 'Для заточки до +5.' },
     stone2: { name: 'Камень заточки II', art: 'materials/enhance_stone_2', price: 220, desc: 'Для заточки с +6 до +10.' },
@@ -431,7 +572,7 @@
   };
 
   Object.assign(data, {
-    slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, rarities, qualities, affixes, TIER_FALLOFF,
+    slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
     legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, STACK_MAX, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;

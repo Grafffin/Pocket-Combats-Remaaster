@@ -48,7 +48,7 @@
   const AFFIX_GROUPS = [['attack', 'Атака'], ['defense', 'Защита'], ['resource', 'Ресурсы'], ['primary', 'Характеристики'], ['utility', 'Добыча'], ['class', 'Умения']];
   const MAX_Q = data.qualities.length - 1;
 
-  const blank = () => ({ kinds: [], cls: [], rarities: [], qmin: 0, qmax: MAX_Q, tmin: 1, tmax: data.MAX_TIER, enh: 0, rank: 0,
+  const blank = () => ({ kinds: [], armor: [], cls: [], rarities: [], qmin: 0, qmax: MAX_Q, tmin: 1, tmax: data.MAX_TIER, enh: 0, rank: 0,
     pmin: '', pmax: '', affixes: [], special: [], noNeg: false, fit: false, sort: 'new' });
   const filterStore = storage('pc-market-filter-v1', null);
   const st = { tab: 'search', view: 'list', f: { ...blank(), ...(filterStore.load() || {}) }, lots: [], more: false, loading: false, mine: null, busy: false, msg: '',
@@ -83,13 +83,13 @@
 
   const fitsType = (c, id) => {
     const t = data.types[id];
-    return (!t.cls || t.cls.includes(c.job)) && (!t.armor || t.armor === data.classes[c.job].armor);
+    return !t.cls || t.cls.includes(c.job);
   };
 
   function activeCount(f) {
     const b = blank();
     let n = 0;
-    for (const k of ['kinds', 'cls', 'rarities', 'affixes', 'special']) if (f[k].length) n++;
+    for (const k of ['kinds', 'armor', 'cls', 'rarities', 'affixes', 'special']) if (f[k].length) n++;
     if (f.qmin !== b.qmin || f.qmax !== b.qmax) n++;
     if (f.tmin !== b.tmin || f.tmax !== b.tmax) n++;
     for (const k of ['enh', 'rank', 'noNeg', 'fit']) if (f[k]) n++;
@@ -101,6 +101,7 @@
     const f = st.f, c = app.state.char;
     const all = Object.keys(data.types);
     let types = all.filter((id) => !f.kinds.length || f.kinds.includes(data.types[id].kind));
+    if (f.armor.length) types = types.filter((id) => f.armor.includes(data.types[id].armor));
     if (f.fit) types = types.filter((id) => fitsType(c, id));
     let tmax = f.tmax;
     if (f.fit) tmax = Math.min(tmax, I.maxTierFor(data, c.level));
@@ -266,6 +267,7 @@
     return `<div class="market-filters">
       <label class="mf-toggle"><input type="checkbox" data-flag="fit" ${f.fit ? 'checked' : ''}> Только то, что я могу надеть</label>
       ${block('Вид вещи', chips('kinds', KINDS))}
+      ${block('Материал брони', chips('armor', Object.entries(data.armorMaterials).map(([id, m]) => [id, m.name])))}
       ${block('Класс', chips('cls', Object.entries(data.classes).map(([id, c]) => [id, c.title])), 'под кого настроена вещь')}
       ${block('Редкость', chips('rarities', data.rarities.map((r, i) => [i, r.name, r.color])))}
       ${block('Качество', `<div class="mf-range"><select data-num="qmin">${opt(qs, f.qmin)}</select><span>—</span><select data-num="qmax">${opt(qs, f.qmax)}</select></div>`)}

@@ -334,7 +334,7 @@
         const list = c.bag.filter((it) => it && !it.stack && !it.locked);
         if (v === 'none') sell.marked.clear();
         else if (v.startsWith('r')) list.filter((it) => it.rarity <= Number(v.slice(1)) && !it.enhance && !it.rank).forEach((it) => sell.marked.add(it.uid));
-        else if (v === 'other') list.filter((it) => { const t = data.types[it.type]; return (t.cls && !t.cls.includes(c.job)) || (t.armor && t.armor !== data.classes[c.job].armor); }).forEach((it) => sell.marked.add(it.uid));
+        else if (v === 'other') list.filter((it) => { const t = data.types[it.type]; return t.cls && !t.cls.includes(c.job); }).forEach((it) => sell.marked.add(it.uid));
         else if (v === 'worse') list.filter((it) => I.canEquip(data, c, it).ok && !isUpgrade(c, it)).forEach((it) => sell.marked.add(it.uid));
         return openBuyer();
       }
