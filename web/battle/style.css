@@ -910,3 +910,12 @@ input:focus-visible, .cnum-btn:focus-visible, .pick-opt:focus-visible { outline:
 .mat-form .row img, .mat-form .row .ico { width: 28px; height: 28px; }
 .bag-expand { padding: 10px 12px 0; justify-content: center; }
 p.bag-expand { text-align: center; margin: 0; }
+.tile .dur { position: absolute; left: 4px; right: 4px; bottom: 3px; height: 3px; border-radius: 2px; background: rgba(0, 0, 0, .55); overflow: hidden; z-index: 2; }
+.tile .dur i { display: block; height: 100%; background: #e8c547; }
+.tile .dur.low i { background: #ff8a3d; }
+.tile .dur.zero { background: var(--bad); }
+.tile.broken > img { filter: grayscale(1) brightness(.55); }
+.repair-list { display: flex; flex-direction: column; gap: 8px; margin: 8px 0; }
+.repair-row { display: flex; align-items: center; gap: 10px; }
+.repair-row .tile { width: 48px; flex: none; }
+.repair-row .grow { flex: 1; min-width: 0; }

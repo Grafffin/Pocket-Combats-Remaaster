@@ -824,12 +824,14 @@
         html += `<p class="meta">${full ? 'Сумка полна — ' : 'Авторазбор: '}разобрано ${sum.salvaged.length} ${plural(sum.salvaged.length, 'вещь', 'вещи', 'вещей')}.</p>`;
       }
       if (!sum.items.length && !sum.salvaged.length) html += '<p class="meta">Вещей не выпало.</p>';
+      if ((sum.broken || []).length) html += `<p class="req">Сломалось: ${sum.broken.map(escapeHtml).join(', ')}. Почините у кузнеца.</p>`;
     } else if (sum.fled) {
       html += '<p>Вы сбежали с поля боя. Опыт не получен.</p>';
     } else {
       html += `<p>${escapeHtml(data.monsters[state.fight.monsterId].name)} оказался сильнее.</p>`;
       if (sum.sentHome) html += `<p>Вы пришли в себя в деревне ${data.locations[data.HOME].name}.</p>`;
       if (sum.goldLost) html += `<p class="req">Потеряно золота: ${sum.goldLost}.</p>`;
+      if (sum.defeatWear) html += `<p class="req">Снаряжение повреждено: −${data.durability.defeatLoss} прочности у всех надетых вещей${(sum.broken || []).length ? `, сломалось: ${sum.broken.map(escapeHtml).join(', ')}` : ''}.</p>`;
     }
     const hunting = c.settings.autoHunt && !sum.sentHome && !sum.fled;
     if (!sum.win) c.settings.autoHunt = false;

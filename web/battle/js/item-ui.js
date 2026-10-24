@@ -10,7 +10,10 @@
   function tile(item, { attrs = '', cls = '', can = true, checked = false } = {}) {
     const type = data.types[item.type];
     const virtue = item.virtue ? `<i class="virtue" style="color:${data.virtues[item.virtue].color}"></i>` : '';
-    return `<div class="tile r${item.rarity} ${can ? '' : 'cant'} ${checked ? 'checked' : ''} ${cls}" ${attrs} title="${I.name(data, item)}">
+    // Полоска прочности — только у повреждённых; сломанная вещь затемнена
+    const d = I.durOf(data, item), dmax = data.durability.max;
+    const dur = d < dmax ? `<span class="dur ${d <= 0 ? 'zero' : d < dmax * 0.25 ? 'low' : ''}"><i style="width:${Math.round(d / dmax * 100)}%"></i></span>` : '';
+    return `<div class="tile r${item.rarity} ${can ? '' : 'cant'} ${checked ? 'checked' : ''} ${d <= 0 ? 'broken' : ''} ${cls}" ${attrs} title="${I.name(data, item)}">${dur}
       ${art(type.art, KIND_EMOJI[type.kind])}
       ${item.enhance ? `<span class="enh">+${item.enhance}</span>` : ''}
       <span class="tier">T${item.tier}</span>
@@ -161,11 +164,18 @@
     return res;
   }
 
+  function durHtml(item) {
+    const d = I.durOf(data, item), dmax = data.durability.max;
+    if (d <= 0) return `<div class="req">Сломана: не даёт характеристик и свойств. Почините у кузнеца (сломанная вещь чинится втрое дороже).</div>`;
+    return `<div class="meta dur-line">Прочность ${d} / ${dmax}${d < dmax ? ` · ремонт ${fmtNum(I.repairCost(data, item))} 💰` : ''}</div>`;
+  }
+
   function cardHtml(char, item, where) {
     const check = I.canEquip(data, char, item);
     const virtue = item.virtue ? `<span class="virtue-chip info-link" data-info="virtue" style="color:${data.virtues[item.virtue].color}"><i></i>Знак: ${data.virtues[item.virtue].name}</span>` : '';
     return `<div class="item-card">
       <div class="item-head">${tile(item).replace('</div>', item.rarity >= 4 ? '<span class="sparks"><i></i><i></i><i></i><i></i></span></div>' : '</div>')}<div><div class="item-name">${nameHtml(item)}</div><div class="item-sub">${subline(item)}</div></div></div>
+      ${durHtml(item)}
       ${uniqueHtml(item)}
       ${propsHtml(item)}
       ${legendHtml(item)}

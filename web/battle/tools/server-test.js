@@ -147,6 +147,26 @@ const PC = globalThis.PC, data = PC.data;
   assert.ok(cur.data.bag.length === data.bagExpand.max && cur.data.bag.length > bag0, 'сумка расширена до максимума');
   assert.ok(!step('expandBag', {}).ok, 'дальше максимума нельзя');
 
+  // прочность: поражение снимает прочность, сломанная вещь не даёт характеристик, ремонт у кузнеца
+  {
+    const eq = Object.values(cur.data.equipment).filter(Boolean);
+    const w = eq[0], I = PC.items, Dd = data.durability;
+    assert.ok(eq.length && I.durOf(data, w) === Dd.max, 'новая вещь целая');
+    I.wear(data, cur.data, PC.makeRng(1), { defeat: true });
+    assert.ok(eq.every((it) => I.durOf(data, it) <= Dd.max - Dd.defeatLoss), 'поражение повреждает всё надетое');
+    w.dur = 0;
+    assert.deepStrictEqual(I.totals(data, w), {}, 'сломанная вещь ничего не даёт');
+    const brokenCost = I.repairCost(data, w);
+    w.dur = 1;
+    assert.ok(brokenCost > I.repairCost(data, w) * 2, 'сломанную чинить заметно дороже');
+    w.dur = 0;
+    cur.data.gold = 0;
+    assert.ok(!step('repairAll', {}).ok, 'без золота ремонта нет');
+    cur.data.gold = 1e6;
+    assert.ok(step('repairAll', {}).ok && Object.values(cur.data.equipment).filter(Boolean).every((it) => I.durOf(data, it) === Dd.max), 'всё починено');
+    assert.ok(!step('repairAll', {}).ok, 'чинить нечего');
+  }
+
   // сундук: вещь из сумки и обратно, без дублей
   const item = PC.items.generate(data, { ilvl: 5, cls: job, mf: 0 }, PC.makeRng(7));
   PC.items.bagAdd(cur.data, item);

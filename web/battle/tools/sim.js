@@ -109,7 +109,7 @@ if (!career) {
   for (const job of Object.keys(data.classes)) {
     const c = P.newCharacter(data, { nick: 'Тест', gender: 'm', job });
     const zones = Object.entries(data.locations).filter(([, z]) => !z.safe);
-    let battles = 0, streak = 0, penalty = 0;
+    let battles = 0, streak = 0, penalty = 0, repairGold = 0;
     const levelAt = {};
     while (c.level < 30 && battles < 6000) {
       const ok = zones.filter(([, z]) => z.levels[0] <= c.level + 1);
@@ -143,10 +143,15 @@ if (!career) {
         if (!info.capped && !info.maxed && info.next <= 5 && I.matCount(data, c, 'stone1') > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
       }
       while (I.matCount(data, c, 'hp_potion_1') < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion_1').ok);
+      // Чинит снаряжение, как только что-то сломалось или заметно износилось (в деревню бот не ходит — ремонт сразу)
+      for (const it of I.damaged(data, c).filter((x) => I.durOf(data, x) < 40).sort((x, y) => I.durOf(data, x) - I.durOf(data, y))) {
+        const r = I.repair(data, c, it.uid);
+        if (r.ok) repairGold += r.cost;
+      }
       autoBuild(c);
       for (const L of [5, 10, 15, 20, 25, 30]) if (c.level >= L && !levelAt[L]) levelAt[L] = battles;
     }
-    rows.push({ job, ...Object.fromEntries(Object.entries(levelAt).map(([k, v]) => [`ур.${k}`, v])), 'поражений': `${Math.round(c.losses / battles * 100)}%`, золото: c.gold });
+    rows.push({ job, ...Object.fromEntries(Object.entries(levelAt).map(([k, v]) => [`ур.${k}`, v])), 'поражений': `${Math.round(c.losses / battles * 100)}%`, золото: c.gold, ремонт: repairGold });
   }
   console.log('Боёв до уровня:');
   console.table(rows);

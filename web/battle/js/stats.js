@@ -120,7 +120,7 @@
     if (items) for (const it of Object.values(char.equipment || {})) if (it) add(sum, items.totals(data, it));
     // Знаки-добродетели: бонус за 2/4/6 надетых вещей с одинаковым знаком
     const count = {};
-    for (const it of Object.values(char.equipment || {})) if (it && it.virtue) count[it.virtue] = (count[it.virtue] || 0) + 1;
+    for (const it of Object.values(char.equipment || {})) if (it && it.virtue && !(items && items.isBroken(data, it))) count[it.virtue] = (count[it.virtue] || 0) + 1;
     for (const [id, n] of Object.entries(count)) {
       const sets = data.virtues[id].sets;
       const best = Object.keys(sets).map(Number).filter((k) => n >= k).pop();

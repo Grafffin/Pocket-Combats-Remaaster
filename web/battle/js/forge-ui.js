@@ -13,6 +13,7 @@
     ['inherit', 'Перенос', 'stats/speed', 'Кузнец Тарас', 'Переносит заточку, ранг и знак с одной вещи на другую того же вида.'],
     ['reroll', 'Перековка', 'stats/matk', 'Чародейка Велена', 'Меняет случайные свойства вещи: числа, строки, качество или знак.'],
     ['craft', 'Ковка', 'stats/def', 'Кузнец Тарас', 'Выковывает новую вещь нужной базы и тира.'],
+    ['repair', 'Ремонт', 'stats/vit', 'Кузнец Тарас', 'Чинит снаряжение. Сломанная вещь не даёт характеристик и чинится втрое дороже.'],
   ];
   const f = { sub: 'enhance', mode: 'values', valueIdx: 0, uid: null, locks: new Set(), protect: false, fodder: null, donor: null, craftType: null, craftTier: 1, flash: null };
 
@@ -40,13 +41,13 @@
     const tabs = SUBS.map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
     const sub = SUBS.find((s) => s[0] === f.sub);
     const modeHead = `<div class="mode-head">${art(sub[2], '')}<div><b>${sub[1]}</b><span class="meta">${sub[3]} · ${sub[4]}</span></div></div>`;
-    const picker = f.sub === 'craft' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
+    const picker = f.sub === 'craft' || f.sub === 'repair' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
       <div class="picker">${items.map(({ it, worn }) => tile(it, { attrs: `data-pick="${it.uid}" title="${worn ? 'надето' : 'в сумке'}"`, cls: it.uid === f.uid ? 'sel' : '' })).join('')}</div>
       <p class="meta" style="margin-top:6px">Сначала надетые, затем вещи из сумки.</p></div>`;
     const flash = f.flash ? `<div class="flash ${f.flash.kind}" style="margin:12px">${f.flash.text}</div>` : '';
     f.flash = null;
 
-    const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel }[f.sub](c);
+    const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel, repair: repairPanel }[f.sub](c);
     root.innerHTML = `<div class="forge-tabs">${tabs}</div>${modeHead}${flash}${body}${picker}
       <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', ...craftStock(c)].map((k) => [k, null])))}</div>`;
   }
@@ -201,6 +202,24 @@
       <div class="row-actions"><button class="btn primary" data-act="craft">Выковать</button></div></div>`;
   }
 
+  // ---------- Ремонт ----------
+  function repairPanel(c) {
+    const list = I.damaged(data, c);
+    if (!list.length) return '<div class="card section"><h3>Ремонт</h3><p class="empty-note">Всё снаряжение целое.</p></div>';
+    const total = list.reduce((s, it) => s + I.repairCost(data, it), 0);
+    const worn = new Set(Object.values(c.equipment).filter(Boolean).map((it) => it.uid));
+    const rows = list.map((it) => {
+      const cost = I.repairCost(data, it), d = I.durOf(data, it);
+      return `<div class="repair-row">${tile(it, { attrs: `data-pick="${it.uid}"` })}<div class="grow"><div class="item-name">${nameHtml(it)}</div>
+        <div class="${d <= 0 ? 'req' : 'meta'}">${d <= 0 ? 'Сломана' : `Прочность ${d} / ${data.durability.max}`}${worn.has(it.uid) ? ' · надета' : ''}</div></div>
+        <button class="btn small" data-act="repair" data-uid="${it.uid}" ${c.gold < cost ? 'disabled' : ''}>${fmtNum(cost)} 💰</button></div>`;
+    }).join('');
+    return `<div class="card section"><h3>Ремонт</h3>
+      <p class="meta">Вещи изнашиваются в боях понемногу, а при поражении — сразу на ${data.durability.defeatLoss} прочности.</p>
+      <div class="repair-list">${rows}</div>
+      <div class="row-actions"><button class="btn primary" data-act="repair-all" ${c.gold < total ? 'disabled' : ''}>Починить всё · ${fmtNum(total)} 💰</button></div></div>`;
+  }
+
   // ---------- События ----------
 
   function done(res, okText, kind = 'good') {
@@ -234,6 +253,8 @@
       f.busy = true;
       app.act(op, args).then((r) => { f.busy = false; if (r.shown) return app.render(); then(r); });
     };
+    if (a === 'repair') return go('repair', { uid: act.dataset.uid }, (r) => done(r, r.ok ? `Починено за ${fmtNum(r.cost)} 💰` : ''));
+    if (a === 'repair-all') return go('repairAll', {}, (r) => done(r, r.ok ? `Починено вещей: ${r.count}, ${fmtNum(r.cost)} 💰` : ''));
     if (a === 'value') {
       return go('rerollValue', { uid: f.uid, idx: f.valueIdx }, (r) =>
         done(r, r.ok ? `Значение: ${r.before} → ${r.after}` : '', r.ok && r.after >= r.before ? 'good' : 'neutral'));
