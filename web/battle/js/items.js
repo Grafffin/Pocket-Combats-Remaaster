@@ -394,7 +394,8 @@
   function salvageYield(data, item) {
     const type = data.types[item.type];
     const sure = {};
-    sure[type.salvage] = (sure[type.salvage] || 0) + 1 + Math.floor(item.tier / 2) + item.rarity;
+    const main = data.tierMat(type.salvage, item.tier);   // ресурс тира вещи
+    sure[main] = (sure[main] || 0) + 1 + Math.floor(item.tier / 2) + item.rarity;
     if (item.rarity >= 2) sure.essence = (sure.essence || 0) + (item.rarity - 1) * item.tier;
     const chance = [];
     if (item.rarity >= 1) chance.push(['stone1', 25 + 10 * item.rarity]);
@@ -621,7 +622,7 @@
 
   function craftCost(data, typeId, tier) {
     const c = data.craft.cost(tier);
-    const main = data.types[typeId].salvage;
+    const main = data.tierMat(data.types[typeId].salvage, tier);   // вещь тира T куётся из ресурса тира T
     const cost = { gold: c.gold, essence: c.essence };
     cost[main] = (cost[main] || 0) + c.main;
     return cost;

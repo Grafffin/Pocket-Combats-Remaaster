@@ -307,6 +307,7 @@ input[type="text"], #nick {
 .cost { display: flex; flex-wrap: wrap; gap: 8px; }
 .cost span { display: inline-flex; align-items: center; gap: 4px; font-size: 13px; font-weight: 600; padding: 3px 8px; border-radius: 8px; background: #151821; }
 .cost span.short { color: var(--bad); }
+.cost .mat-tier { font-style: normal; font-size: 9px; font-weight: 700; color: var(--muted); margin-left: -3px; align-self: flex-start; }
 .cost img { width: 18px; height: 18px; }
 .lock-row { display: flex; align-items: center; gap: 8px; padding: 6px 0; border-bottom: 1px dashed #262a38; }
 .lock-row:last-child { border-bottom: 0; }

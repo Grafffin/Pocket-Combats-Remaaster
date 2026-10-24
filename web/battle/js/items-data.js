@@ -496,10 +496,6 @@
   // Все ресурсы лежат в сумке стаками, до STACK_MAX в ячейке.
   const STACK_MAX = 200;
   const materials2 = {
-    ore: { name: 'Железная руда', art: 'materials/ore', price: 4 },
-    leather: { name: 'Выделанная кожа', art: 'materials/leather', price: 4 },
-    cloth: { name: 'Отрез ткани', art: 'materials/cloth', price: 4 },
-    chitin: { name: 'Хитиновые пластины', art: 'materials/chitin', price: 5 },
     essence: { name: 'Магическая эссенция', art: 'materials/essence', price: 10 },
     stone1: { name: 'Камень заточки I', art: 'materials/enhance_stone_1', price: 30, desc: 'Для заточки до +5.' },
     stone2: { name: 'Камень заточки II', art: 'materials/enhance_stone_2', price: 220, desc: 'Для заточки с +6 до +10.' },
@@ -530,6 +526,23 @@
     bone_meal: { name: 'Костная мука', art: 'materials/bone_meal', price: 20, kind: 'herb', desc: 'Затопленный склеп.' },
     ectoplasm: { name: 'Эктоплазма', art: 'materials/ectoplasm', price: 20, kind: 'herb', desc: 'Затопленный склеп.' },
   };
+
+  // Ресурсы ковки по тирам. Тир 1 — прежние id (ore, leather, cloth, chitin), дальше ore2 … ore7.
+  // Тир ресурса = тир монстра, с которого упал, или вещи, из которой разобран; ковка вещи тира T требует ресурс тира T.
+  const CRAFT_MATS = {
+    ore: { price: 4, use: 'латы и металлическое оружие', names: ['Железная руда', 'Железный слиток', 'Стальной слиток', 'Рунный слиток', 'Мифрил', 'Драконья сталь', 'Древний металл'] },
+    leather: { price: 4, use: 'кожаная броня, пояса и луки', names: ['Сыромятная кожа', 'Выделанная кожа', 'Дублёная кожа', 'Теневая кожа', 'Эльфийская замша', 'Драконья шкура', 'Древняя шкура'] },
+    cloth: { price: 4, use: 'тканевая броня и кушаки', names: ['Отрез ткани', 'Льняная ткань', 'Шёлк', 'Зачарованный шёлк', 'Звёздная парча', 'Драконий шёлк', 'Древнее полотно'] },
+    chitin: { price: 5, use: 'хитиновая броня', names: ['Хитиновые пластины', 'Жучиный панцирь', 'Роговые пластины', 'Скорпионий хитин', 'Королевский панцирь', 'Драконья чешуя', 'Древний панцирь'] },
+  };
+  for (const [fam, f] of Object.entries(CRAFT_MATS)) {
+    f.names.forEach((name, i) => {
+      const t = i + 1;
+      materials2[t === 1 ? fam : `${fam}${t}`] = { name, art: t === 1 ? `materials/${fam}` : `materials/${fam}_${t}`, price: f.price * t, family: fam, tier: t };
+    });
+  }
+  // Ресурс семейства нужного тира; эссенция и прочее — без тиров
+  const tierMat = (fam, t) => (CRAFT_MATS[fam] ? (t <= 1 ? fam : `${fam}${Math.min(t, MAX_TIER)}`) : fam);
 
   // В лавке только малые зелья — остальные варит алхимик
   const shopStock = ['hp_potion_1', 'mp_potion_1', 'stone1', 'stone2', 'reroll', 'protect'];
@@ -573,7 +586,7 @@
 
   Object.assign(data, {
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
-    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, STACK_MAX, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
+    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
