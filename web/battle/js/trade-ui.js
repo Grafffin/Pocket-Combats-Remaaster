@@ -244,7 +244,7 @@
         <p class="meta">${theirOk ? 'Партнёр подтвердил ✓' : 'Партнёр ещё не подтвердил'} · тап по вещи — осмотреть</p></div>
       <div class="row-actions"><button class="btn" data-act="cancel">Отменить обмен</button>
         <button class="btn primary" data-act="confirm" ${busy || (!myOk && rest) ? 'disabled' : ''}>${myOk ? 'Вы подтвердили — отменить' : rest ? `Подтвердить (${Math.ceil(rest / 1000)})` : 'Подтвердить'}</button></div>
-      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}${PC.cloud.lastMs ? ` <span class="meta">Отклик сервера: ${PC.cloud.lastMs} мс</span>` : ''}</p>
+      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}${PC.cloud.lastMs ? ` <span class="meta">Отклик: ${PC.cloud.lastMs} мс${PC.cloud.lastT ? ` (функция ${PC.cloud.lastT.total}, база ${PC.cloud.lastT.db.join('+')}, ${esc(String(PC.cloud.lastT.region))})` : ''}</span>` : ''}</p>
       <div class="bag-tools" style="padding:6px 0 0"><b>Ваша сумка</b><span class="meta grow">тап — предложить, удержание — осмотреть</span></div>
       <div class="bag-grid modal-grid">${bag}</div>`, handler, { onClose: () => {
         T.dismissed = T.row ? T.row.id : null; T.view = false; clearTimeout(T.timer);
