@@ -23,13 +23,13 @@
       (tg && tg.querySelector('span') && tg.querySelector('span').textContent.trim()) || 'Выбор';
     const opts = [...select.options].map((o, i) => `<button class="pick-opt ${i === select.selectedIndex ? 'on' : ''}" data-i="${i}" ${o.disabled ? 'disabled' : ''}><span>${escapeHtml(o.textContent)}</span><i class="pick-mark"></i></button>`).join('');
     picker = document.createElement('div');
-    picker.className = 'picker';
-    picker.innerHTML = `<div class="picker-back"></div><div class="picker-sheet" role="listbox"><div class="picker-head"><b>${escapeHtml(label)}</b><button class="icon-btn picker-x" aria-label="Закрыть">×</button></div><div class="picker-list">${opts}</div></div>`;
+    picker.className = 'optpick';
+    picker.innerHTML = `<div class="optpick-back"></div><div class="optpick-sheet" role="listbox"><div class="optpick-head"><b>${escapeHtml(label)}</b><button class="icon-btn optpick-x" aria-label="Закрыть">×</button></div><div class="optpick-list">${opts}</div></div>`;
     document.body.appendChild(picker);
     const on = picker.querySelector('.pick-opt.on');
     if (on) on.scrollIntoView({ block: 'center' });
     picker.addEventListener('click', (e) => {
-      if (e.target.closest('.picker-back, .picker-x')) return closePicker();
+      if (e.target.closest('.optpick-back, .optpick-x')) return closePicker();
       const b = e.target.closest('.pick-opt');
       if (!b || b.disabled) return;
       select.selectedIndex = Number(b.dataset.i);

@@ -183,11 +183,11 @@
       .map((l) => `<span class="${l.neg ? 'neg' : ''}">${l.text}</span>`).join(' · ');
     return `<div class="card section"><h3>Ковка</h3>
       <p class="meta">Кузнец выкует вещь выбранной базы. Редкость — не ниже «Необычной» и чаще высокая, чем у добычи. Тиры открываются по мере прохождения зон.</p>
-      <div class="field"><label>Вид</label><select data-craft-kind style="width:100%">${kindOpts}</select></div>
-      ${mats.length ? `<div class="field"><label>Материал</label><select data-craft-mat style="width:100%">${matOpts}</select></div>
+      <div class="field"><label>Вид</label><select data-craft-kind data-title="Вид вещи" style="width:100%">${kindOpts}</select></div>
+      ${mats.length ? `<div class="field"><label>Материал</label><select data-craft-mat data-title="Материал" style="width:100%">${matOpts}</select></div>
         <p class="meta">${data.armorMaterials[type.armor].desc}</p>` : ''}
-      <div class="field"><label>База</label><select data-craft-type style="width:100%">${baseOpts}</select></div>
-      <div class="field"><label>Тир</label><select data-craft-tier style="width:100%">${tierOpts}</select></div>
+      <div class="field"><label>База</label><select data-craft-type data-title="База" style="width:100%">${baseOpts}</select></div>
+      <div class="field"><label>Тир</label><select data-craft-tier data-title="Тир" style="width:100%">${tierOpts}</select></div>
       <p>Получится: <b>${preview}</b><br><span class="meta craft-stats">${stats}</span></p>
       ${costHtml(I.craftCost(data, f.craftType, f.craftTier))}
       <div class="row-actions"><button class="btn primary" data-act="craft">Выковать</button></div></div>`;
