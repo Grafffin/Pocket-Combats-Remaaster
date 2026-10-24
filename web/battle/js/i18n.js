@@ -10,8 +10,9 @@
   const KEY = 'pc-lang';
   const CYR = /[А-Яа-яЁё]/;
   const FILES = ['en-ui.js', 'en-data.js', 'en-log.js'];
-  let lang = 'ru';
-  try { if (root.localStorage.getItem(KEY) === 'en') lang = 'en'; } catch (e) { /* без хранилища — русский */ }
+  // Без сохранённого выбора язык задаёт домен: *.online — английский, остальные — русский.
+  let lang = root.location && /\.online$/i.test(root.location.hostname) ? 'en' : 'ru';
+  try { const v = root.localStorage.getItem(KEY); if (v === 'en' || v === 'ru') lang = v; } catch (e) { /* без хранилища — по домену */ }
 
   const dict = new Map(), pats = [], cache = new Map();
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
