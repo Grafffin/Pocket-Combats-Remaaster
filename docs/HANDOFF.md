@@ -18,6 +18,7 @@ docs/
   PROJECT_CONTEXT.md       контекст игры: бой, вещи, сложность, уники (местами устарел по онлайну)
   GDD.md                   полная спецификация игры
   BACKLOG.md               бэклог по плейтесту 22.10 (почти всё сделано)
+  BALANCE_ARMOR.md         большой прогон материалов брони по уровням 5…35 (armor.js)
   ONLINE_ARCHITECTURE.md   выбор бэкенда и план 7 PR онлайна
   SERVER_AUTHORITY.md      перенос экономики и наград на сервер (этапы 1–6, как сделано)
   research/eht-gear.md     исследование Evil Hunter Tycoon
