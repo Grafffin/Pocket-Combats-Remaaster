@@ -32,6 +32,12 @@
       if (app.stashApi) app.stashApi.set(remoteStash);
       start();
     },
+    // Герой, изменённый сервером (рынок): заменяем без перезапуска экрана.
+    adoptChar(remote) {
+      state.char = P.migrate(data, remote);
+      charStore.save(state.char);
+      render();
+    },
     render,
     setTab,
     toast,
@@ -198,6 +204,7 @@
     openModal('Меню', `<div class="menu-list">
       ${item('forge', 'npcs/blacksmith', 'Кузница', village ? 'Заточка, ранги, перенос, перековка, ковка' : 'Только в деревне', village)}
       ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
+      ${item('market', 'npcs/market', 'Рынок', village ? 'Торговля вещами с другими игроками' : 'Только в деревне', village)}
       ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
       ${item('history', 'ui/gear', 'История боёв', PC.battles && PC.battles.history ? 'Последние 30 боёв' : 'Недоступно', !!(PC.battles && PC.battles.history))}
       ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
@@ -210,6 +217,7 @@
       if (b.dataset.menu === 'forge') setTab('forge');
       if (b.dataset.menu === 'alchemist') openAlchemist();
       if (b.dataset.menu === 'stash') PC.bagUI.openStash();
+      if (b.dataset.menu === 'market') PC.marketUI.open();
       if (b.dataset.menu === 'account') openAccount();
       if (b.dataset.menu === 'history') openHistory();
     });
@@ -712,6 +720,7 @@
     if (id === 'alchemist') return openAlchemist();
     if (id === 'buyer') return PC.bagUI.openBuyer();
     if (id === 'stash') return PC.bagUI.openStash();
+    if (id === 'market') return PC.marketUI.open();
   }
 
   function npcHead(id) {

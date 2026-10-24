@@ -86,6 +86,28 @@
     }
   }
 
+  // Серверная операция над героем (рынок): сначала сохраняем прогресс, затем вызываем функцию с текущей версией.
+  // Ответ { char, rev, ... } заменяет локального героя. Ошибка — исключение с кодом сервера в message.
+  cloud.call = async function (fn, args) {
+    if (!auth.client || !auth.user) throw new Error('not_auth');
+    if (cloud.status !== 'ok') await sync();
+    if (cloud.status !== 'ok') throw new Error('offline');
+    clearTimeout(timer);
+    while (pushing) await new Promise((r) => setTimeout(r, 100));
+    if (meta.dirty || !meta.rev) await push();
+    if (meta.dirty || !meta.rev || cloud.status !== 'ok') throw new Error('not_saved');
+    const { data: res, error } = await auth.client.rpc(fn, { ...args, p_rev: meta.rev });
+    if (error) {
+      if (/stale/.test(error.message || '')) await pull(true);
+      throw new Error(error.message || 'error');
+    }
+    if (res && res.char) {
+      meta.rev = res.rev; meta.dirty = false; saveMeta();
+      app.adoptChar(res.char);
+    }
+    return res;
+  };
+
   async function sync() {
     if (syncing || !auth.client || !auth.user) return;
     syncing = true;
