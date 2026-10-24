@@ -273,8 +273,8 @@
       ${block('Тир', `<div class="mf-range"><select data-num="tmin">${opt(tiers, f.tmin)}</select><span>—</span><select data-num="tmax">${opt(tiers, f.tmax)}</select></div>`)}
       ${block('Заточка и ранг', `<div class="mf-range"><select data-num="enh">${opt(Array.from({ length: 16 }, (_, i) => [i, i ? `от +${i}` : 'Заточка любая']), f.enh)}</select>
         <select data-num="rank">${opt(Array.from({ length: 6 }, (_, i) => [i, i ? `от ${'★'.repeat(i)}` : 'Ранг любой']), f.rank)}</select></div>`)}
-      ${block('Цена, 💰', `<div class="mf-range"><input type="number" inputmode="numeric" min="0" placeholder="от" data-price="pmin" value="${escapeHtml(f.pmin)}"><span>—</span>
-        <input type="number" inputmode="numeric" min="0" placeholder="до" data-price="pmax" value="${escapeHtml(f.pmax)}"></div>`)}
+      ${block('Цена, 💰', `<div class="mf-range"><input type="number" inputmode="numeric" min="0" placeholder="от" data-steps="100,1000" data-price="pmin" value="${escapeHtml(f.pmin)}"><span>—</span>
+        <input type="number" inputmode="numeric" min="0" placeholder="до" data-steps="100,1000" data-price="pmax" value="${escapeHtml(f.pmax)}"></div>`)}
       ${block('Свойства', affixes, 'нужны все выбранные')}
       <label class="mf-toggle"><input type="checkbox" data-flag="noNeg" ${f.noNeg ? 'checked' : ''}> Без отрицательных свойств</label>
       ${block('Особые свойства', chips('special', special), 'хотя бы одно из выбранных')}
@@ -433,7 +433,7 @@
       if (e.target.closest('[data-act="list"]')) list(item, index);
     });
     $('#modal-body .row-actions').insertAdjacentHTML('beforebegin', `<div class="sell-form">
-      <label>Цена за вещь, 💰<input type="number" inputmode="numeric" min="${MIN_PRICE}" max="1000000000" id="market-price" value="${p}"></label>
+      <label>Цена за вещь, 💰<input type="number" inputmode="numeric" min="${MIN_PRICE}" max="1000000000" data-steps="10,100" id="market-price" value="${p}"></label>
       <p class="meta" id="market-net">Скупщик даст ${fmtNum(I.sellPrice(data, item))} 💰. После комиссии ${FEE}% вы получите ${net(p)} 💰.</p></div>`);
     $('#market-price').addEventListener('input', (e) => {
       const v = Math.floor(Number(e.target.value)) || 0;
