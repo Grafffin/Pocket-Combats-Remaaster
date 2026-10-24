@@ -143,7 +143,7 @@
       const pct = Math.max(0, Math.min(1, s.hp / f.maxHp));
       const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
       const col = f.resource ? (data.resources[f.resource] || {}).color : '';
-      const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" data-fx="${f.id}|${e.id}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
+      const fx = chipsHtml(f, s.effects, false);
       return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${tank === f.id ? ' aggro' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
@@ -277,10 +277,19 @@
         res.querySelector('.fill').style.width = `${(s.res / f.resMax) * 100}%`;
         res.title = `${f.resName}: ${Math.round(s.res)} / ${f.resMax}`;
       }
-      el.querySelector('.effects').innerHTML = s.effects.filter((e) => e.id !== 'shield').map((e) =>
-        `<span class="chip ${e.kind}" data-fx="${f.id}|${e.id}" title="${e.name}">${e.name.slice(0, 2)}${e.disable || e.turns > 50 ? '' : e.turns}</span>`).join('');
+      el.querySelector('.effects').innerHTML = chipsHtml(f, s.effects, true);
       el.classList.toggle('dead', s.hp <= 0);
     }
+  }
+
+  // Значки эффектов: в колонке помещаются два, при большем числе — первый и «+N», по нажатию открывается список всех
+  const FX_SLOTS = 2;
+  function chipsHtml(f, effects, turns) {
+    const list = (effects || []).filter((e) => e.id !== 'shield');
+    const shown = list.length > FX_SLOTS ? list.slice(0, FX_SLOTS - 1) : list;
+    const more = list.length - shown.length;
+    return shown.map((e) => `<span class="chip ${e.kind}" data-fx="${f.id}|${e.id}" title="${e.name}">${e.name.slice(0, 2)}${!turns || e.disable || e.turns > 50 ? '' : e.turns}</span>`).join('') +
+      (more ? `<span class="chip more" data-fx-all="${f.id}" title="Все эффекты">+${more}</span>` : '');
   }
 
   // Разметка лога в духе оригинала → HTML. Имена уже экранированы движком.
@@ -527,6 +536,8 @@
   $('#arena').addEventListener('click', (e) => {
     const chip = e.target.closest('[data-fx]');
     if (chip) { openEffect(...chip.dataset.fx.split('|')); return; }
+    const all = e.target.closest('[data-fx-all]');
+    if (all) { openEffects(all.dataset.fxAll); return; }
     const card = e.target.closest('.fighter');
     if (!card) return;
     if (card.id === 'f-m' && ui.opts && ui.opts.onMonsterInfo) { ui.opts.onMonsterInfo(); return; }
@@ -576,15 +587,38 @@
     const live = f.effects.find((x) => x.id === eid);
     const e = live || shown;
     if (!e) return;
-    // длительность — как на экране (по проигранной строке лога), а не «из будущего»
-    const turns = shown ? shown.turns : e.turns;
-    const left = e.disable ? 'До конца хода' : turns > 50 ? 'До конца боя' : `${turns} ${plural(turns, 'ход', 'хода', 'ходов')}`;
+    const left = effectLeft(e, shown);
     const src = e.source != null && e.source !== f.id ? b.fighters.find((x) => x.id === e.source) : null;
     openModal(e.name, `
       <div class="row" style="gap:8px;margin-bottom:8px"><span class="tag ${e.kind === 'debuff' ? 'boss' : 'kind'}">${e.kind === 'debuff' ? 'Ослабление' : 'Усиление'}</span><span class="meta">${f.name}</span></div>
       ${describeEffect(e).map((t) => `<p class="meta" style="margin:4px 0">${t}</p>`).join('')}
       <div class="kv"><span>Осталось</span><b>${left}</b></div>
       ${src ? `<div class="kv"><span>Наложил</span><b>${src.name}</b></div>` : ''}`);
+  }
+
+  // длительность — как на экране (по проигранной строке лога), а не «из будущего»
+  function effectLeft(e, shown) {
+    const turns = shown ? shown.turns : e.turns;
+    return e.disable ? 'До конца хода' : turns > 50 ? 'До конца боя' : `${turns} ${plural(turns, 'ход', 'хода', 'ходов')}`;
+  }
+
+  // Все эффекты бойца списком: что делает и сколько осталось; нажатие на строку — подробности с тем, кто наложил
+  function openEffects(fid) {
+    const b = ui.battle;
+    const f = b && b.fighters.find((x) => String(x.id) === fid);
+    if (!f) return;
+    const shown = ((ui.snap && ui.snap[f.id] && ui.snap[f.id].effects) || f.effects).filter((x) => x.id !== 'shield');
+    if (!shown.length) return;
+    const rows = shown.map((s) => {
+      const e = f.effects.find((x) => x.id === s.id) || s;
+      return `<button class="fx-row" data-fx="${f.id}|${s.id}"><span class="chip ${s.kind}">${s.name.slice(0, 2)}</span>
+        <div class="txt"><div class="fx-head"><b>${s.name}</b><span class="meta">${effectLeft(e, s)}</span></div>
+        ${describeEffect(e).map((t) => `<div class="meta">${t}</div>`).join('')}</div></button>`;
+    }).join('');
+    openModal(`Эффекты · ${f.name}`, `<div class="list">${rows}</div>`, (ev) => {
+      const row = ev.target.closest('[data-fx]');
+      if (row) openEffect(...row.dataset.fx.split('|'));
+    });
   }
 
   function plural(n, one, few, many) {
