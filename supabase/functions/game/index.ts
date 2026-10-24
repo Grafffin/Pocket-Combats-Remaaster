@@ -27,6 +27,46 @@ async function fightsReady() {
   fightsChecked = Date.now();
   return fightsOk;
 }
+// Таблица обменов (миграция 0017) применена: пока нет, кнопки обмена в игре скрыты
+let tradesChecked = 0, tradesOk = false;
+async function tradesReady() {
+  if (Date.now() - tradesChecked < 60000) return tradesOk;
+  const { error } = await db.from('game_trades').select('id').limit(1);
+  tradesOk = !error;
+  tradesChecked = Date.now();
+  return tradesOk;
+}
+// Доступ к базе для правил обмена (web/battle/js/trade.js): запись героя и сделки — одна транзакция trade_commit
+const tradeIo = {
+  async hero(u: string) {
+    const { data, error } = await db.from('characters').select('data,stash,rev').eq('user_id', u).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+  async trade(id: string) {
+    const { data, error } = await db.from('game_trades').select('*').eq('id', id).maybeSingle();
+    if (error) throw error;
+    return data;
+  },
+  async create(a: string, b: string, loc: string) {
+    const { data, error } = await db.rpc('trade_create', { p_a: a, p_b: b, p_loc: loc });
+    if (error) {
+      if (/busy/.test(error.message)) throw new PC.trade.TradeError('busy');
+      throw error;
+    }
+    return data;
+  },
+  async commit(c: { uid: string; tradeId: string; ver: number; patch: unknown; char: unknown; stash: unknown; rev: number }) {
+    const { data, error } = await db.rpc('trade_commit', {
+      p_user: c.uid, p_trade: c.tradeId, p_ver: c.ver, p_patch: c.patch, p_data: c.char, p_stash: c.stash, p_rev: c.rev,
+    });
+    if (error) {
+      if (/stale/.test(error.message)) throw new PC.trade.TradeError('stale');
+      throw error;
+    }
+    return data;
+  },
+};
 const FIGHT_OPS = new Set(['fightJoin', 'fightEnd']);
 const LOC = /^[a-z0-9_]{1,40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -59,11 +99,25 @@ Deno.serve(async (req) => {
     const { op, args, rev, v } = await req.json();
     // Другой код у клиента и сервера посчитает по-разному: клиент перезагрузит страницу
     if (v !== PC.BUILD) return json({ error: 'version', build: PC.BUILD }, 409);
-    if (op === 'ping') return json({ result: { build: PC.BUILD, fights: await fightsReady() } });
+    if (op === 'ping') return json({ result: { build: PC.BUILD, fights: await fightsReady(), trades: await tradesReady() } });
 
     const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
     const uid = await userOf(jwt);
     if (!uid) return json({ error: 'not_auth' }, 401);
+
+    // Обмен между игроками: свои правила, две записи (герой и сделка) одной транзакцией
+    if (PC.trade.OPS.includes(op)) {
+      if (!(await tradesReady())) return json({ error: 'no_trades' }, 400);
+      try {
+        return json(await PC.trade.handle(op, args || {}, tradeIo, { uid, now: Date.now() }));
+      } catch (e) {
+        if (e instanceof PC.trade.TradeError && e.message === 'stale') {
+          const row = await tradeIo.hero(uid);
+          return json({ error: 'stale', char: row ? row.data : null, stash: row ? row.stash : null, rev: row ? row.rev : 0 }, 409);
+        }
+        throw e;
+      }
+    }
 
     // Герой и запись боя читаются одновременно
     const fightId = FIGHT_OPS.has(op) && args && typeof args.id === 'string' && UUID.test(args.id) ? args.id.toLowerCase() : null;
@@ -110,7 +164,7 @@ Deno.serve(async (req) => {
     }
     return json({ char: out.char, stash: out.stash, rev: res.data[0].rev, result: out.result });
   } catch (e) {
-    if (e instanceof GameError) return json({ error: e.message }, 400);
+    if (e instanceof GameError || (PC.trade && e instanceof PC.trade.TradeError)) return json({ error: (e as Error).message }, 400);
     console.error(e);
     return json({ error: 'server' }, 500);
   }
