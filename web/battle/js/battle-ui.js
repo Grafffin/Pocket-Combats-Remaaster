@@ -144,7 +144,7 @@
       const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
       const col = f.resource ? (data.resources[f.resource] || {}).color : '';
       const fx = chipsHtml(f, s.effects, false);
-      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${tank === f.id ? ' aggro' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
+      return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${tank === f.id ? ' aggro' : ''}${join}" data-pid="${f.id}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
     if (fresh) el.scrollTop = el.scrollHeight;
@@ -538,6 +538,12 @@
     if (chip) { openEffect(...chip.dataset.fx.split('|')); return; }
     const all = e.target.closest('[data-fx-all]');
     if (all) { openEffects(all.dataset.fxAll); return; }
+    const mate = e.target.closest('.pmate');   // карточка напарника лежит внутри карточки героя
+    if (mate) {
+      const m = ui.battle.players.find((x) => String(x.id) === mate.dataset.pid);
+      if (m) openPlayerCard(m);
+      return;
+    }
     const card = e.target.closest('.fighter');
     if (!card) return;
     const f = card.id === 'f-p' ? ui.battle.player : ui.battle.monster;
