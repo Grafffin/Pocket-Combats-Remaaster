@@ -11,7 +11,7 @@ DIR=$(cd "$(dirname "$0")" && pwd)
 
 command -v nginx >/dev/null || { echo "nginx не найден" >&2; exit 1; }
 apt-get update -qq
-apt-get install -y -qq git certbot python3-certbot-nginx >/dev/null
+apt-get install -y -qq git certbot python3-certbot-nginx dnsutils >/dev/null
 
 mkdir -p /var/www/grindhall/releases
 sh "$DIR/update.sh"
@@ -43,7 +43,8 @@ echo "HTTP-сайт включён. Проверяю, что домены смо
 MYIP=$(curl -s4 https://api.ipify.org || true)
 OK=""
 for d in $DOMAINS; do
-  IP=$(getent ahostsv4 "$d" | awk 'NR==1{print $1}')
+  # спрашиваем публичный DNS, а не локальный кэш сервера: он может ещё помнить старый адрес
+  IP=$(dig +short "$d" @8.8.8.8 | grep -E '^[0-9.]+$' | tail -n 1)
   if [ "$IP" = "$MYIP" ]; then OK="$OK -d $d"; else echo "  $d -> ${IP:-нет записи} (ждём $MYIP), пропускаю"; fi
 done
 if [ -n "$OK" ]; then
