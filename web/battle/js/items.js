@@ -175,9 +175,62 @@
     return out;
   }
 
-  // Вклад вещи в характеристики персонажа (stats.js складывает)
+  // ---------- Прочность ----------
+  // Нет поля dur — вещь целая (старые сохранения)
+  const durOf = (data, item) => (item.dur == null ? data.durability.max : item.dur);
+  const isBroken = (data, item) => durOf(data, item) <= 0;
+
+  // Износ надетого после боя: rng — шанс потерять 1 в обычном бою, defeat — гарантированный урон при поражении.
+  // Возвращает вещи, сломавшиеся в этом бою.
+  function wear(data, char, rng, { defeat = false } = {}) {
+    const W = data.durability, broken = [];
+    for (const it of Object.values(char.equipment)) {
+      if (!it) continue;
+      const was = durOf(data, it);
+      if (was <= 0) continue;
+      let loss = rng.chance(W.battleChance) ? 1 : 0;
+      if (defeat) loss += W.defeatLoss;
+      if (!loss) continue;
+      it.dur = Math.max(0, was - loss);
+      if (!it.dur) broken.push(it);
+    }
+    return broken;
+  }
+
+  function repairCost(data, item) {
+    const W = data.durability, d = durOf(data, item);
+    if (d >= W.max) return 0;
+    return Math.max(1, Math.ceil((W.max - d) / W.max * W.cost(item) * (d <= 0 ? W.brokenMult : 1)));
+  }
+
+  // Повреждённые вещи героя: сначала надетые, затем из сумки
+  const damaged = (data, char) => [...Object.values(char.equipment), ...char.bag].filter((it) => it && !it.stack && durOf(data, it) < data.durability.max);
+
+  function repair(data, char, uid) {
+    const found = findItem(char, uid);
+    if (!found) return { ok: false, reason: 'Вещь не найдена' };
+    const cost = repairCost(data, found.item);
+    if (!cost) return { ok: false, reason: 'Вещь целая' };
+    if ((char.gold || 0) < cost) return { ok: false, reason: 'Не хватает золота' };
+    char.gold -= cost;
+    found.item.dur = data.durability.max;
+    return { ok: true, cost };
+  }
+
+  function repairAll(data, char) {
+    const list = damaged(data, char);
+    const cost = list.reduce((s, it) => s + repairCost(data, it), 0);
+    if (!cost) return { ok: false, reason: 'Чинить нечего' };
+    if ((char.gold || 0) < cost) return { ok: false, reason: 'Не хватает золота' };
+    char.gold -= cost;
+    for (const it of list) it.dur = data.durability.max;
+    return { ok: true, cost, count: list.length };
+  }
+
+  // Вклад вещи в характеристики персонажа (stats.js складывает). Сломанная вещь не даёт ничего.
   function totals(data, item) {
     const out = {};
+    if (isBroken(data, item)) return out;
     const add = (k, v) => { out[k] = (out[k] || 0) + v; };
     const base = baseStats(data, item);
     for (const [k, v] of Object.entries(base)) if (k !== 'dmg') add(k, v);
@@ -202,11 +255,12 @@
   }
 
   function weaponDamage(data, item) {
+    if (isBroken(data, item)) return null;
     const b = baseStats(data, item);
     return b.dmg ? { min: b.dmg[0], max: b.dmg[1] } : null;
   }
 
-  const isShield = (data, item) => !!(item && data.types[item.type].isShield);
+  const isShield = (data, item) => !!(item && data.types[item.type].isShield && !isBroken(data, item));
   const reqLevel = (data, item) => data.TIER_LEVEL[item.tier];
 
   function name(data, item) {
@@ -663,7 +717,7 @@
   PC.items = {
     BAG_SIZE, compactStacks, matCount, matRoom, matAdd, matTake, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
     affixValue, affixText, baseStats, baseLines, totals, weaponDamage, isShield, reqLevel, name, power,
-    bagAdd, bagFree, bagExpandCost, expandBag, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
+    bagAdd, bagFree, bagExpandCost, expandBag, findItem, durOf, isBroken, wear, repairCost, damaged, repair, repairAll, slotsFor, canEquip, equip, unequip, moveInBag,
     sellPrice, salvageYield, salvage,
     enhanceInfo, enhance, rankInfo, rankUp,
     rerollValueCost, rerollAffixesCost, rerollValue, rerollAffixes,

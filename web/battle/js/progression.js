@@ -237,6 +237,9 @@
     for (const c of battle.player.consumables) { const have = I().matCount(data, char, c.id); if (c.count < have) I().matTake(data, char, c.id, have - c.count); }
     const win = battle.winner === battle.player;
     const summary = { win, fled, exp: 0, gold: 0, goldLost: 0, sentHome: false, levelsUp: [], newSkills: [], items: [], salvaged: [], materials: {} };
+    // Износ надетого: понемногу в каждом бою, при поражении (не бегстве) — гарантированно и сильно
+    summary.defeatWear = !win && !fled;
+    summary.broken = I().wear(data, char, rng, { defeat: summary.defeatWear }).map((it) => I().name(data, it));
     if (!win) {
       char.losses++;
       if (!fled) {

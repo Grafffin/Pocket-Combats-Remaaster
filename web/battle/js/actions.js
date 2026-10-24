@@ -157,6 +157,8 @@
       return { ok: true };
     },
     expandBag: (S) => I().expandBag(D(), hero(S)),
+    repair: (S, a) => I().repair(D(), village(hero(S)), str(a.uid)),
+    repairAll: (S) => I().repairAll(D(), village(hero(S))),
     lock(S, a) {
       const found = I().findItem(hero(S), str(a.uid));
       if (!found) return no('Вещь не найдена');

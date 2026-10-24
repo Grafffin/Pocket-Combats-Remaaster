@@ -577,6 +577,13 @@
   const requality = { gold: (item) => 40 * item.tier, essence: (item) => item.tier };
 
   // Перенос заточки, ранга и знака на другую вещь того же вида (донор разбирается) — вложения не сгорают
+  // Прочность снаряжения: в каждом бою надетая вещь теряет 1 с шансом battleChance%, при поражении — defeatLoss.
+  // Сломанная (0) не даёт ничего. Полный ремонт — cost(item) золота, сломанной — ×brokenMult.
+  const durability = {
+    max: 100, battleChance: 25, defeatLoss: 10, brokenMult: 3,
+    cost: (item) => 4 * Math.pow(1.8, item.tier - 1) * (1 + 0.25 * item.rarity),
+  };
+
   // Ковка и перенос дорожают экспоненциально с тиром: золото ×2.3 за тир, ресурсы ×1.45.
   // Ориентир: T1 — минуты охоты, T7 — около полутора часов дохода на Обычной (≈6 тыс. золота в час на 35 ур.).
   const expo = (base, k) => (t) => Math.round(base * Math.pow(k, t - 1));
@@ -590,6 +597,7 @@
   };
 
   Object.assign(data, {
+    durability,
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
     legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, bagExpand, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
