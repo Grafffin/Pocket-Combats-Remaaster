@@ -2,7 +2,7 @@ name: Tests
 
 on:
   pull_request:
-    paths: ['web/**', '.github/workflows/**']
+    paths: ['web/**', 'supabase/functions/**', '.github/workflows/**']
   workflow_dispatch:
 
 jobs:
@@ -12,8 +12,10 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: Общий бой (lockstep)
         run: node web/battle/tools/lockstep-test.js
       - name: Стресс-тест общего боя (2–10 клиентов, задержки и потери)
         run: node web/battle/tools/lockstep-stress.js 12
+      - name: Серверная функция game (операции на игровом коде)
+        run: node web/battle/tools/server-test.js

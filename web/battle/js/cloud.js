@@ -108,10 +108,56 @@
     return res;
   };
 
+  // Операция над героем в серверной функции game (docs/SERVER_AUTHORITY.md): сервер сам применяет действие
+  // со своей случайностью и возвращает нового героя. cloud.server — функция выложена и отвечает.
+  cloud.server = false;
+  async function invoke(op, args, rev) {
+    const { data: res, error } = await auth.client.functions.invoke('game', { body: { op, args, rev, v: PC.BUILD } });
+    if (!error) return res;
+    let body = null;
+    try { body = error.context && await error.context.json(); } catch (e) { body = null; }
+    if (body && body.error === 'version') {
+      // сервер на другой версии игры: один раз перезагружаем страницу за свежим кодом
+      const key = 'pc-reload-build';
+      let again = false;
+      try { again = sessionStorage.getItem(key) === body.build; sessionStorage.setItem(key, body.build); } catch (e) { again = true; }
+      if (!again) { toast('Вышла новая версия игры — обновляем страницу', 'bad'); setTimeout(() => location.reload(), 1200); }
+    }
+    const err = new Error(body && body.error || 'offline');
+    err.body = body;
+    throw err;
+  }
+  cloud.act = async function (op, args) {
+    if (!auth.client || !auth.user) throw new Error('not_auth');
+    if (cloud.status !== 'ok') await sync();
+    if (cloud.status !== 'ok') throw new Error('offline');
+    clearTimeout(timer);
+    while (pushing) await new Promise((r) => setTimeout(r, 100));
+    if (meta.dirty) await push();
+    if (meta.dirty || cloud.status !== 'ok') throw new Error('not_saved');
+    let res;
+    try { res = await invoke(op, args, meta.rev || 0); } catch (e) {
+      if (e.message === 'stale' && e.body) {   // герой изменился на другом устройстве: берём серверного
+        meta.rev = e.body.rev; meta.dirty = false; saveMeta();
+        app.applyRemote(e.body.char, e.body.stash);
+      }
+      throw e;
+    }
+    if (res.rev !== meta.rev) {
+      meta.rev = res.rev; meta.dirty = false; saveMeta();
+      if (res.char) app.adoptChar(res.char);
+      if (app.stashApi && JSON.stringify(res.stash) !== JSON.stringify(app.stashApi.get())) app.stashApi.set(res.stash);
+    }
+    return res.result;
+  };
+
   async function sync() {
     if (syncing || !auth.client || !auth.user) return;
     syncing = true;
     try { await pull(false); } catch (e) { fail(e); } finally { syncing = false; }
+    if (cloud.status === 'ok' && !cloud.server) {
+      try { await invoke('ping', {}); cloud.server = true; } catch (e) { cloud.server = false; }
+    }
   }
   cloud.sync = sync;
 
