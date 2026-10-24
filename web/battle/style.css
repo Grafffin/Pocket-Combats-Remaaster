@@ -325,6 +325,7 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 #timer-fill.low { background: var(--bad); }
 .arena { display: grid; grid-template-columns: 1fr auto 1fr; gap: 8px; align-items: stretch; padding: 12px; background: linear-gradient(180deg, #171a23, transparent); }
 .vs { align-self: center; color: var(--dim); font-size: 11px; font-weight: 800; letter-spacing: .1em; }
+.arena .fighter.foe { align-self: center; }   /* монстр не растягивается по высоте отряда, а стоит напротив «VS» */
 .fighter { position: relative; background: var(--card); border: 1px solid var(--line); border-radius: 14px; padding: 8px; min-width: 0; }
 .fighter.ally { border-top: 3px solid var(--ally); }
 .fighter.foe { border-top: 3px solid var(--foe); }
