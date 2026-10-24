@@ -143,14 +143,32 @@
     err.body = body;
     throw err;
   }
-  // Действия идут строго по очереди: следующее уходит с версией героя, которую вернуло предыдущее
-  let queue = Promise.resolve();
-  cloud.act = function (op, args) {
-    const run = queue.then(() => act(op, args));
+  // Действия идут строго по очереди: следующее уходит с версией героя, которую вернуло предыдущее.
+  // optimistic — клиент уже применил действие сам (hub.js): ответ сервера принимаем, только когда очередь пуста,
+  // чтобы не откатывать на экране следующие уже показанные действия; при отказе берём серверного героя.
+  let queue = Promise.resolve(), waiting = 0;
+  cloud.act = function (op, args, optimistic) {
+    waiting++;
+    const run = queue.then(() => act(op, args, optimistic)).finally(() => { waiting--; });
     queue = run.catch(() => {});
     return run;
   };
-  async function act(op, args) {
+  function adopt(res) {
+    meta.rev = res.rev; meta.dirty = false; saveMeta();
+    if (app.stashApi && JSON.stringify(res.stash) !== JSON.stringify(app.stashApi.get())) app.stashApi.set(res.stash);
+    if (res.char) { if (JSON.stringify(res.char) !== JSON.stringify(app.state.char)) app.adoptChar(res.char); }
+    else if (app.state.char) app.applyRemote(null, res.stash);
+  }
+  async function act(op, args, optimistic) {
+    try { return await send(op, args, optimistic); } catch (e) {
+      // показанное заранее действие сервер не принял: возвращаем на экран его героя
+      if (optimistic && e.message !== 'stale' && e.message !== 'version') {
+        try { adopt(await invoke('load', {}, null)); } catch (e2) { if (auth.client && auth.user) pull(true).catch(() => {}); }
+      }
+      throw e;
+    }
+  }
+  async function send(op, args, optimistic) {
     if (!auth.client || !auth.user) throw new Error('not_auth');
     if (cloud.status !== 'ok') await sync();
     if (cloud.status !== 'ok') throw new Error('offline');
@@ -166,11 +184,9 @@
       }
       throw e;
     }
-    if (res.rev !== meta.rev) {
-      meta.rev = res.rev; meta.dirty = false; saveMeta();
-      if (app.stashApi && JSON.stringify(res.stash) !== JSON.stringify(app.stashApi.get())) app.stashApi.set(res.stash);
-      if (res.char) app.adoptChar(res.char); else if (app.state.char) app.applyRemote(null, res.stash);
-    }
+    // показанное заранее сверяем с сервером всегда: он мог отказать ({ ok: false }) без изменения героя
+    if (optimistic) { if (waiting > 1) { meta.rev = res.rev; saveMeta(); } else adopt(res); }
+    else if (res.rev !== meta.rev) adopt(res);
     return res.result;
   }
 
@@ -189,7 +205,11 @@
     clearTimeout(timer);
     if (auth.user) sync(); else cloud.status = 'off';
   });
-  document.addEventListener('visibilitychange', () => { if (document.hidden && meta.dirty) push(); });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden && meta.dirty) push();
+    // вернулись в игру: будим функцию заранее, чтобы первое действие не ждало её холодного старта
+    if (!document.hidden && cloud.server && auth.client && auth.user) invoke('ping', {}).catch(() => {});
+  });
   window.addEventListener('pagehide', () => { if (meta.dirty) push(); });
   window.addEventListener('DOMContentLoaded', () => { if (auth.ready && auth.user) sync(); });
 })();

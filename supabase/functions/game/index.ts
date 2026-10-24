@@ -30,6 +30,21 @@ async function fightsReady() {
 const FIGHT_OPS = new Set(['fightJoin', 'fightEnd']);
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Проверенный сервером авторизации токен помним несколько минут: иначе каждое действие ждёт лишний запрос
+// к auth (~100–300 мс). Токен живёт час, поэтому выход из аккаунта действует не позже чем через AUTH_TTL.
+const AUTH_TTL = 5 * 60000;
+const authCache = new Map<string, { uid: string; until: number }>();
+async function userOf(jwt: string) {
+  if (!jwt) return null;
+  const hit = authCache.get(jwt);
+  if (hit && hit.until > Date.now()) return hit.uid;
+  const { data, error } = await db.auth.getUser(jwt);
+  if (error || !data.user) return null;
+  if (authCache.size > 5000) authCache.clear();
+  authCache.set(jwt, { uid: data.user.id, until: Date.now() + AUTH_TTL });
+  return data.user.id;
+}
+
 function seed() {
   const a = new Uint32Array(1);
   crypto.getRandomValues(a);
@@ -46,22 +61,22 @@ Deno.serve(async (req) => {
     if (op === 'ping') return json({ result: { build: PC.BUILD, fights: await fightsReady() } });
 
     const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-    const { data: auth, error: authError } = await db.auth.getUser(jwt);
-    if (authError || !auth.user) return json({ error: 'not_auth' }, 401);
-    const uid = auth.user.id;
+    const uid = await userOf(jwt);
+    if (!uid) return json({ error: 'not_auth' }, 401);
 
-    const { data: row, error } = await db.from('characters').select('data,stash,rev').eq('user_id', uid).maybeSingle();
+    // Герой и запись боя читаются одновременно
+    const fightId = FIGHT_OPS.has(op) && args && typeof args.id === 'string' && UUID.test(args.id) ? args.id.toLowerCase() : null;
+    const [{ data: row, error }, f] = await Promise.all([
+      db.from('characters').select('data,stash,rev').eq('user_id', uid).maybeSingle(),
+      fightId ? db.from('game_fights').select('data').eq('id', fightId).maybeSingle() : null,
+    ]);
     if (error) throw error;
     const current = () => ({ char: row ? row.data : null, stash: row ? row.stash : null, rev: row ? row.rev : 0 });
     if (rev != null && (row ? row.rev : 0) !== rev) return json({ error: 'stale', ...current() }, 409);
 
     // Запись боя (seed, монстр, снимок хозяина) — для вступления и итога боя
-    let fight = null;
-    if (FIGHT_OPS.has(op) && args && typeof args.id === 'string' && UUID.test(args.id)) {
-      const f = await db.from('game_fights').select('data').eq('id', args.id.toLowerCase()).maybeSingle();
-      if (f.error) throw f.error;
-      fight = f.data ? f.data.data : null;
-    }
+    if (f && f.error) throw f.error;
+    const fight = f && f.data ? f.data.data : null;
     const ctx: Record<string, unknown> = { now: Date.now(), rng: PC.makeRng(seed()), uid, fight };
     const out = run(op, args, row, ctx);
     if (!out.changed) return json({ ...current(), result: out.result });

@@ -213,7 +213,7 @@ async function openPlayer(browser, uid, nick, job) {
   await page.exposeFunction('__rpc', (op, args) => {
     if (op === 'q') return query(uid, args);
     if (op === 'rpc') return rpc(uid, args.fn, args.args);
-    if (op === 'fn') return SERVER ? game(uid, args.body) : { data: null, error: { body: { error: 'offline' } } };
+    if (op === 'fn') return SERVER ? sleep(fnDelay).then(() => game(uid, args.body)) : { data: null, error: { body: { error: 'offline' } } };
     if (op === 'bcast') { bcast(uid, args.name, args.event, args.payload); return null; }
     return null;
   });
@@ -237,6 +237,8 @@ const tankify = (page, mult, atk) => {
   return tankifyPage(page, mult, atk);
 };
 // Снять передышку (тест не ждёт тик): у страницы и у «сервера»
+let fnDelay = 0;   // задержка ответа подставной функции, мс
+const PC_find = (c, uid) => (c.bag.find((x) => x && x.uid === uid) || Object.values(c.equipment).find((x) => x && x.uid === uid) || {});
 const noRest = (p) => { if (SERVER && chars.get(p.uid)) chars.get(p.uid).data.restTick = 0; return p.page.evaluate(() => { PC.app.state.char.restTick = 0; }); };
 const tankifyPage = (page, mult, atk) => page.evaluate(([m, a]) => {
   const orig = window.__origMonsterAt || (window.__origMonsterAt = PC.monsters.monsterAt);
@@ -387,6 +389,28 @@ async function attack(p) {
       const calls = await A.page.evaluate(() => window.__calls.filter((c) => c.startsWith('fn')).length);
       assert.ok(calls > 0, 'клиент ходил в серверную функцию');
       console.log('ok   награды за бой начислил сервер по истории боя');
+
+      // действие без случайности показывается сразу, сервер подтверждает его в фоне
+      const it = await A.page.evaluate(() => { const c = PC.app.state.char; return (c.bag.find(Boolean) || Object.values(c.equipment).find(Boolean)).uid; });
+      const was = !!PC_find(chars.get(A.uid).data, it).locked;
+      fnDelay = 1500;
+      const shown = await A.page.evaluate(async (uid) => {
+        const t = performance.now();
+        const r = await PC.app.act('lock', { uid });
+        return { ok: r.ok, locked: r.locked, ms: Math.round(performance.now() - t) };
+      }, it);
+      assert.ok(shown.ok && shown.locked === !was && shown.ms < 300, `замок вещи показан до ответа сервера: ${JSON.stringify(shown)}`);
+      await until(() => !!PC_find(chars.get(A.uid).data, it).locked === !was, 10000, 'сервер записал замок');
+      fnDelay = 0;
+      // сервер отказал (вещи у него уже нет): клиент возвращается к серверному герою
+      const row = chars.get(A.uid);
+      const gone = JSON.parse(JSON.stringify(row.data));
+      gone.bag = gone.bag.map((x) => (x && x.uid === it ? null : x));
+      for (const k of Object.keys(gone.equipment)) if (gone.equipment[k] && gone.equipment[k].uid === it) gone.equipment[k] = null;
+      row.data = gone;
+      await A.page.evaluate((uid) => PC.app.act('lock', { uid }), it);
+      await until(() => A.page.evaluate((uid) => !PC.items.findItem(PC.app.state.char, uid), it), 10000, 'откат показанного действия');
+      console.log('ok   действия без случайности показываются сразу, отказ сервера откатывает их');
     }
     for (const p of pages) assert.deepStrictEqual(p.errors, [], `ошибки JS у ${p.nick}: ${p.errors}`);
     console.log('\nвсе сквозные проверки прошли');
