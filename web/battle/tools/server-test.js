@@ -211,6 +211,22 @@ const PC = globalThis.PC, data = PC.data;
   const s5 = runAt(P5, 'fightEnd', { id: uuid(6), hist: left, fled: true }, { ...at(T0 + 1000, 'p5'), fight: c5.saveFight }).summary;
   assert.ok(s5.fled && !s5.goldLost && P5.row.data.gold === g5 && P5.row.data.location === zone, 'бегство без потерь');
 
+  // гибель героя: его отправляют в деревню, но монстр прежней локации обязан освободиться (иначе «в бою» до перезагрузки)
+  {
+    const P6 = { row: mkHero('Павший') };
+    const c6 = at(T0, 'p6');
+    PC.world.update(data, P6.row.data, T0, c6.rng);
+    const m6 = PC.world.aliveMobs(data, P6.row.data)[0];
+    const r6 = runAt(P6, 'fightStart', { id: uuid(10), uid: m6.uid }, c6);
+    const rec6 = c6.saveFight;
+    const dead = play(rec6, [{ key: 'p6', tpl: r6.tpl }], (push) => { push({ k: 'm' }); push({ k: 'e' }); });
+    assert.ok(dead.battle.ended && dead.battle.winner !== dead.battle.player, 'герой погиб');
+    const o6 = run('fightEnd', { id: uuid(10), hist: dead.hist }, P6.row, { ...at(T0 + dead.battle.turn * PC.world.TICK_MS, 'p6'), fight: rec6 });
+    assert.ok(o6.result.ok && o6.result.summary.sentHome, 'отправлен домой');
+    const old = o6.char.world[zone].mobs.find((m) => m.uid === m6.uid);
+    assert.ok(old && !old.busy, 'монстр прежней локации свободен');
+  }
+
   // переход: нельзя уйти посреди боя
   const P4 = { row: mkHero('Путник') };
   const c4 = at(T0, 'p4');
