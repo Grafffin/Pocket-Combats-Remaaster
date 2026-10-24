@@ -50,4 +50,30 @@ const seen = new Set();
 if (process.argv.includes('--list')) console.log([...missing].join('\n'));
 assert.strictEqual(missing.size, 0, `не переведено строк игровых данных: ${missing.size} (запустите с --list)\n${[...missing].slice(0, 15).join('\n')}`);
 console.log('ok   все строки игровых данных переводятся');
+
+// Язык не должен влиять на бой: тот же бой по-русски и по-английски даёт те же ходы, лог (по числу строк), здоровье и состояние генератора
+['monsters', 'world', 'economy'].forEach((f) => f);
+const realTr = PC.i18n.tr;
+function battle(seed, monsterId, level, tr) {
+  PC.i18n.tr = tr;
+  const c = PC.progression.newCharacter(PC.data, { nick: 'Тест', gender: 'm', job: Object.keys(PC.data.classes)[0] });
+  c.level = level;
+  const b = new PC.Battle({ player: PC.progression.toFighter(PC.data, c), monster: PC.monsters.monsterAt(monsterId, level), seed, data: PC.data });
+  while (!b.ended && b.turn < 40) b.submit(b.autoAction(b.player));
+  return { turn: b.turn, log: b.log.length, hp: Math.round(b.player.hp), mon: Math.round(b.monster.hp), cs: PC.lockstep ? PC.lockstep.checksum(b) : '', text: b.log.map((l) => l.text).join('\n') };
+}
+if (PC.lockstep === undefined) require(path.join(dir, 'lockstep.js'));
+let enText = '';
+for (const [id, lvl, seed] of [['rat', 1, 7], ['spider', 3, 11], ['wolf', 8, 5], ['goblin_warrior', 12, 21], ['harpy', 18, 33]]) {
+  if (!PC.data.monsters[id]) continue;
+  const ru = battle(seed, id, lvl, (x) => x), en = battle(seed, id, lvl, realTr);
+  assert.deepStrictEqual({ ...en, text: 0 }, { ...ru, text: 0 }, `бой ${id} разошёлся между языками`);
+  enText += en.text;
+}
+PC.i18n.tr = realTr;
+const strip = (t) => t.replace(/<ch[^>]*>[^<]*<\/ch>/g, '').replace(/<skill>[^<]*<\/skill>/g, '').replace(/Тест/g, '');
+const bad = strip(enText).split('\n').filter((l) => /[А-Яа-яЁё]/.test(l));
+assert.deepStrictEqual(bad.slice(0, 8), [], 'в английском журнале боя остался русский текст вне имён');
+void (!/[А-Яа-яЁё]/.test(enText.replace(/<ch[^>]*>[^<]*<\/ch>/g, '').replace(/<skill>[^<]*<\/skill>/g, '').replace(/Тест/g, '')), 'в английском журнале боя остался русский текст вне имён');
+console.log('ok   бой одинаков на русском и английском (ходы, лог, здоровье, генератор, контрольная сумма)');
 console.log('\ni18n-test: ok');

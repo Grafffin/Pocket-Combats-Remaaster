@@ -63,12 +63,12 @@ PC.i18n.add({
   "{B} {b:рухнул|рухнула} без сил.": "{B} collapses, spent.",
   "В глазах у {B.gen} потемнело. Бой проигран.": "Everything goes dark for {B}. The fight is lost.",
   // хайку перед боем
-  "Сталь о сталь звенит — а над полем сражения всё поют дрозды.": "Steel rings on steel — yet over the battlefield the thrushes still sing.",
-  "Ржавый меч в траве. Кто-то когда-то здесь тоже ждал победы.": "A rusty sword in the grass. Someone once waited for victory here too.",
-  "Осенний ветер. Щит мой стал тяжелее на один удар.": "Autumn wind. My shield grew heavier by one blow.",
-  "Капля крови на чужом клинке. Стынет закат.": "A drop of blood on a stranger's blade. The sunset grows cold.",
-  "Перед боем затянуть покрепче старый сапог.": "Before the fight, lace the old boot tighter.",
-  "Тень от клинка длиннее, чем сам клинок. Вечер близко.": "The blade's shadow is longer than the blade. Evening is near.",
+  "Сталь о сталь звенит — а над полем сражения всё поют дрозды.": "Steel rings on steel —\nyet over the battlefield\nthe thrushes still sing.",
+  "Ржавый меч в траве. Кто-то когда-то здесь тоже ждал победы.": "A rusty sword in the grass.\nSomeone once waited here\nfor victory too.",
+  "Осенний ветер. Щит мой стал тяжелее на один удар.": "Autumn wind.\nMy shield grew heavier\nby one more blow.",
+  "Капля крови на чужом клинке. Стынет закат.": "A drop of blood\non a stranger's blade.\nThe sunset grows cold.",
+  "Перед боем затянуть покрепче старый сапог.": "Before the fight,\nlace tighter\nthe old boot.",
+  "Тень от клинка длиннее, чем сам клинок. Вечер близко.": "The blade's shadow\nis longer than the blade.\nEvening is near.",
   // движок: эффекты и умения
   "Эхо: {skill} готов снова.": "Echo: {skill} is ready again.",
   "{A} получает эффект «{}».": "{A} gains the effect “{}”.",

@@ -308,7 +308,6 @@
     'Шанс контратаки': 'Counterattack chance', 'Начертание': 'Inscription',
     'Оружие': 'Weapon', 'Левая рука': 'Off-hand', 'Голова': 'Head', 'Тело': 'Body', 'Руки': 'Hands', 'Ноги': 'Feet', 'Уникальный': 'Unique',
     'Костяной щит': 'Bone Shield', 'Метка добычи': "Hunter's Quarry",
-    '{}{}млрд': '{1}{2}B', '{}{}кк': '{1}{2}M', '{}{}к': '{1}{2}K',
     // места и жители
     'Пыльный Брод': 'Dusty Ford', 'Деревня на краю леса. Тут можно перевести дух, продать добычу и подлатать снаряжение.': 'A village on the edge of the forest. A place to catch your breath, sell loot and mend gear.',
     'Лесная опушка': 'Forest Edge', 'Светлый подлесок за частоколом. В траве шуршат крысы, между деревьями блестит паутина.': 'Bright undergrowth beyond the palisade. Rats rustle in the grass, cobwebs glisten between the trees.',
