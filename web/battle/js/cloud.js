@@ -15,7 +15,10 @@
   const snapshot = () => ({ data: app.state.char || null, stash: app.stashApi ? app.stashApi.get() : null });
 
   // Серверная правда: функция game и бои на сервере выложены — героя меняет только сервер, клиент его не пишет
-  const locked = () => cloud.server && cloud.fights;
+  // denied — база уже ответила «нет прав» на запись героя (миграция 0014): прямая запись невозможна, больше не пробуем,
+  // даже если функция на миг не ответила (например, во время деплоя) и клиент решил, что сервера нет
+  let denied = false;
+  const locked = () => denied || (cloud.server && cloud.fights);
   Object.defineProperty(cloud, 'locked', { get: locked });
 
   // Вызывается после каждого локального сохранения.
@@ -45,6 +48,7 @@
       if (!meta.rev) res = await auth.client.from('characters').insert({ user_id: auth.user.id, data, stash }).select('rev');
       else res = await auth.client.from('characters').update({ data, stash }).eq('user_id', auth.user.id).eq('rev', meta.rev).select('rev');
       if (res.error && res.error.code === '23505') return conflict();
+      if (res.error && res.error.code === '42501') { denied = true; meta.dirty = false; saveMeta(); return; }
       if (res.error) return fail(res.error);
       if (!res.data || !res.data.length) return conflict();   // кто-то сохранил с другого устройства
       meta.rev = res.data[0].rev;
