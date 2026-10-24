@@ -36,7 +36,7 @@
 }
 
 * { box-sizing: border-box; }
-html, body { margin: 0; height: 100%; }
+html, body { margin: 0; height: 100%; overscroll-behavior: none; }
 body {
   background: radial-gradient(1200px 600px at 50% -10%, #1d2130 0%, var(--bg) 60%) fixed, var(--bg);
   color: var(--text);
@@ -50,7 +50,7 @@ img { -webkit-user-drag: none; user-select: none; }
 
 .app { max-width: 520px; height: 100%; margin: 0 auto; background: var(--bg-2); position: relative; overflow: hidden; box-shadow: 0 0 60px rgba(0, 0, 0, .6); }
 .screen { height: 100%; display: flex; flex-direction: column; }
-.scroll { flex: 1; overflow-y: auto; overflow-x: hidden; }
+.scroll { flex: 1; overflow-y: auto; overflow-x: hidden; overscroll-behavior-y: contain; }
 .pad { padding: 16px; }
 .h { font-size: 20px; font-weight: 600; margin: 4px 0 14px; }
 .muted { color: var(--muted); }
@@ -199,7 +199,7 @@ input[type="text"], #nick {
   position: relative; aspect-ratio: 1; border-radius: 10px;
   background: radial-gradient(circle at 50% 40%, #252a3a, #181b25);
   border: 2px solid var(--rc, #343a4d); display: grid; place-items: center; overflow: hidden;
-  user-select: none; -webkit-touch-callout: none;
+  user-select: none; -webkit-touch-callout: none; touch-action: manipulation;
 }
 .tile img { width: 76%; height: 76%; pointer-events: none; }
 .tile .fallback { font-size: 22px; }
