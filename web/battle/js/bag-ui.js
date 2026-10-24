@@ -45,6 +45,7 @@
       : `<div class="tile empty" data-drop="bag:${i}"></div>`)).join('');
 
     const free = I.bagFree(c);
+    const expandCost = I.bagExpandCost(data, c);
 
     root.innerHTML = `
       <div class="card" style="margin:12px">
@@ -59,6 +60,8 @@
         <div class="trash" data-drop="trash">♻ Разобрать</div>
       </div>
       <div class="bag-grid">${cells}</div>
+      ${expandCost != null ? `<div class="row-actions bag-expand"><button class="btn" data-act="expand" ${c.gold < expandCost ? 'disabled' : ''}>Расширить сумку +${Math.min(data.bagExpand.step, data.bagExpand.max - c.bag.length)} · ${fmtNum(expandCost)} 💰</button></div>`
+        : `<p class="meta bag-expand">Сумка максимального размера: ${data.bagExpand.max} ячеек.</p>`}
       <p class="hint" style="padding:0 16px 16px">Зелёная стрелка — вещь лучше надетой. Перетащите вещь на слот куклы, чтобы надеть, или в корзину, чтобы разобрать (на телефоне — удерживайте). Все ресурсы лежат в сумке стаками по ${data.STACK_MAX}. Нажмите на вещь — откроется её окно.</p>`;
   }
   app.tabs.bag = render;
@@ -260,6 +263,11 @@
     if (!b) return;
     if (b.dataset.act === 'sort') app.act('sortBag').then(() => app.render());
     if (b.dataset.act === 'mass') massSalvage();
+    if (b.dataset.act === 'expand') {
+      const cost = I.bagExpandCost(data, app.state.char);
+      if (cost == null || !confirm(`Расширить сумку на ${data.bagExpand.step} ячеек за ${fmtNum(cost)} золота?`)) return;
+      app.act('expandBag').then((r) => { if (r.ok) toast(`Сумка расширена: ${r.size} ячеек`, 'good'); else if (!r.shown) toast(r.reason, 'bad'); app.render(); });
+    }
   });
 
   // ---------- Тап и долгое нажатие в окнах (скупщик, сундук) ----------

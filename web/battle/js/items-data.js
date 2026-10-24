@@ -495,6 +495,8 @@
   // ---------- Материалы и расходники ----------
   // Все ресурсы лежат в сумке стаками, до STACK_MAX в ячейке.
   const STACK_MAX = 200;
+  // Расширение сумки за золото: +step ячеек, до max; каждое следующее вдвое дороже (1к, 2к, 4к …)
+  const bagExpand = { step: 8, max: 96, cost: (n) => 1000 * Math.pow(2, n) };
   const materials2 = {
     essence: { name: 'Магическая эссенция', art: 'materials/essence', price: 10 },
     stone1: { name: 'Камень заточки I', art: 'materials/enhance_stone_1', price: 30, desc: 'Для заточки до +5.' },
@@ -586,7 +588,7 @@
 
   Object.assign(data, {
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
-    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
+    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, bagExpand, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

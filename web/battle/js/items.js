@@ -258,6 +258,20 @@
   }
   const bagFree = (char) => char.bag.filter((x) => !x).length;
 
+  // Расширение сумки: сколько уже куплено и сколько стоит следующее (null — максимум)
+  const bagExpansions = (data, char) => Math.max(0, Math.round((char.bag.length - BAG_SIZE) / data.bagExpand.step));
+  const bagExpandCost = (data, char) => (char.bag.length >= data.bagExpand.max ? null : data.bagExpand.cost(bagExpansions(data, char)));
+
+  function expandBag(data, char) {
+    const cost = bagExpandCost(data, char);
+    if (cost == null) return { ok: false, reason: `Сумка уже максимального размера: ${data.bagExpand.max}` };
+    if ((char.gold || 0) < cost) return { ok: false, reason: 'Не хватает золота' };
+    char.gold -= cost;
+    const add = Math.min(data.bagExpand.step, data.bagExpand.max - char.bag.length);
+    char.bag.push(...new Array(add).fill(null));
+    return { ok: true, size: char.bag.length, cost };
+  }
+
   // ---------- Ресурсы: все стаками в сумке ----------
   // В char.materials может лежать остаток старого сохранения, не влезший в сумку: он считается и тратится первым.
 
@@ -643,7 +657,7 @@
   PC.items = {
     BAG_SIZE, compactStacks, matCount, matRoom, matAdd, matTake, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
     affixValue, affixText, baseStats, baseLines, totals, weaponDamage, isShield, reqLevel, name, power,
-    bagAdd, bagFree, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
+    bagAdd, bagFree, bagExpandCost, expandBag, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
     sellPrice, salvageYield, salvage,
     enhanceInfo, enhance, rankInfo, rankUp,
     rerollValueCost, rerollAffixesCost, rerollValue, rerollAffixes,
