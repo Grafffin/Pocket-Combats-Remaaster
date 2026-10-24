@@ -354,17 +354,17 @@
   };
 
   // ---------- Материалы и расходники ----------
-  // forge: true — ресурсы кузницы (заточка, ранги, перековка, ковка): лежат отдельно без лимита. Остальное — стаками в сумке, до STACK_MAX в ячейке.
+  // Все ресурсы лежат в сумке стаками, до STACK_MAX в ячейке.
   const STACK_MAX = 200;
   const materials2 = {
-    ore: { name: 'Железная руда', art: 'materials/ore', price: 4, forge: true },
-    leather: { name: 'Выделанная кожа', art: 'materials/leather', price: 4, forge: true },
-    essence: { name: 'Магическая эссенция', art: 'materials/essence', price: 10, forge: true },
-    stone1: { name: 'Камень заточки I', art: 'materials/enhance_stone_1', price: 30, forge: true, desc: 'Для заточки до +5.' },
-    stone2: { name: 'Камень заточки II', art: 'materials/enhance_stone_2', price: 220, forge: true, desc: 'Для заточки с +6 до +10.' },
-    stone3: { name: 'Камень заточки III', art: 'materials/enhance_stone_3', price: 1500, forge: true, desc: 'Для заточки с +11 до +15.' },
-    protect: { name: 'Свиток защиты', art: 'materials/protect_scroll', price: 900, forge: true, desc: 'Спасает вещь от поломки при заточке.' },
-    reroll: { name: 'Свиток перековки', art: 'materials/reroll_scroll', price: 120, forge: true, desc: 'Нужен чародейке для перековки свойств.' },
+    ore: { name: 'Железная руда', art: 'materials/ore', price: 4 },
+    leather: { name: 'Выделанная кожа', art: 'materials/leather', price: 4 },
+    essence: { name: 'Магическая эссенция', art: 'materials/essence', price: 10 },
+    stone1: { name: 'Камень заточки I', art: 'materials/enhance_stone_1', price: 30, desc: 'Для заточки до +5.' },
+    stone2: { name: 'Камень заточки II', art: 'materials/enhance_stone_2', price: 220, desc: 'Для заточки с +6 до +10.' },
+    stone3: { name: 'Камень заточки III', art: 'materials/enhance_stone_3', price: 1500, desc: 'Для заточки с +11 до +15.' },
+    protect: { name: 'Свиток защиты', art: 'materials/protect_scroll', price: 900, desc: 'Спасает вещь от поломки при заточке.' },
+    reroll: { name: 'Свиток перековки', art: 'materials/reroll_scroll', price: 120, desc: 'Нужен чародейке для перековки свойств.' },
     // Зелья (действие — в data.consumables)
     hp_potion_1: { name: 'Малое зелье здоровья', art: 'materials/potion_hp_1', price: 30, kind: 'potion', desc: '+15% здоровья в бою.' },
     hp_potion_2: { name: 'Зелье здоровья', art: 'materials/potion_hp_2', price: 0, kind: 'potion', desc: '+25% здоровья в бою. Варит алхимик.' },

@@ -17,13 +17,12 @@ for (const f of imports) require(path.join(root, 'web', 'battle', 'js', `${f}.js
 const PC = globalThis.PC, data = PC.data;
 { // стаки ресурсов в сумке: лимит ячейки, переполнение, миграция, кузнечные ресурсы отдельно
   const I = PC.items, h = PC.progression.newCharacter(data, { nick: 'Стак', gender: 'm', job: Object.keys(data.classes)[0] });
-  const free0 = I.bagFree(h);
   assert.strictEqual(I.matCount(data, h, 'hp_potion_1'), 5, 'стартовые зелья в сумке');
   assert.strictEqual(h.materials.hp_potion_1, undefined, 'зелья не лежат в materials');
   assert.strictEqual(I.matAdd(data, h, 'herb_stjohn', 450), 450);
   assert.deepStrictEqual(h.bag.filter((x) => x && x.stack === 'herb_stjohn').map((x) => x.count).sort((p, q) => p - q), [50, 200, 200], 'стаки по 200');
-  assert.strictEqual(I.matAdd(data, h, 'stone1', 1e6), 1e6, 'кузнечные без лимита');
-  assert.strictEqual(I.bagFree(h), free0 - 3, 'кузнечные места в сумке не занимают');
+  assert.strictEqual(I.matAdd(data, h, 'stone1', 450), 450, 'кузнечные тоже стаками');
+  assert.strictEqual(I.matCount(data, h, 'stone1'), 453);
   I.matTake(data, h, 'herb_stjohn', 260);
   assert.strictEqual(I.matCount(data, h, 'herb_stjohn'), 190);
   assert.strictEqual(h.bag.filter((x) => x && x.stack === 'herb_stjohn').length, 1, 'пустые стаки убираются');
@@ -47,7 +46,8 @@ const PC = globalThis.PC, data = PC.data;
   old.version = 6;
   const m = PC.progression.migrate(data, old);
   assert.strictEqual(m.version, PC.progression.CHAR_VERSION);
-  assert.strictEqual(m.materials.stone2, 7, 'кузнечные остались');
+  assert.strictEqual(I.matCount(data, m, 'stone2'), 7, 'кузнечные тоже переехали в сумку');
+  assert.strictEqual(m.materials.stone2, undefined);
   assert.strictEqual(m.materials.hp_potion_1, undefined);
   assert.strictEqual(I.matCount(data, m, 'hp_potion_1'), 250);
   assert.strictEqual(I.matCount(data, m, 'herb_stjohn'), 3);

@@ -77,7 +77,7 @@
       body = `<div class="row" style="justify-content:space-between"><div><div class="meta">+${item.enhance} → +${info.next}</div><div class="chance">${info.chance}%</div></div>
           ${costHtml({ [info.stone]: 1, gold: info.gold })}</div>
         <p class="${info.fail === 'break' ? 'req' : 'meta'}">${fail}${info.milestone ? ` <b style="color:var(--accent-2)">Веха +${info.next}: ${info.milestone}.</b>` : ''}</p>
-        ${canProtect ? `<label class="toggle"><span>Свиток защиты (есть ${c.materials.protect || 0})</span><input type="checkbox" data-protect ${f.protect ? 'checked' : ''} ${(c.materials.protect || 0) ? '' : 'disabled'}></label>` : ''}
+        ${canProtect ? `<label class="toggle"><span>Свиток защиты (есть ${I.matCount(data, c, 'protect')})</span><input type="checkbox" data-protect ${f.protect ? 'checked' : ''} ${I.matCount(data, c, 'protect') ? '' : 'disabled'}></label>` : ''}
         <div class="row-actions"><button class="btn primary" data-act="enhance">Заточить</button></div>`;
     }
     return `<div class="card section"><h3>Заточка</h3>${head(item)}
