@@ -24,6 +24,23 @@
     not_saved: 'Нет связи с сервером', not_auth: 'Нужно войти в игру', stale: 'Герой обновлён с другого устройства',
     version: 'Вышла новая версия игры', server: 'Ошибка сервера, попробуйте ещё раз',
   };
+  // Предсказание действия на копии героя. Если действию нужна случайность или время (кузница, бои, переходы),
+  // оно ждёт сервер (null). { r, S } — итог совпадёт с серверным, { error } — сервер отказал бы так же.
+  class NeedsServer extends Error {}
+  function predict(op, args) {
+    const fn = Object.prototype.hasOwnProperty.call(PC.actions.list, op) ? PC.actions.list[op] : null;
+    if (!fn || op === 'remove') return null;   // удаление героя ждёт сервер
+    const need = () => { throw new NeedsServer(); };
+    const ctx = {};
+    for (const k of ['now', 'rng', 'uid', 'fight', 'saveFight']) Object.defineProperty(ctx, k, { get: need, set: need });
+    const S = JSON.parse(JSON.stringify({ char: state.char, stash: app.stashApi ? app.stashApi.get() : null }));
+    const { now } = Date, { random } = Math;
+    Date.now = need; Math.random = need;
+    try { return { r: fn(S, args, ctx) || { ok: true }, S }; } catch (e) {
+      if (e instanceof PC.actions.ActionError) return { error: e.message };
+      return null;
+    } finally { Date.now = now; Math.random = random; }
+  }
   const app = {
     state, rng,
     tabs: {},
@@ -41,6 +58,22 @@
     // его проверки), иначе выполняется тут же. Всегда отдаёт результат { ok, reason, ... }, ошибки — тостом.
     async act(op, args = {}) {
       if (PC.cloud && PC.cloud.server) {
+        // Действие без случайности и времени сразу показываем сами, сервер подтверждает его в фоне
+        const local = PC.cloud.locked && PC.cloud.status === 'ok' ? predict(op, args) : null;
+        if (local && local.error) {
+          const reason = ACT_ERRORS[local.error] || 'Не получилось';
+          toast(reason, 'bad');
+          return { ok: false, reason, shown: true };
+        }
+        if (local) {
+          state.char = local.S.char;
+          charStore.save(state.char);
+          if (app.stashApi && local.S.stash) app.stashApi.set(local.S.stash);
+          PC.cloud.act(op, args, true).then((r) => { if (r && r.ok === false && r.reason) toast(r.reason, 'bad'); }, (e) => {
+            if (e.message !== 'version') toast(ACT_ERRORS[e.message] || 'Сервер не принял действие', 'bad');
+          });
+          return local.r;
+        }
         try { return (await PC.cloud.act(op, args)) || { ok: true }; } catch (e) {
           const reason = ACT_ERRORS[e.message] || 'Не получилось, попробуйте ещё раз';
           if (e.message !== 'version') toast(reason, 'bad');
