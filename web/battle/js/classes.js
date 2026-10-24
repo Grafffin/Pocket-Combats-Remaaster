@@ -9,12 +9,13 @@
   const lin = (base, per) => (lvl) => base + per * (lvl - 1);
 
   // ---------- Классы ----------
+  // armor — «свой» материал брони: такая броня падает классу чаще (носить можно любую)
   const classes = {
     warrior: {
       title: 'Воин', desc: 'Меч и щит. Держит удар, блокирует, отвечает контратаками.',
       resource: 'rage', primary: 'str',
       stats: { str: 7, agi: 3, int: 1, vit: 7, luk: 2 },
-      weapons: ['sword', 'mace', 'axe'], offhand: ['shield'], armor: 'heavy',
+      weapons: ['sword', 'mace', 'axe'], offhand: ['shield'], armor: 'plate',
       startGear: ['sword', 'shield', 'plate'],
       auto: ['str', 'vit', 'str', 'agi', 'vit', 'luk'],
     },
@@ -22,7 +23,7 @@
       title: 'Берсерк', desc: 'Двуручное оружие. Огромный урон, вампиризм, жизнь на грани.',
       resource: 'rage', primary: 'str',
       stats: { str: 9, agi: 3, int: 1, vit: 5, luk: 2 },
-      weapons: ['greatsword', 'greataxe'], offhand: [], armor: 'heavy',
+      weapons: ['greatsword', 'greataxe'], offhand: [], armor: 'plate',
       startGear: ['greataxe', 'plate'],
       auto: ['str', 'str', 'vit', 'luk', 'str', 'agi'],
     },
@@ -30,7 +31,7 @@
       title: 'Охотник', desc: 'Лук и арбалет. Криты, скорость, уклонение и яд.',
       resource: 'energy', primary: 'agi',
       stats: { str: 2, agi: 9, int: 1, vit: 4, luk: 4 },
-      weapons: ['bow', 'crossbow'], offhand: [], armor: 'light',
+      weapons: ['bow', 'crossbow'], offhand: [], armor: 'leather',
       startGear: ['bow', 'jerkin'],
       auto: ['agi', 'agi', 'luk', 'vit', 'agi', 'vit'],
     },
@@ -39,7 +40,7 @@
       resource: 'mana', primary: 'int',
       stats: { str: 1, agi: 3, int: 10, vit: 4, luk: 2 },
       weapons: ['staff', 'wand'], offhand: ['orb'], armor: 'cloth',
-      // Врождённое: маг носит ткань и не блокирует — немного живучести, чтобы не рассыпаться о тяжёлых боссов
+      // Врождённое: маг обычно в ткани и не блокирует — немного живучести, чтобы не рассыпаться о тяжёлых боссов
       innate: { hpPct: 0.15, mdefPct: 0.2 },
       startGear: ['staff', 'robe'],
       auto: ['int', 'int', 'vit', 'int', 'agi', 'luk'],

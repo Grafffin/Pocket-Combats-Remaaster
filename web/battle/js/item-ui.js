@@ -37,7 +37,8 @@
   function subline(item) {
     const r = data.rarities[item.rarity];
     const q = item.quality;
-    return `<span class="info-link rc${item.rarity}" data-info="rarity">${r.name}</span> ·
+    const mat = data.types[item.type].armor;
+    return `${mat ? `<span class="info-link mat-chip" data-info="armor_${mat}">${data.armorMaterials[mat].name}</span> · ` : ''}<span class="info-link rc${item.rarity}" data-info="rarity">${r.name}</span> ·
       <span class="info-link" data-info="tier">T${item.tier}</span> ·
       <span class="info-link" data-info="ilvl">ур. ${item.ilvl}</span><br>
       <span class="info-link" data-info="quality">Качество ${I.qualityName(data, q).toLowerCase()} ${q}%</span>
@@ -47,7 +48,7 @@
 
   function propsHtml(item) {
     const lens = prefs.lens;
-    const base = I.baseLines(data, item).map((l) => `<li class="base">${statIcon(l.key)}<span class="txt">${l.text}</span></li>`).join('');
+    const base = I.baseLines(data, item).map((l) => `<li class="${l.neg ? 'neg' : 'base'}">${statIcon(l.key)}<span class="txt">${l.text}</span></li>`).join('');
     const aff = item.affixes.map((af) => {
       const a = data.affixes[af.id];
       const [lo, hi] = a.t[af.tier - 1];
@@ -215,15 +216,22 @@
     virtue: { title: 'Знак-добродетель', text: 'Появляется на ★3. Надетые вещи с одинаковым знаком дают сетовые бонусы за 2, 4 и 6 вещей. С 30 уровня знак можно перековать у кузнеца — дорого.' },
     affixTier: { title: 'Тир свойства', text: 'T1…T7 — сила свойства. Чем выше уровень предмета, тем выше доступные тиры. Полоска справа — насколько значение близко к максимуму своего тира. Включите лупу, чтобы увидеть сам диапазон.' },
   };
+  // Справки по материалам брони: сильные стороны, минус и вариации баз
+  for (const [id, m] of Object.entries(data.armorMaterials)) {
+    const variants = Object.values(data.types).filter((t) => t.armor === id && t.kind === 'body').map((t) => `${t.name} — ${t.note}`);
+    INFO[`armor_${id}`] = { title: `Материал: ${m.name}`, text: `${m.desc} Носить может любой класс. Вариации (на примере доспеха): ${variants.join('; ')}.` };
+  }
   const MAT_USE = {
     stone1: 'Заточка у кузнеца до +5.', stone2: 'Заточка с +6 до +10.', stone3: 'Заточка с +11 до +15.',
     protect: 'При заточке выше +10 спасает вещь от поломки.', reroll: 'Перековка свойств у чародейки.',
-    essence: 'Ранги, перековка, перенос и ковка.', ore: 'Ковка тяжёлых вещей и оружия.', leather: 'Ковка лёгких вещей и луков.',
+    essence: 'Ранги, перековка, перенос и ковка.', ore: 'Ковка лат и металлического оружия.', leather: 'Ковка кожаной брони, поясов и луков.',
+    cloth: 'Ковка тканевой брони и кушаков.', chitin: 'Ковка хитиновой брони.',
   };
   const MAT_SOURCE = {
     stone1: 'Падает с монстров, продаётся в лавке, выпадает при разборе.', stone2: 'Падает с монстров с Гоблинской стоянки и боссов, продаётся в лавке.',
     stone3: 'Боссы поздних зон, разбор мифических вещей.', protect: 'Лавка.', reroll: 'Лавка, боссы, разбор легендарных вещей.',
     essence: 'Монстры и разбор редких вещей.', ore: 'Монстры и разбор металлических вещей.', leather: 'Монстры и разбор кожаных вещей.',
+    cloth: 'Монстры и разбор тканевых вещей.', chitin: 'Монстры и разбор хитиновых вещей.',
   };
 
   function openInfo(id) {

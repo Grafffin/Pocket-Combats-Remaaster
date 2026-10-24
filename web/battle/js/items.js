@@ -33,20 +33,17 @@
   // Вид слота с весами: оружие и броня падают чаще, украшения реже
   const KIND_WEIGHTS = { weapon: 16, offhand: 7, head: 11, body: 11, hands: 10, feet: 10, belt: 8, amulet: 6, ring: 9 };
 
+  // Броню любого материала носит любой класс; ограничение по классу — только у оружия и левой руки
   function typesFor(data, kind, cls) {
-    const c = data.classes[cls];
-    return Object.values(data.types).filter((t) => {
-      if (t.kind !== kind) return false;
-      if (t.cls && !t.cls.includes(cls)) return false;
-      if (t.armor && c && t.armor !== c.armor) return false;
-      return true;
-    });
+    return Object.values(data.types).filter((t) => t.kind === kind && (!t.cls || t.cls.includes(cls)));
   }
 
+  // Броня «своего» материала класса падает вдвое чаще любого другого
   function pickType(data, cls, rng) {
     const kinds = Object.entries(KIND_WEIGHTS).filter(([k]) => typesFor(data, k, cls).length);
     const kind = weightedPick(rng, kinds);
-    return rng.pick(typesFor(data, kind, cls)).id;
+    const own = data.classes[cls] && data.classes[cls].armor;
+    return weightedPick(rng, typesFor(data, kind, cls).map((t) => [t, t.armor && t.armor === own ? 2 : 1])).id;
   }
 
   function rollRarity(data, { mf = 0, boss = false, floor = 0, boost = 1 }, rng) {
@@ -172,7 +169,8 @@
     const out = {};
     for (const [k, v] of Object.entries(raw)) {
       if (k === 'dmg') out.dmg = [Math.max(1, Math.round(v[0] * mult * S)), Math.max(1, Math.round(v[1] * mult * S))];
-      else out[k] = SCALING.has(k) ? Math.round(v * mult * sc(k)) : v * sc(k);
+      // Минусы материала (скорость, уклонение) не растут ни от качества, ни от заточки
+      else out[k] = SCALING.has(k) && v > 0 ? Math.round(v * mult * sc(k)) : v * sc(k);
     }
     return out;
   }
@@ -226,7 +224,8 @@
     for (const [k, v] of Object.entries(b)) {
       if (k === 'dmg') continue;
       const def = data.statDefs[k];
-      lines.push({ key: k, text: `${def.name} ${v > 0 ? '+' : ''}${def.fmt(v)}` });
+      const val = v < 0 ? `−${def.fmt(-v)}` : `+${def.fmt(v)}`;
+      lines.push({ key: k, text: `${def.name} ${val}`, neg: v < 0 });
     }
     return lines;
   }
@@ -318,14 +317,11 @@
 
   function canEquip(data, char, item, slot) {
     const type = data.types[item.type];
-    const cls = data.classes[char.job];
     if (slot && data.slots[slot].kind !== type.kind) return { ok: false, reason: 'Не подходит в этот слот' };
     if (reqLevel(data, item) > char.level) return { ok: false, reason: `Нужен ${reqLevel(data, item)} уровень` };
     if (type.cls && !type.cls.includes(char.job)) {
       return { ok: false, reason: `Только для: ${type.cls.map((c) => data.classes[c].title.toLowerCase()).join(', ')}` };
     }
-    const armorNames = { heavy: 'тяжёлая', light: 'лёгкая', cloth: 'ткань' };
-    if (type.armor && type.armor !== cls.armor) return { ok: false, reason: `Ваш класс носит: ${armorNames[cls.armor]} броня` };
     const w = char.equipment.weapon && data.types[char.equipment.weapon.type];
     if (type.kind === 'offhand' && w && w.twoHanded) return { ok: false, reason: 'Нельзя с двуручным оружием' };
     return { ok: true };
