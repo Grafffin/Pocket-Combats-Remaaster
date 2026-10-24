@@ -196,9 +196,13 @@
       const c = village(hero(S));
       return E().sellMaterial(D(), c, key(D().materials, a.id), int(a.n, 1, 1e9));
     },
-    brew(S, a) {
+    brew(S, a, ctx) {
       const c = village(hero(S));
-      return E().brew(D(), c, int(a.i, 0, D().recipes.length - 1), int(a.n, 1, 99));
+      return E().brew(D(), c, int(a.i, 0, D().recipes.length - 1), int(a.n, 1, 99), ctx.rng);
+    },
+    inscribe(S, a, ctx) {
+      const c = village(hero(S));
+      return E().inscribe(D(), c, int(a.i, 0, D().scribeRecipes.length - 1), int(a.n, 1, 99), ctx.rng);
     },
 
     // ---------- Кузница (деревня) ----------

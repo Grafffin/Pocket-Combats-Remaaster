@@ -13,6 +13,7 @@
     ['inherit', 'Перенос', 'stats/speed', 'Кузнец Тарас', 'Переносит заточку, ранг и знак с одной вещи на другую того же вида.'],
     ['reroll', 'Перековка', 'stats/matk', 'Чародейка Велена', 'Меняет случайные свойства вещи: числа, строки, качество или знак.'],
     ['craft', 'Ковка', 'stats/def', 'Кузнец Тарас', 'Выковывает новую вещь нужной базы и тира.'],
+    ['scribe', 'Начертание', 'stats/int', 'Чародейка Велена', 'Чертит камни заточки и свитки из трофеев охоты.'],
     ['repair', 'Ремонт', 'stats/vit', 'Кузнец Тарас', 'Чинит снаряжение. Сломанная вещь не даёт характеристик и чинится втрое дороже.'],
   ];
   const f = { sub: 'enhance', mode: 'values', valueIdx: 0, uid: null, locks: new Set(), protect: false, fodder: null, donor: null, craftType: null, craftTier: 1, flash: null };
@@ -41,13 +42,13 @@
     const tabs = SUBS.map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
     const sub = SUBS.find((s) => s[0] === f.sub);
     const modeHead = `<div class="mode-head">${art(sub[2], '')}<div><b>${sub[1]}</b><span class="meta">${sub[3]} · ${sub[4]}</span></div></div>`;
-    const picker = f.sub === 'craft' || f.sub === 'repair' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
+    const picker = ['craft', 'repair', 'scribe'].includes(f.sub) ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
       <div class="picker">${items.map(({ it, worn }) => tile(it, { attrs: `data-pick="${it.uid}" title="${worn ? 'надето' : 'в сумке'}"`, cls: it.uid === f.uid ? 'sel' : '' })).join('')}</div>
       <p class="meta" style="margin-top:6px">Сначала надетые, затем вещи из сумки.</p></div>`;
     const flash = f.flash ? `<div class="flash ${f.flash.kind}" style="margin:12px">${f.flash.text}</div>` : '';
     f.flash = null;
 
-    const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel, repair: repairPanel }[f.sub](c);
+    const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel, repair: repairPanel, scribe: scribePanel }[f.sub](c);
     root.innerHTML = `<div class="forge-tabs">${tabs}</div>${modeHead}${flash}${body}${picker}
       <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', ...craftStock(c)].map((k) => [k, null])))}</div>`;
   }
@@ -204,6 +205,11 @@
       <div class="row-actions"><button class="btn primary" data-act="craft" ${lvl < S.craftLevel(f.craftTier) ? 'disabled' : ''}>${lvl < S.craftLevel(f.craftTier) ? `Нужен ${S.craftLevel(f.craftTier)} ур. кузнечного дела` : 'Выковать'}</button></div></div>`;
   }
 
+  // ---------- Начертание ----------
+  const scribePanel = (c) => `<div class="card section"><h3>Начертание</h3>
+    <p class="meta">Трофеи ранних зон дешевле всего добывают новички — их можно купить на рынке.</p>
+    ${PC.itemUI.recipeRows(c, data.scribeRecipes, 'scribe', 'Начертить')}</div>`;
+
   // ---------- Ремонт ----------
   function repairPanel(c) {
     const list = I.damaged(data, c);
@@ -225,9 +231,10 @@
 
   // ---------- События ----------
 
-  function done(res, okText, kind = 'good') {
+  // prof — чья профессия могла вырасти (по умолчанию кузнечное дело)
+  function done(res, okText, kind = 'good', prof = 'smith') {
     if (!res.ok) { f.flash = { kind: 'bad', text: res.reason }; app.render(); return false; }
-    f.flash = { kind, text: `${okText}${PC.itemUI.profUpText(res, 'smith')}` };
+    f.flash = { kind, text: `${okText}${PC.itemUI.profUpText(res, prof)}` };
     app.render();
     return true;
   }
@@ -244,6 +251,16 @@
     if (fod) { f.fodder = fod.dataset.fodder; return app.render(); }
     const don = e.target.closest('[data-donor]');
     if (don) { f.donor = don.dataset.donor; return app.render(); }
+    const rec = e.target.closest('[data-recipe]');
+    if (rec && !rec.disabled && !f.busy) {
+      f.busy = true;
+      app.act('inscribe', { i: Number(rec.dataset.recipe), n: Number(rec.dataset.n) }).then((r) => {
+        f.busy = false;
+        if (r.shown) return app.render();
+        done(r, r.ok ? `Начерчено: ${data.materials[r.out].name} ×${r.count}${r.extra ? ` (удача: +${r.extra})` : ''}` : '', 'good', 'scribe');
+      });
+      return;
+    }
     const act = e.target.closest('[data-act]');
     if (!act || act.disabled) return;
     const a = act.dataset.act;

@@ -180,6 +180,23 @@
   }
   const profUpText = (res, id) => (res && res.profUp ? ` · ${data.professions.list[id].name}: ${res.profUp} ур.!` : '');
 
+  // Список рецептов профессии (алхимия, начертание): закрытые по уровню подписаны; кнопки — data-recipe, data-n
+  function recipeRows(char, list, prof, verb) {
+    const lvl = PC.progression.profLevel(char, prof);
+    const chance = Math.round((lvl - 1) * data.professions.recipeBonus * 100);
+    return `${profBar(char, prof)}${chance ? `<p class="meta">Шанс сделать вдвое больше: ${chance}%.</p>` : ''}${list.map((r, i) => {
+      const out = data.materials[r.out];
+      const open = lvl >= r.lvl;
+      const can = open && PC.economy.canBrew(data, char, r), can5 = open && PC.economy.canBrew(data, char, r, 5);
+      return `<div class="recipe ${can ? '' : 'off'}">
+        <div class="row"><span class="ava info-link" data-info="${r.out}" style="width:44px;height:44px">${art(out.art, '🧪')}</span>
+          <div class="txt"><b>${out.name}</b> ×${r.n}<div class="meta">${open ? `есть: ${I.matCount(data, char, r.out)}` : `<span class="req">с ${r.lvl} ур.</span>`}</div></div>
+          <button class="btn small" data-recipe="${i}" data-n="1" ${can ? '' : 'disabled'}>${verb}</button>
+          <button class="btn small" data-recipe="${i}" data-n="5" ${can5 ? '' : 'disabled'}>×5</button></div>
+        ${costHtml({ ...r.need, gold: r.gold })}</div>`;
+    }).join('')}`;
+  }
+
   function cardHtml(char, item, where) {
     const check = I.canEquip(data, char, item);
     const virtue = item.virtue ? `<span class="virtue-chip info-link" data-info="virtue" style="color:${data.virtues[item.virtue].color}"><i></i>Знак: ${data.virtues[item.virtue].name}</span>` : '';
@@ -275,7 +292,7 @@
     if (m) {
       title = m.name; img = m.art; have = I.matCount(data, c, id);
       const kind = { potion: 'Зелье: пьётся в бою (одно за ход, затем откат 3 хода).', elixir: 'Эликсир: выпить вне боя, действует несколько побед.', herb: 'Материал для алхимии.' }[m.kind] || '';
-      const recipe = data.recipes.filter((r) => r.need[id]).map((r) => data.materials[r.out].name);
+      const recipe = [...data.recipes, ...data.scribeRecipes].filter((r) => r.need[id]).map((r) => data.materials[r.out].name);
       text = [m.desc, kind, MAT_USE[id], recipe.length ? `Нужен для: ${recipe.join(', ')}.` : '', MAT_SOURCE[id] ? `Где взять: ${MAT_SOURCE[id]}` : '']
         .filter(Boolean).join(' ');
     }
@@ -329,6 +346,6 @@
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
 
-  PC.itemUI = { KIND_EMOJI, profBar, profUpText, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
+  PC.itemUI = { KIND_EMOJI, profBar, profUpText, recipeRows, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
   void closeModal;
 })();
