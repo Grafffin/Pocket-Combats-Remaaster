@@ -843,3 +843,9 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0s !important; transition-duration: .01ms !important; transition-delay: 0s !important; }
 }
+
+/* снаряжение в карточке героя из боя */
+.gear-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; }
+.gear-grid .slot-cell { display: flex; flex-direction: column; gap: 3px; align-items: center; }
+.gear-grid .slot-cell small { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .03em; text-align: center; }
+.gear-grid .slot-cell .tile { width: 100%; cursor: pointer; }
