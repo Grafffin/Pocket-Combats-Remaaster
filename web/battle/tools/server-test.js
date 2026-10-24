@@ -50,6 +50,11 @@ const PC = globalThis.PC, data = PC.data;
   assert.strictEqual(m.materials.stone2, undefined);
   assert.strictEqual(m.materials.hp_potion_1, undefined);
   assert.strictEqual(I.matCount(data, m, 'hp_potion_1'), 250);
+  // миграция 8 → 9: кузнечное дело — с уровня, открывающего уже пройденные тиры ковки
+  const vet = PC.progression.newCharacter(data, { nick: 'Ветеран', gender: 'm', job: Object.keys(data.classes)[0] });
+  vet.version = 8; vet.maxTier = 6; delete vet.prof;
+  PC.progression.migrate(data, vet);
+  assert.strictEqual(PC.progression.profLevel(vet, 'smith'), data.professions.smith.craftLevel(6), 'ковка T6 не закрылась');
   assert.strictEqual(I.matCount(data, m, 'herb_stjohn'), 3);
   // варка: результат не влез — откат
   const r = PC.data.recipes[0], need = Object.keys(r.need);
@@ -165,6 +170,12 @@ const PC = globalThis.PC, data = PC.data;
     cur.data.gold = 1e6;
     assert.ok(step('repairAll', {}).ok && Object.values(cur.data.equipment).filter(Boolean).every((it) => I.durOf(data, it) === Dd.max), 'всё починено');
     assert.ok(!step('repairAll', {}).ok, 'чинить нечего');
+    assert.ok(PC.progression.profOf(cur.data, 'smith').exp > 0 || PC.progression.profLevel(cur.data, 'smith') > 1, 'ремонт даёт опыт кузнечного дела');
+    w.dur = 0;
+    const full = I.repairCost(data, w);
+    cur.data.prof = { smith: { lvl: 11, exp: 0 } };
+    assert.ok(I.repairCost(data, w, cur.data) < full, 'кузнечное дело снижает цену ремонта');
+    w.dur = Dd.max;
   }
 
   // сундук: вещь из сумки и обратно, без дублей

@@ -919,3 +919,7 @@ p.bag-expand { text-align: center; margin: 0; }
 .repair-row { display: flex; align-items: center; gap: 10px; }
 .repair-row .tile { width: 48px; flex: none; }
 .repair-row .grow { flex: 1; min-width: 0; }
+.prof-bar { margin: 6px 0 4px; }
+.prof-bar .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+.prof-bar .bar { height: 6px; border-radius: 3px; background: #151821; overflow: hidden; margin-top: 4px; }
+.prof-bar .bar i { display: block; height: 100%; background: var(--accent-2); }

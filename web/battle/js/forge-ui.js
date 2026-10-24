@@ -186,12 +186,14 @@
     const kindOpts = kinds.map((k) => `<option value="${k}" ${k === type.kind ? 'selected' : ''}>${KIND_NAMES[k]}</option>`).join('');
     const matOpts = mats.map((m) => `<option value="${m}" ${m === type.armor ? 'selected' : ''}>${data.armorMaterials[m].name}</option>`).join('');
     const baseOpts = bases.map((t) => `<option value="${t.id}" ${t.id === type.id ? 'selected' : ''}>${cap(t.name)}${t.note ? ` — ${t.note}` : ''}</option>`).join('');
-    const tierOpts = Array.from({ length: c.maxTier || 1 }, (_, i) => i + 1).map((t) => `<option value="${t}" ${t === f.craftTier ? 'selected' : ''}>T${t} · с ${data.TIER_LEVEL[t]} ур.</option>`).join('');
+    const S = data.professions.smith, lvl = P.profLevel(c, 'smith');
+    const tierOpts = Array.from({ length: c.maxTier || 1 }, (_, i) => i + 1).map((t) => `<option value="${t}" ${t === f.craftTier ? 'selected' : ''}>T${t} · с ${data.TIER_LEVEL[t]} ур.${lvl < S.craftLevel(t) ? ` · нужно ${S.craftLevel(t)} ур. кузнеца` : ''}</option>`).join('');
     const preview = `${data.adjectives[type.mat][f.craftTier - 1][type.g]} ${type.name}`;
     const stats = I.baseLines(data, { type: type.id, tier: f.craftTier, quality: 50, enhance: 0, rank: 0, ilvl: data.TIER_LEVEL[f.craftTier] })
       .map((l) => `<span class="${l.neg ? 'neg' : ''}">${l.text}</span>`).join(' · ');
     return `<div class="card section"><h3>Ковка</h3>
-      <p class="meta">Кузнец выкует вещь выбранной базы. Редкость — не ниже «Необычной» и чаще высокая, чем у добычи. Тиры открываются по мере прохождения зон.</p>
+      <p class="meta">Кузнец выкует вещь выбранной базы. Редкость — не ниже «Необычной» и чаще высокая, чем у добычи. Тиры открываются по мере прохождения зон и роста кузнечного дела.</p>
+      ${PC.itemUI.profBar(c, 'smith')}
       <div class="field"><label>Вид</label><select data-craft-kind data-title="Вид вещи" style="width:100%">${kindOpts}</select></div>
       ${mats.length ? `<div class="field"><label>Материал</label><select data-craft-mat data-title="Материал" style="width:100%">${matOpts}</select></div>
         <p class="meta">${data.armorMaterials[type.armor].desc}</p>` : ''}
@@ -199,23 +201,24 @@
       <div class="field"><label>Тир</label><select data-craft-tier data-title="Тир" style="width:100%">${tierOpts}</select></div>
       <p>Получится: <b>${preview}</b><br><span class="meta craft-stats">${stats}</span></p>
       ${costHtml(I.craftCost(data, f.craftType, f.craftTier))}
-      <div class="row-actions"><button class="btn primary" data-act="craft">Выковать</button></div></div>`;
+      <div class="row-actions"><button class="btn primary" data-act="craft" ${lvl < S.craftLevel(f.craftTier) ? 'disabled' : ''}>${lvl < S.craftLevel(f.craftTier) ? `Нужен ${S.craftLevel(f.craftTier)} ур. кузнечного дела` : 'Выковать'}</button></div></div>`;
   }
 
   // ---------- Ремонт ----------
   function repairPanel(c) {
     const list = I.damaged(data, c);
     if (!list.length) return '<div class="card section"><h3>Ремонт</h3><p class="empty-note">Всё снаряжение целое.</p></div>';
-    const total = list.reduce((s, it) => s + I.repairCost(data, it), 0);
+    const total = list.reduce((s, it) => s + I.repairCost(data, it, c), 0);
     const worn = new Set(Object.values(c.equipment).filter(Boolean).map((it) => it.uid));
     const rows = list.map((it) => {
-      const cost = I.repairCost(data, it), d = I.durOf(data, it);
+      const cost = I.repairCost(data, it, c), d = I.durOf(data, it);
       return `<div class="repair-row">${tile(it, { attrs: `data-pick="${it.uid}"` })}<div class="grow"><div class="item-name">${nameHtml(it)}</div>
         <div class="${d <= 0 ? 'req' : 'meta'}">${d <= 0 ? 'Сломана' : `Прочность ${d} / ${data.durability.max}`}${worn.has(it.uid) ? ' · надета' : ''}</div></div>
         <button class="btn small" data-act="repair" data-uid="${it.uid}" ${c.gold < cost ? 'disabled' : ''}>${fmtNum(cost)} 💰</button></div>`;
     }).join('');
     return `<div class="card section"><h3>Ремонт</h3>
-      <p class="meta">Вещи изнашиваются в боях понемногу, а при поражении — сразу на ${data.durability.defeatLoss} прочности.</p>
+      <p class="meta">Вещи изнашиваются в боях понемногу, а при поражении — сразу на ${data.durability.defeatLoss} прочности.
+        Кузнечное дело даёт скидку на ремонт: сейчас ${Math.round((P.profLevel(c, 'smith') - 1) * data.professions.smith.repairDiscount * 100)}%.</p>
       <div class="repair-list">${rows}</div>
       <div class="row-actions"><button class="btn primary" data-act="repair-all" ${c.gold < total ? 'disabled' : ''}>Починить всё · ${fmtNum(total)} 💰</button></div></div>`;
   }
@@ -224,7 +227,7 @@
 
   function done(res, okText, kind = 'good') {
     if (!res.ok) { f.flash = { kind: 'bad', text: res.reason }; app.render(); return false; }
-    f.flash = { kind, text: okText };
+    f.flash = { kind, text: `${okText}${PC.itemUI.profUpText(res, 'smith')}` };
     app.render();
     return true;
   }

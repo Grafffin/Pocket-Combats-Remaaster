@@ -167,8 +167,18 @@
   function durHtml(item) {
     const d = I.durOf(data, item), dmax = data.durability.max;
     if (d <= 0) return `<div class="req">Сломана: не даёт характеристик и свойств. Почините у кузнеца (сломанная вещь чинится втрое дороже).</div>`;
-    return `<div class="meta dur-line">Прочность ${d} / ${dmax}${d < dmax ? ` · ремонт ${fmtNum(I.repairCost(data, item))} 💰` : ''}</div>`;
+    return `<div class="meta dur-line">Прочность ${d} / ${dmax}${d < dmax ? ` · ремонт ${fmtNum(I.repairCost(data, item, PC.app.state.char))} 💰` : ''}</div>`;
   }
+
+  // ---------- Профессии ----------
+  // Полоска уровня профессии: название, уровень, опыт до следующего
+  function profBar(char, id) {
+    const P = PC.progression, D = data.professions, pr = P.profOf(char, id);
+    const need = pr.lvl >= D.max ? 0 : D.exp(pr.lvl);
+    return `<div class="prof-bar"><div class="row"><b>${D.list[id].name}</b><span class="meta">${pr.lvl} ур.${need ? ` · ${pr.exp} / ${need}` : ' · максимум'}</span></div>
+      <div class="bar"><i style="width:${need ? Math.round(pr.exp / need * 100) : 100}%"></i></div></div>`;
+  }
+  const profUpText = (res, id) => (res && res.profUp ? ` · ${data.professions.list[id].name}: ${res.profUp} ур.!` : '');
 
   function cardHtml(char, item, where) {
     const check = I.canEquip(data, char, item);
@@ -319,6 +329,6 @@
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
 
-  PC.itemUI = { KIND_EMOJI, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
+  PC.itemUI = { KIND_EMOJI, profBar, profUpText, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
   void closeModal;
 })();

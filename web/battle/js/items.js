@@ -5,6 +5,7 @@
   const PC = root.PC || (root.PC = {});
 
   const BAG_SIZE = 48;
+  const Prog = () => PC.progression;
   const newUid = () => Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
 
   // Характеристики, которые растут от качества, заточки и ранга (шансы и скорость — нет)
@@ -197,10 +198,12 @@
     return broken;
   }
 
-  function repairCost(data, item) {
+  // char — для скидки кузнечного дела (без героя — без скидки)
+  function repairCost(data, item, char) {
     const W = data.durability, d = durOf(data, item);
     if (d >= W.max) return 0;
-    return Math.max(1, Math.ceil((W.max - d) / W.max * W.cost(item) * (d <= 0 ? W.brokenMult : 1)));
+    const off = char ? (Prog().profLevel(char, 'smith') - 1) * data.professions.smith.repairDiscount : 0;
+    return Math.max(1, Math.ceil((W.max - d) / W.max * W.cost(item) * (d <= 0 ? W.brokenMult : 1) * (1 - off)));
   }
 
   // Повреждённые вещи героя: сначала надетые, затем из сумки
@@ -209,22 +212,24 @@
   function repair(data, char, uid) {
     const found = findItem(char, uid);
     if (!found) return { ok: false, reason: 'Вещь не найдена' };
-    const cost = repairCost(data, found.item);
+    const cost = repairCost(data, found.item, char);
     if (!cost) return { ok: false, reason: 'Вещь целая' };
     if ((char.gold || 0) < cost) return { ok: false, reason: 'Не хватает золота' };
     char.gold -= cost;
     found.item.dur = data.durability.max;
-    return { ok: true, cost };
+    const profUp = Prog().addProfExp(data, char, 'smith', data.professions.smith.exp.repair(cost));
+    return { ok: true, cost, profUp };
   }
 
   function repairAll(data, char) {
     const list = damaged(data, char);
-    const cost = list.reduce((s, it) => s + repairCost(data, it), 0);
+    const cost = list.reduce((s, it) => s + repairCost(data, it, char), 0);
     if (!cost) return { ok: false, reason: 'Чинить нечего' };
     if ((char.gold || 0) < cost) return { ok: false, reason: 'Не хватает золота' };
     char.gold -= cost;
     for (const it of list) it.dur = data.durability.max;
-    return { ok: true, cost, count: list.length };
+    const profUp = Prog().addProfExp(data, char, 'smith', data.professions.smith.exp.repair(cost));
+    return { ok: true, cost, count: list.length, profUp };
   }
 
   // Вклад вещи в характеристики персонажа (stats.js складывает). Сломанная вещь не даёт ничего.
@@ -483,7 +488,8 @@
     char.bag[found.index] = null;   // ячейка освобождается раньше, чем кладём добычу
     const lost = {};
     for (const [m, n] of Object.entries(got)) { const d = matAdd(data, char, m, n); if (d < n) lost[m] = n - d; }
-    return { ok: true, got, lost };
+    const profUp = Prog().addProfExp(data, char, 'smith', data.professions.smith.exp.salvage(found.item.tier));
+    return { ok: true, got, lost, profUp };
   }
 
   // ---------- Заточка ----------
@@ -705,13 +711,16 @@
   function craft(data, char, typeId, tier, rng) {
     if (bagFree(char) < 1) return { ok: false, reason: 'Сумка полна' };
     if (tier > (char.maxTier || 1)) return { ok: false, reason: 'Этот тир ещё не открыт — дойдите до его зоны' };
+    const S = data.professions.smith, lvl = Prog().profLevel(char, 'smith');
+    if (lvl < S.craftLevel(tier)) return { ok: false, reason: `Нужен ${S.craftLevel(tier)} уровень кузнечного дела` };
     if (!pay(data, char, craftCost(data, typeId, tier))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const item = generate(data, {
       ilvl: data.TIER_LEVEL[tier] + 2, tier, type: typeId, cls: char.job,
-      rarityFloor: data.craft.rarityFloor, rarityBoost: data.craft.rarityBoost, mf: 0,
+      rarityFloor: data.craft.rarityFloor, rarityBoost: data.craft.rarityBoost * (1 + S.rarityPerLevel * (lvl - 1)), mf: 0,
     }, rng);
     bagAdd(char, item);
-    return { ok: true, item };
+    const profUp = Prog().addProfExp(data, char, 'smith', S.exp.craft(tier));
+    return { ok: true, item, profUp };
   }
 
   PC.items = {

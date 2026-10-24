@@ -233,7 +233,7 @@
       closeModal();
       app.act('salvage', { uid: item.uid }).then((res) => {
         if (!res.ok) return res.shown || toast(res.reason, 'bad');
-        toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}${lostText(res.lost)}`, 'good');
+        toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}${lostText(res.lost)}${PC.itemUI.profUpText(res, 'smith')}`, 'good');
         app.render();
       });
     });
@@ -252,7 +252,7 @@
       closeModal();
       app.act('salvageMass', { rarity: Number(b.dataset.mass) }).then((r) => {
         if (!r.ok) return;
-        toast(`Разобрано ${r.count}: ${Object.entries(r.got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}${lostText(r.lost)}`, 'good');
+        toast(`Разобрано ${r.count}: ${Object.entries(r.got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}${lostText(r.lost)}${PC.itemUI.profUpText(r, 'smith')}`, 'good');
         app.render();
       });
     });
