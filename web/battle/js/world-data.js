@@ -13,7 +13,7 @@
       name: 'Пыльный Брод', levels: null, safe: true, tier: 1, art: 'locations/village',
       desc: 'Деревня на краю леса. Тут можно перевести дух, продать добычу и подлатать снаряжение.',
       monsters: [['dummy', 1, 1]],
-      npcs: ['shop', 'buyer', 'market', 'smith', 'enchanter', 'alchemist', 'stash'],
+      npcs: ['shop', 'buyer', 'market', 'workshop', 'alchemist', 'stash'],
       routes: { forest_edge: 6 },
     },
     forest_edge: {
@@ -83,11 +83,10 @@
   const npcs = {
     shop: { name: 'Лавка Марфы', art: 'npcs/shopkeeper', emoji: '🏪', desc: 'Зелья, камни заточки и свитки.', greeting: 'Проходи, не стесняйся. Всё свежее, почти не ржавое.' },
     buyer: { name: 'Скупщик Ефим', art: 'npcs/buyer', emoji: '⚖️', desc: 'Купит всё, что вы принесли с охоты.', greeting: 'Показывай, что притащил. Только не торгуйся — не люблю.' },
-    smith: { name: 'Кузнец Тарас', art: 'npcs/blacksmith', emoji: '⚒️', desc: 'Заточка, ранги, разбор и ковка.', greeting: 'До +5 точу без риска. Дальше металл может и не выдержать — бери свиток защиты.' },
+    workshop: { name: 'Мастерская улица', art: 'npcs/blacksmith', emoji: '⚒️', desc: 'Заточка, ранги, перековка, ковка, начертание и ремонт.', greeting: 'Здесь кузнецы и чародеи принимают заказы. Выбирай мастера по делу.' },
     alchemist: { name: 'Алхимик Зоряна', art: 'npcs/alchemist', emoji: '⚗️', desc: 'Зелья и эликсиры из материалов охоты.', greeting: 'Принеси травы да железы — сварю такое, что мёртвого поднимет. Ну, почти.' },
     market: { name: 'Торговый ряд', art: 'npcs/market', emoji: '🏷️', desc: 'Рынок игроков: купить и выставить вещи.', greeting: 'Тут торгуют такие же охотники, как ты. Цену ставит продавец, рынок берёт свои 5%.' },
     stash: { name: 'Личный сундук', art: 'npcs/chest', emoji: '🧰', desc: 'Хранилище на 300 вещей, общее для всех ваших героев.', greeting: 'Тяжёлая крышка со скрипом поднимается.' },
-    enchanter: { name: 'Чародейка Велена', art: 'npcs/enchanter', emoji: '🔮', desc: 'Перековка свойств вещей.', greeting: 'Свойства вещи — как нити. Потяну за одну, и узор сложится иначе.' },
   };
 
   Object.assign(data, { HOME, locations, npcs, difficulties, BOSS_KILLS, DEATH_GOLD_LOSS });
