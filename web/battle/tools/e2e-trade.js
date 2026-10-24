@@ -199,7 +199,7 @@ async function openPlayer(browser, uid, hero) {
     assert.ok(await A.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 'у партнёра обмен остался');
     // крестик самого обмена закрывает окно, но не сделку, и само не открывается
     await B.page.click('[data-mclose]', { position: { x: 5, y: 5 } });
-    await sleep(600);
+    await until(() => B.page.evaluate(() => !!document.querySelector('.trade-banner')), 600, 'плашка «Обмен идёт» сразу после закрытия окна');
     assert.ok(await B.page.evaluate(() => document.querySelector('#modal').hidden), 'окно обмена закрыто вручную остаётся закрытым');
     await B.page.click('.trade-banner [data-b="ok"]');
     await until(() => B.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 3000, 'обмен открывается из плашки');
