@@ -119,6 +119,8 @@
     if (navigator.vibrate && e.pointerType === 'touch') navigator.vibrate(15);
   }
 
+  let tap = null;
+
   function moveGhost(e) {
     drag.ghost.style.left = `${e.clientX}px`;
     drag.ghost.style.top = `${e.clientY}px`;
@@ -160,8 +162,14 @@
     if (!drag.pending) return;
     const from = drag.from;
     const { wasActive, target } = endDrag();
-    if (!wasActive) { openFromBag(from); return; }
+    // Окно открываем по click, а не сразу: иначе «призрачный» click после pointerup попадает по подложке нового окна и закрывает его
+    if (!wasActive) { tap = { from, at: Date.now() }; return; }
     if (target) drop(from, target.dataset.drop);
+  });
+  $('#tab-bag').addEventListener('click', () => {
+    const t = tap;
+    tap = null;
+    if (t && Date.now() - t.at < 1000) openFromBag(t.from);
   });
   document.addEventListener('pointercancel', () => { if (drag.pending) endDrag(); });
 
