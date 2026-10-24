@@ -21,12 +21,12 @@ async function call(token, body) {
   let r = await call(anon, { op: 'ping', v: build });
   assert.strictEqual(r.status, 200, JSON.stringify(r));
   assert.strictEqual(r.body.result.build, build);
+  const fights = r.body.result.fights;
   r = await call(anon, { op: 'ping', v: 'old' });
   assert.strictEqual(r.status, 409);
   assert.strictEqual(r.body.error, 'version');
   r = await call(anon, { op: 'load', v: build });
   assert.strictEqual(r.body.error, 'not_auth');
-  const fights = r.body.result.fights;
   console.log('ping, version, not_auth: ok; бои на сервере:', fights);
 
   const s = await fetch(`${url}/auth/v1/signup`, { method: 'POST', headers: { apikey: anon, 'Content-Type': 'application/json' }, body: '{}' });
@@ -58,10 +58,12 @@ async function call(token, body) {
     const wb = await w.json().catch(() => null);
     assert.ok(w.status >= 400 || (Array.isArray(wb) && wb.length === 0), `прямая запись героя прошла: ${w.status} ${JSON.stringify(wb).slice(0, 200)}`);
     // бой: сервер выдаёт его, пишет запись в game_fights и не принимает пустую историю
-    const hero = JSON.parse(JSON.stringify(r.body.char));
-    PC.world.update(PC.data, hero, Date.now(), PC.makeRng(1));
+    // монстры деревни получают uid на сервере: первый запрос с чужим uid лишь создаёт их у героя
+    const id = require('crypto').randomUUID();
+    r = await act('fightStart', { id, uid: 'nope' });
+    assert.ok(r.status === 200 && !r.body.result.ok, JSON.stringify(r.body).slice(0, 300));
+    const hero = r.body.char;
     const mob = PC.world.aliveMobs(PC.data, hero)[0];
-    const id = crypto.randomUUID();
     r = await act('fightStart', { id, uid: mob.uid });
     assert.ok(r.status === 200 && r.body.result.ok && r.body.result.seed, JSON.stringify(r.body).slice(0, 300));
     r = await act('fightEnd', { id, hist: { seed: 1, monster: {}, roster: [], ev: [] } });
