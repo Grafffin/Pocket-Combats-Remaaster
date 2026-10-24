@@ -9,8 +9,9 @@
   function buy(data, char, id, count = 1) {
     const total = priceOf(data, id) * count;
     if (char.gold < total) return { ok: false, reason: 'Не хватает золота' };
+    if (I().matRoom(data, char, id) < count) return { ok: false, reason: 'Нет места в сумке' };
     char.gold -= total;
-    char.materials[id] = (char.materials[id] || 0) + count;
+    I().matAdd(data, char, id, count);
     return { ok: true, price: total };
   }
 
@@ -38,23 +39,28 @@
 
   function canBrew(data, char, recipe, times = 1) {
     if (char.gold < recipe.gold * times) return false;
-    return Object.entries(recipe.need).every(([k, n]) => (char.materials[k] || 0) >= n * times);
+    return Object.entries(recipe.need).every(([k, n]) => I().matCount(data, char, k) >= n * times);
   }
 
   function brew(data, char, index, times = 1) {
     const r = data.recipes[index];
     if (!r || !canBrew(data, char, r, times)) return { ok: false, reason: 'Не хватает материалов или золота' };
+    const before = JSON.stringify({ bag: char.bag, materials: char.materials });
     char.gold -= r.gold * times;
-    for (const [k, n] of Object.entries(r.need)) char.materials[k] -= n * times;
-    char.materials[r.out] = (char.materials[r.out] || 0) + r.n * times;
+    for (const [k, n] of Object.entries(r.need)) I().matTake(data, char, k, n * times);
+    if (I().matAdd(data, char, r.out, r.n * times) < r.n * times) {   // результат не влез — откат
+      Object.assign(char, JSON.parse(before));
+      char.gold += r.gold * times;
+      return { ok: false, reason: 'Нет места в сумке' };
+    }
     return { ok: true, out: r.out, count: r.n * times };
   }
 
   // Выпить эликсир: действие на несколько побед, повторное — продлевает
   function drink(data, char, id) {
     const e = data.elixirs[id];
-    if (!e || !(char.materials[id] > 0)) return { ok: false, reason: 'Нет такого эликсира' };
-    char.materials[id]--;
+    if (!e || !(I().matCount(data, char, id) > 0)) return { ok: false, reason: 'Нет такого эликсира' };
+    I().matTake(data, char, id, 1);
     char.buffs = char.buffs || {};
     char.buffs[id] = (char.buffs[id] || 0) + e.battles;
     return { ok: true, battles: char.buffs[id] };
@@ -63,10 +69,10 @@
   // Продать материал (травы и прочее) скупщику
   function sellMaterial(data, char, id, count) {
     const m = data.materials[id];
-    const n = Math.min(count, char.materials[id] || 0);
+    const n = m ? Math.min(count, I().matCount(data, char, id)) : 0;
     if (!m || !m.price || n <= 0) return { ok: false, reason: 'Нечего продать' };
     const price = Math.max(1, Math.floor(m.price / 2)) * n;
-    char.materials[id] -= n;
+    I().matTake(data, char, id, n);
     char.gold += price;
     return { ok: true, price };
   }

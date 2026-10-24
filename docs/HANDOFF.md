@@ -40,7 +40,7 @@ web/battle/                клиент (его содержимое и есть
 
 ### Файлы web/battle/js/
 
-- **Игровая логика без DOM** (работает и в Node, и в Edge Function): `data.js` (общие данные), `classes.js`, `stats.js`, `items-data.js` (предметы, аффиксы, уники), `monsters.js`, `world-data.js` (зоны, сложности), `engine.js` (бой, `makeRng(seed)`), `items.js`, `progression.js` (уровни, миграции героя, `CHAR_VERSION` 6), `economy.js`, `world.js` (мир от времени `now`, `TICK_MS` 10000), `actions.js` (все действия героя вне боя), `version.js` (версия сборки, `__BUILD__` подставляет CI).
+- **Игровая логика без DOM** (работает и в Node, и в Edge Function): `data.js` (общие данные), `classes.js`, `stats.js`, `items-data.js` (предметы, аффиксы, уники), `monsters.js`, `world-data.js` (зоны, сложности), `engine.js` (бой, `makeRng(seed)`), `items.js`, `progression.js` (уровни, миграции героя, `CHAR_VERSION` 7), `economy.js`, `world.js` (мир от времени `now`, `TICK_MS` 10000), `actions.js` (все действия героя вне боя), `version.js` (версия сборки, `__BUILD__` подставляет CI).
 - **Клиент и онлайн:** `config.js` (URL Supabase и публичный anon key), `auth.js` (вход, гость), `cloud.js` (облачное сохранение, `cloud.act`, `cloud.call`, `cloud.locked`), `presence.js` (кто на локации), `chat.js`, `battles.js` (список «Бои», общие бои), `lockstep.js` (синхронизация общего боя), `worldsync.js` (общие монстры мира, таблица `world_mobs`), `market-ui.js` (рынок игроков).
 - **Интерфейс:** `ui-kit.js` (модалки, тосты, `storage`), `item-ui.js`, `battle-ui.js`, `hub.js` (мир, герой, NPC, `predict` оптимистичных действий), `bag-ui.js`, `forge-ui.js`.
 
@@ -51,6 +51,7 @@ web/battle/                клиент (его содержимое и есть
 - Бой тиками по 10 с, действие по нажатию, автобой и автоохота. Рост чисел `growth(L)=1.12^(min(L,40)-1)`, защита `K/(K+def)`.
 - 4 класса (воин, берсерк, охотник, маг), 10 слотов, 26 типов × 7 тиров, 8 редкостей (7 — уникальная), качество 0–100, заточка +15, ранги ★0–5, добродетели-сеты, перековка, сумка 48, сундук аккаунта 300.
 - 6 зон + деревня, 8 ступеней сложности (до Пытки V), открываются победой над последним боссом (`final: true`, сейчас Лич). 12 уников.
+- Ресурсы: кузнечные (камни, свитки защиты и перековки, руда, кожа, эссенция; флаг `forge` в `items-data.js`) лежат в `char.materials` без лимита, остальные (зелья, эликсиры, травы) стаками `{ stack, count }` в сумке, до `data.STACK_MAX` (200) в ячейке. Доступ только через `items.matCount/matAdd/matTake/matRoom`. `CHAR_VERSION` 7.
 - Сохранение: в облаке `characters` (герой, сундук, `rev`); локально `pc-character-v3`, `pc-stash`, `pc-ui-prefs`, резерв `pc-cloud-backup-v1`.
 
 ## 4. Архитектура онлайна

@@ -17,7 +17,7 @@
   const f = { sub: 'enhance', mode: 'values', valueIdx: 0, uid: null, locks: new Set(), protect: false, fodder: null, donor: null, craftType: null, craftTier: 1, flash: null };
 
   function allItems(c) {
-    return [...Object.values(c.equipment).filter(Boolean).map((it) => ({ it, worn: true })), ...c.bag.filter(Boolean).map((it) => ({ it, worn: false }))];
+    return [...Object.values(c.equipment).filter(Boolean).map((it) => ({ it, worn: true })), ...c.bag.filter((it) => it && !it.stack).map((it) => ({ it, worn: false }))];
   }
 
   function render(root, arg) {
@@ -109,7 +109,7 @@
     if (!s) return none;
     const item = s.item;
     const kind = data.types[item.type].kind;
-    const donors = c.bag.filter((x) => x && x.uid !== item.uid && data.types[x.type].kind === kind && (x.enhance || x.rank || x.virtue));
+    const donors = c.bag.filter((x) => x && !x.stack && x.uid !== item.uid && data.types[x.type].kind === kind && (x.enhance || x.rank || x.virtue));
     if (f.donor && !donors.some((x) => x.uid === f.donor)) f.donor = null;
     const d = f.donor && I.findItem(c, f.donor).item;
     return `<div class="card section"><h3>Перенос вложений</h3>${head(item)}

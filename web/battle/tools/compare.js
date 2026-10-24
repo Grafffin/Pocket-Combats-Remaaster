@@ -52,6 +52,7 @@ function baseChar(job, level) {
   }
   P.setSlots(data, c, actives.slice(-4).reverse().map((s) => s.id));
   c.materials = {};
+  c.bag = c.bag.map((x) => (x && x.stack ? null : x));
   c.equipment = {};
   return c;
 }

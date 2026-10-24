@@ -259,6 +259,58 @@
   }
   const bagFree = (char) => char.bag.filter((x) => !x).length;
 
+  // ---------- Ресурсы: кузнечные без лимита в char.materials, остальные стаками в сумке ----------
+  // В char.materials у обычного ресурса может лежать остаток старого сохранения, не влезший в сумку: он считается и тратится первым.
+
+  const isForge = (data, id) => !!data.materials[id].forge;
+
+  function matCount(data, char, id) {
+    let n = char.materials[id] || 0;
+    if (isForge(data, id)) return n;
+    for (const it of char.bag) if (it && it.stack === id) n += it.count;
+    return n;
+  }
+
+  // Сколько ещё влезет: добить стаки + свободные ячейки
+  function matRoom(data, char, id) {
+    if (isForge(data, id)) return Infinity;
+    let room = 0;
+    for (const it of char.bag) room += !it ? data.STACK_MAX : it.stack === id ? data.STACK_MAX - it.count : 0;
+    return room;
+  }
+
+  // Кладёт ресурс; возвращает, сколько реально положено (остальное не влезло)
+  function matAdd(data, char, id, n) {
+    if (isForge(data, id)) { char.materials[id] = (char.materials[id] || 0) + n; return n; }
+    let left = n;
+    for (const it of char.bag) {
+      if (left <= 0) break;
+      if (it && it.stack === id && it.count < data.STACK_MAX) { const d = Math.min(left, data.STACK_MAX - it.count); it.count += d; left -= d; }
+    }
+    for (let i = 0; i < char.bag.length && left > 0; i++) {
+      if (char.bag[i]) continue;
+      const d = Math.min(left, data.STACK_MAX);
+      char.bag[i] = { stack: id, count: d };
+      left -= d;
+    }
+    return n - left;
+  }
+
+  // Забирает n штук (проверка наличия — на вызывающем); сначала остаток из char.materials, затем самые маленькие стаки
+  function matTake(data, char, id, n) {
+    let left = n;
+    const legacy = Math.min(char.materials[id] || 0, left);
+    if (legacy) { char.materials[id] -= legacy; left -= legacy; }
+    if (isForge(data, id)) return;
+    const idx = char.bag.map((it, i) => (it && it.stack === id ? i : -1)).filter((i) => i >= 0).sort((a, b) => char.bag[a].count - char.bag[b].count);
+    for (const i of idx) {
+      if (left <= 0) break;
+      const d = Math.min(left, char.bag[i].count);
+      char.bag[i].count -= d; left -= d;
+      if (!char.bag[i].count) char.bag[i] = null;
+    }
+  }
+
   function findItem(char, uid) {
     for (const [slot, it] of Object.entries(char.equipment)) if (it && it.uid === uid) return { item: it, slot, index: -1 };
     const index = char.bag.findIndex((x) => x && x.uid === uid);
@@ -289,6 +341,7 @@
   function equip(data, char, index, slot) {
     const item = char.bag[index];
     if (!item) return { ok: false, reason: 'Пустая ячейка' };
+    if (item.stack) return { ok: false, reason: 'Это ресурс, а не снаряжение' };
     if (!slot) {
       const options = slotsFor(data, item);
       slot = options.find((s) => !char.equipment[s]) || options[0];
@@ -317,10 +370,28 @@
     return { ok: true, index: i };
   }
 
-  function moveInBag(char, from, to) {
+  // Два стака одного ресурса сливаются в ячейке «to» (остаток остаётся в «from»), иначе ячейки меняются местами
+  function moveInBag(char, from, to, data) {
+    const a = char.bag[from], b = char.bag[to];
+    if (a && b && a.stack && a.stack === b.stack && data) {
+      const d = Math.min(a.count, data.STACK_MAX - b.count);
+      b.count += d; a.count -= d;
+      if (!a.count) char.bag[from] = null;
+      return;
+    }
     const tmp = char.bag[to];
     char.bag[to] = char.bag[from];
     char.bag[from] = tmp;
+  }
+
+  // Слить неполные стаки одного ресурса (перед сортировкой сумки)
+  function compactStacks(data, char) {
+    const ids = [...new Set(char.bag.filter((x) => x && x.stack).map((x) => x.stack))];
+    for (const id of ids) {
+      const n = char.bag.filter((x) => x && x.stack === id).reduce((t, x) => t + x.count, 0);
+      char.bag = char.bag.map((x) => (x && x.stack === id ? null : x));
+      matAdd(data, char, id, n);
+    }
   }
 
   // ---------- Цена, разбор ----------
@@ -350,7 +421,7 @@
     const y = salvageYield(data, found.item);
     const got = { ...y.sure };
     for (const [m, pct] of y.chance) if (rng.chance(pct)) got[m] = (got[m] || 0) + 1;
-    for (const [m, n] of Object.entries(got)) char.materials[m] = (char.materials[m] || 0) + n;
+    for (const [m, n] of Object.entries(got)) matAdd(data, char, m, n);
     char.bag[found.index] = null;
     return { ok: true, got };
   }
@@ -578,7 +649,7 @@
   }
 
   PC.items = {
-    BAG_SIZE, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
+    BAG_SIZE, compactStacks, matCount, matRoom, matAdd, matTake, isForge, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
     affixValue, affixText, baseStats, baseLines, totals, weaponDamage, isShield, reqLevel, name, power,
     bagAdd, bagFree, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
     sellPrice, salvageYield, salvage,

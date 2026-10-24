@@ -256,7 +256,7 @@
     const c = app.state.char;
     const active = (st.mine || []).filter((l) => l.status === 'active').length;
     const cells = c.bag.map((it, i) => (it
-      ? tile(it, { attrs: `data-sell="${i}"`, cls: it.locked ? 'cant' : '' })
+      ? (it.stack ? PC.itemUI.stackTile(it, { cls: 'cant' }) : tile(it, { attrs: `data-sell="${i}"`, cls: it.locked ? 'cant' : '' }))
       : '<div class="tile empty"></div>')).join('');
     return `<p class="meta">Выберите вещь из сумки. Надетые и запертые вещи не продаются. Лотов: ${st.mine ? active : '…'} из ${MAX_LOTS}.
       Комиссия рынка ${FEE}% с продажи, лот висит 3 дня.</p><div class="bag-grid modal-grid">${cells}</div>`;

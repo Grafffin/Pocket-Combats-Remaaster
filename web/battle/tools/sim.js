@@ -69,7 +69,8 @@ function charAt(job, L, rng) {
   c.skillPoints += (L - 1) * P.SKILL_POINTS_PER_LEVEL;
   autoBuild(c);
   typicalGear(c, rng);
-  c.materials.hp_potion_1 = 3;
+  I.matTake(data, c, 'hp_potion_1', I.matCount(data, c, 'hp_potion_1'));
+  I.matAdd(data, c, 'hp_potion_1', 3);
   return c;
 }
 
@@ -133,7 +134,7 @@ if (!career) {
         const info = I.enhanceInfo(data, it);
         if (!info.capped && !info.maxed && info.next <= 5 && c.materials.stone1 > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
       }
-      while ((c.materials.hp_potion_1 || 0) < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion_1').ok);
+      while (I.matCount(data, c, 'hp_potion_1') < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion_1').ok);
       autoBuild(c);
       for (const L of [5, 10, 15, 20, 25, 30]) if (c.level >= L && !levelAt[L]) levelAt[L] = battles;
     }

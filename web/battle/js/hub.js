@@ -816,6 +816,8 @@
       if (sum.items.length) html += `<div class="loot-grid">${sum.items.map((it) => tile(it, { attrs: `data-loot="${it.uid}"`, can: I.canEquip(data, c, it).ok })).join('')}</div>`;
       const mats = Object.entries(sum.materials);
       if (mats.length) html += `<div class="cost" style="justify-content:center">${mats.map(([k, n]) => `<span class="info-link" data-info="${k}">${art(data.materials[k].art, '•')}+${n}</span>`).join('')}</div>`;
+      const lost = Object.entries(sum.lost || {});
+      if (lost.length) html += `<p class="req">Сумка полна — не поместилось: ${lost.map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}.</p>`;
       if (sum.salvaged.length) {
         const full = sum.salvaged.some((x) => x.full);
         html += `<p class="meta">${full ? 'Сумка полна — ' : 'Авторазбор: '}разобрано ${sum.salvaged.length} ${plural(sum.salvaged.length, 'вещь', 'вещи', 'вещей')}.</p>`;
@@ -889,7 +891,7 @@
     const rows = data.shopStock.map((id) => {
       const m = data.materials[id];
       return `<div class="trade-row"><span class="ava info-link" data-info="${id}" style="width:40px;height:40px">${art(m.art, '•')}</span>
-        <div class="txt"><b>${m.name}</b><div class="meta">есть: ${c.materials[id] || 0}</div></div>
+        <div class="txt"><b>${m.name}</b><div class="meta">есть: ${I.matCount(data, c, id)}</div></div>
         <button class="btn small" data-buy="${id}" data-n="1" ${c.gold < m.price ? 'disabled' : ''}>${fmtNum(m.price)} 💰</button>
         <button class="btn small" data-buy="${id}" data-n="5" ${c.gold < m.price * 5 ? 'disabled' : ''}>×5</button></div>`;
     }).join('');
@@ -913,7 +915,7 @@
       const can5 = E.canBrew(data, c, r, 5);
       return `<div class="recipe ${can ? '' : 'off'}">
         <div class="row"><span class="ava info-link" data-info="${r.out}" style="width:44px;height:44px">${art(out.art, '🧪')}</span>
-          <div class="txt"><b>${out.name}</b> ×${r.n}<div class="meta">есть: ${c.materials[r.out] || 0}</div></div>
+          <div class="txt"><b>${out.name}</b> ×${r.n}<div class="meta">есть: ${I.matCount(data, c, r.out)}</div></div>
           <button class="btn small" data-brew="${i}" data-n="1" ${can ? '' : 'disabled'}>Сварить</button>
           <button class="btn small" data-brew="${i}" data-n="5" ${can5 ? '' : 'disabled'}>×5</button></div>
         ${costHtml({ ...r.need, gold: r.gold })}</div>`;
