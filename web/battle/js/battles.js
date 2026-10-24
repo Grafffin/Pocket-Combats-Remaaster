@@ -221,7 +221,7 @@
     const app = PC.app, c = app && app.state.char;
     if (resumeTried || !auth.user || !c || !c.nick || c.transit || !app.resumeFight || app.state.fight || mine) return;
     resumeTried = true;
-    B.resume(c).then((row) => { if (row && !app.state.fight && !app.resumeFight(row)) B.end(); });
+    B.resume(c).then((row) => { if (row && !app.state.fight) app.resumeFight(row).then((ok) => { if (!ok) B.end(); }); });
   }, 1000);
   window.addEventListener('pc-auth', () => { if (!auth.user) watch(null); });
 })();

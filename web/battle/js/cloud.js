@@ -111,6 +111,7 @@
   // Операция над героем в серверной функции game (docs/SERVER_AUTHORITY.md): сервер сам применяет действие
   // со своей случайностью и возвращает нового героя. cloud.server — функция выложена и отвечает.
   cloud.server = false;
+  cloud.fights = false;   // таблица боёв game_fights есть: награды за бои тоже считает сервер
   async function invoke(op, args, rev) {
     const { data: res, error } = await auth.client.functions.invoke('game', { body: { op, args, rev, v: PC.BUILD } });
     if (!error) return res;
@@ -163,7 +164,7 @@
     syncing = true;
     try { await pull(false); } catch (e) { fail(e); } finally { syncing = false; }
     if (cloud.status === 'ok' && !cloud.server) {
-      try { await invoke('ping', {}); cloud.server = true; } catch (e) { cloud.server = false; }
+      try { const r = await invoke('ping', {}); cloud.server = true; cloud.fights = !!(r && r.result && r.result.fights); } catch (e) { cloud.server = false; }
     }
   }
   cloud.sync = sync;

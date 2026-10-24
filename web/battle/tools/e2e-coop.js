@@ -2,6 +2,8 @@
 // Проверяет: вступление из списка «Бои», общий лог и здоровье монстра, карточки союзников, смерть монстра у всех,
 // возврат после обновления страницы, обрыв боя при уходе хозяина.
 // Запуск: NODE_PATH=$(npm root -g) node web/battle/tools/e2e-coop.js   (нужен playwright и Chromium; сайт отдаётся с localhost)
+// SERVER=1 — то же, но с подставной серверной функцией game (supabase/functions/game/ops.js): герой, бои и награды
+// считает «сервер» в этом процессе, как в проде.
 const path = require('path');
 const http = require('http');
 const fs = require('fs');
@@ -10,8 +12,38 @@ const { chromium } = require('playwright');
 
 const webRoot = path.join(__dirname, '..', '..');
 const dir = path.join(__dirname, '..', 'js');
-for (const f of ['data', 'classes', 'stats', 'items-data', 'monsters', 'world-data', 'engine', 'items', 'progression']) require(path.join(dir, `${f}.js`));
+for (const f of ['version', 'data', 'classes', 'stats', 'items-data', 'monsters', 'world-data', 'engine', 'items', 'progression', 'economy', 'world', 'actions']) require(path.join(dir, `${f}.js`));
 const PC = globalThis.PC;
+const SERVER = process.env.SERVER === '1';
+let gameRun = null;   // run() из ops.js серверной функции
+
+// ---------- подставная серверная функция game (как supabase/functions/game/index.ts) ----------
+const chars = new Map();   // uid → { data, stash, rev }
+const fights = new Map();
+function game(uid, body) {
+  const fail = (error, status, extra) => ({ data: null, error: { status, body: { error, ...extra } } });
+  const { op, args, rev } = body;
+  if (body.v !== PC.BUILD) return fail('version', 409, { build: PC.BUILD });
+  if (op === 'ping') return { data: { result: { build: PC.BUILD, fights: true } }, error: null };
+  const row = chars.get(uid) || null;
+  const cur = () => ({ char: row ? row.data : null, stash: row ? row.stash : null, rev: row ? row.rev : 0 });
+  if (rev != null && (row ? row.rev : 0) !== rev) return fail('stale', 409, cur());
+  const ctx = { now: Date.now(), rng: PC.makeRng((Math.random() * 2 ** 31) | 0 || 1), uid, fight: args && fights.get(args.id) || null };
+  if (process.env.DEBUG_E2E && op === 'fightEnd' && args.hist) {
+    const h = args.hist, b = new PC.Battle({ players: h.roster, monster: h.monster, seed: h.seed, data: PC.data, localKey: uid });
+    for (const e of h.ev) b.applyEvent(e);
+    console.log('  [replay]', uid, 'ev', h.ev.length, 'turn', b.turn, 'ended', b.ended, 'mon', b.monster.hp, 'me', b.player && b.player.hp, 'left', b.player && b.player.left, 'players', b.players.map((f) => f.key + ':' + f.hp).join(','), 'fled', args.fled, 'kinds', h.ev.slice(-5).map((e) => e.k).join(''));
+  }
+  let out;
+  try { out = gameRun(op, args, row, ctx); } catch (e) { if (e.constructor.name === 'GameError') return fail(e.message, 400); throw e; }
+  if (process.env.DEBUG_E2E && !out.changed) console.log('  [game:same]', uid, op, JSON.stringify(out.result).slice(0, 160));
+  if (!out.changed) return { data: { ...cur(), result: out.result }, error: null };
+  const next = { data: out.char, stash: out.stash, rev: (row ? row.rev : 0) + 1 };
+  chars.set(uid, next);
+  if (ctx.saveFight) fights.set(ctx.saveFight.id, ctx.saveFight);
+  if (process.env.DEBUG_E2E && /^fight|travel|arrive/.test(op)) console.log('  [game]', uid, op, JSON.stringify(out.result).slice(0, 160), 'loc', next.data && next.data.location);
+  return { data: { char: next.data, stash: next.stash, rev: next.rev, result: out.result }, error: null };
+}
 
 // ---------- статический сервер ----------
 const server = http.createServer((req, res) => {
@@ -48,6 +80,17 @@ function match(row, filters) {
 function query(uid, st) {
   const ok = (data) => ({ data, error: null });
   if (st.table === 'profiles') return ok(null);
+  if (st.table === 'characters' && SERVER) {
+    const row = chars.get(uid);
+    if (st.op === 'select') return ok(row ? [{ data: row.data, stash: row.stash, rev: row.rev }] : []);
+    if (st.op === 'insert') { chars.set(uid, { data: st.payload.data, stash: st.payload.stash, rev: 1 }); return ok([{ rev: 1 }]); }
+    if (st.op === 'update') {
+      const want = (st.filters.find((f) => f[1] === 'rev') || [])[2];
+      if (!row || row.rev !== want) return ok([]);
+      chars.set(uid, { data: st.payload.data, stash: st.payload.stash, rev: row.rev + 1 });
+      return ok([{ rev: row.rev + 1 }]);
+    }
+  }
   if (st.table === 'battle_history') return ok(null);
   if (st.table === 'battles') {
     if (st.op === 'insert') {
@@ -115,7 +158,7 @@ const INIT = `
   const builder = (table) => {
     const st = { table, op: 'select', filters: [], payload: null };
     const b = {
-      select(c) { st.cols = c; return b; }, insert(v) { st.op = 'insert'; st.payload = v; return b; }, delete() { st.op = 'delete'; return b; },
+      select(c) { st.cols = c; return b; }, insert(v) { st.op = 'insert'; st.payload = v; return b; }, update(v) { st.op = 'update'; st.payload = v; return b; }, delete() { st.op = 'delete'; return b; },
       eq(k, v) { st.filters.push(['eq', k, v]); return b; }, is(k, v) { st.filters.push(['is', k, v]); return b; }, gt(k, v) { st.filters.push(['gt', k, v]); return b; }, lt(k, v) { st.filters.push(['lt', k, v]); return b; },
       order() { return b; }, limit() { return b; }, single() { st.single = true; return b; }, maybeSingle() { st.single = true; return b; },
       then(res, rej) { return call('q', st).then((r) => { if (st.single && Array.isArray(r.data)) r = { ...r, data: r.data[0] || null }; return r; }).then(res, rej); },
@@ -127,6 +170,7 @@ const INIT = `
     auth: { getSession: async () => ({ data: { session: { user } } }), onAuthStateChange: () => ({ data: { subscription: { unsubscribe() {} } } }), signOut: async () => ({}) },
     from: builder,
     rpc: (fn, args) => call('rpc', { fn, args }),
+    functions: { invoke: (name, o) => call('fn', { name, body: o.body }).then((r) => (r.error ? { data: null, error: { context: { json: async () => r.error.body } } } : r)) },
     channel(name) {
       const ch = { name, handlers: [],
         on(type, filter, cb) { ch.handlers.push({ type, filter, cb }); return ch; },
@@ -167,10 +211,13 @@ async function openPlayer(browser, uid, nick, job) {
   await page.exposeFunction('__rpc', (op, args) => {
     if (op === 'q') return query(uid, args);
     if (op === 'rpc') return rpc(uid, args.fn, args.args);
+    if (op === 'fn') return SERVER ? game(uid, args.body) : { data: null, error: { body: { error: 'offline' } } };
     if (op === 'bcast') { bcast(uid, args.name, args.event, args.payload); return null; }
     return null;
   });
-  await page.addInitScript(`window.__UID = ${JSON.stringify(uid)}; localStorage.setItem('pc-character-v3', ${JSON.stringify(heroJson(nick, job))});`);
+  const hero = heroJson(nick, job);
+  if (SERVER && !chars.has(uid)) chars.set(uid, { data: JSON.parse(hero), stash: null, rev: 1 });
+  await page.addInitScript(`window.__UID = ${JSON.stringify(uid)}; localStorage.setItem('pc-character-v3', ${JSON.stringify(hero)});`);
   await page.route('**/cdn.jsdelivr.net/**', (r) => r.abort());   // настоящий supabase-js не нужен
   await page.addInitScript(INIT);
   const p = { uid, nick, page, errors };
@@ -181,7 +228,15 @@ async function openPlayer(browser, uid, nick, job) {
 }
 
 // Подмена монстров для теста: mult — множитель здоровья (живучий монстр держит бой долго), atk — множитель урона
-const tankify = (page, mult, atk) => page.evaluate(([m, a]) => {
+// (с SERVER=1 монстров выдаёт «сервер», поэтому подменяем и у него)
+const origMonsterAt = PC.monsters.monsterAt;
+const tankify = (page, mult, atk) => {
+  if (SERVER) PC.monsters.monsterAt = (id, L, D) => { const t = origMonsterAt(id, L, D); t.stats = { ...t.stats, maxHp: Math.round(t.stats.maxHp * mult), atk: Math.round(t.stats.atk * atk), matk: Math.round(t.stats.matk * atk), weaponMax: Math.round(t.stats.weaponMax * atk) }; return t; };
+  return tankifyPage(page, mult, atk);
+};
+// Снять передышку (тест не ждёт тик): у страницы и у «сервера»
+const noRest = (p) => { if (SERVER && chars.get(p.uid)) chars.get(p.uid).data.restTick = 0; return p.page.evaluate(() => { PC.app.state.char.restTick = 0; }); };
+const tankifyPage = (page, mult, atk) => page.evaluate(([m, a]) => {
   const orig = window.__origMonsterAt || (window.__origMonsterAt = PC.monsters.monsterAt);
   PC.monsters.monsterAt = (id, L, D) => { const t = orig(id, L, D); t.stats = { ...t.stats, maxHp: Math.round(t.stats.maxHp * m), atk: Math.round(t.stats.atk * a), matk: Math.round(t.stats.matk * a), weaponMax: Math.round(t.stats.weaponMax * a) }; return t; };
 }, [mult, atk]);
@@ -197,6 +252,7 @@ async function attack(p) {
 
 (async () => {
   await new Promise((r) => server.listen(0, r));
+  if (SERVER) gameRun = (await import(path.join(__dirname, '..', '..', '..', 'supabase', 'functions', 'game', 'ops.js'))).run;
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
   let stage = 'старт';
   try {
@@ -288,7 +344,7 @@ async function attack(p) {
     assert.strictEqual(db.battles.filter((b) => b.owner_id === 'user-a').length, 1, 'бой 1 идёт у участника, хозяин из него вышел');
     await A2.page.evaluate(() => { document.querySelector('#to-camp') && document.querySelector('#to-camp').click(); });
     await sleep(1500);
-    await A2.page.evaluate(() => { PC.app.state.char.restTick = 0; });
+    await noRest(A2);
     await attack(A2);
     await until(() => db.battles.filter((b) => b.owner_id === 'user-a').length === 2, 1500, 'второй бой хозяина записан в базу сразу');
     await until(() => visible(A2.page, '#battle'), 15000, 'второй бой хозяина');
@@ -303,11 +359,12 @@ async function attack(p) {
     await Promise.all([A, B].map((p) => p.page.evaluate(() => { document.querySelector('#to-camp') && document.querySelector('#to-camp').click(); })));
     await tankify(A.page, 2, 0.3); await tankify(B.page, 2, 0.3);
     await sleep(2500);
-    await A.page.evaluate(() => { PC.app.state.char.restTick = 0; });
+    await noRest(A);
     await attack(A);
     await sleep(4000);   // список «Бои» успевает обновиться (иначе можно нажать на старую строку)
     await until(() => B.page.evaluate(() => document.querySelectorAll('[data-act="join-battle"]').length === 1), 20000, 'кнопка «Вступить» (бой 2)');
-    await B.page.evaluate(() => { PC.app.state.char.restTick = 0; document.querySelector('[data-act="join-battle"]').click(); });
+    await noRest(B);
+    await B.page.evaluate(() => { document.querySelector('[data-act="join-battle"]').click(); });
     if (process.env.DEBUG_E2E) { await sleep(15000); console.log('B', await B.page.evaluate(() => ({ battle: !document.querySelector('#battle').hidden, hub: !document.querySelector('#hub').hidden, toast: [...document.querySelectorAll('.toast')].map((t) => t.textContent), toasts: window.__toasts, calls: window.__calls.slice(-6), mine: PC.battles.mineId(), row: !!document.querySelector('[data-act=join-battle]') }))); }
     await until(async () => (await visible(A.page, '#result')) && (await visible(B.page, '#result')), 150000, 'итог боя у обоих');
     const ra = await A.page.evaluate(() => document.querySelector('#result-banner').textContent);
@@ -317,6 +374,17 @@ async function attack(p) {
     assert.strictEqual(rb, 'Победа!');
     await A.page.screenshot({ path: '/tmp/claude-0/e2e-result.png' });
 
+    if (SERVER) {
+      // награду дал сервер: у обоих в базе победа и ни одного незакрытого боя
+      for (const p of [A, B]) {
+        const row = chars.get(p.uid).data;
+        assert.ok(row.wins >= 1, `${p.nick}: победа записана сервером`);
+        assert.strictEqual(row.fight, null, `${p.nick}: бой закрыт на сервере`);
+      }
+      const calls = await A.page.evaluate(() => window.__calls.filter((c) => c.startsWith('fn')).length);
+      assert.ok(calls > 0, 'клиент ходил в серверную функцию');
+      console.log('ok   награды за бой начислил сервер по истории боя');
+    }
     for (const p of pages) assert.deepStrictEqual(p.errors, [], `ошибки JS у ${p.nick}: ${p.errors}`);
     console.log('\nвсе сквозные проверки прошли');
   } catch (e) {

@@ -437,6 +437,7 @@
     S.maxPlayers = MAX_PLAYERS;
     Object.defineProperty(S, 'stale', { get: () => stale });   // бой разошёлся с хозяином, ждём его историю
     Object.defineProperty(S, 'evCount', { get: () => (hist ? hist.ev.length : 0) });   // сколько событий боя применено
+    Object.defineProperty(S, 'hist', { get: () => hist });   // история боя: по ней сервер переигрывает бой и выдаёт награду
     return S;
   }
 

@@ -94,5 +94,123 @@ const PC = globalThis.PC, data = PC.data;
   const sold = step('sell', { uids: [item.uid, item.uid] });
   assert.strictEqual(sold.count, 1);
   assert.strictEqual(cur.data.gold, gold0 + PC.items.sellPrice(data, item));
+  // ---- бои: сервер выдаёт бой, переигрывает историю и сам даёт награду ----
+  const zone = Object.keys(data.locations).find((k) => !data.locations[k].safe && data.locations[k].tier === 1);
+  const T0 = 1_800_000_000_000;
+  const mkHero = (nick) => {
+    const h = PC.progression.newCharacter(data, { nick, gender: 'm', job });
+    h.location = zone; h.level = 5; h.gold = 1000;
+    return { data: h, stash: null };
+  };
+  const at = (now, uid) => ({ now, rng: PC.makeRng(now % 99991), uid });
+  const runAt = (holder, op, args, ctx) => { const o = run(op, args, holder.row, ctx); holder.row = { data: o.char, stash: o.stash }; return o.result; };
+  const uuid = (n) => `00000000-0000-4000-8000-${String(n).padStart(12, '0')}`;
+  // История как у хозяина lockstep: удар, ход монстра, конец хода — пока бой не кончится
+  function play(rec, roster, script) {
+    const b = new PC.Battle({ players: roster, monster: rec.monster, seed: rec.seed, data, localKey: roster[0].key });
+    const ev = [];
+    const push = (e) => { b.applyEvent(e); ev.push(e); };
+    for (let t = 0; t < 200 && !b.ended; t++) script(push, b, t);
+    return { hist: { seed: rec.seed, monster: rec.monster, roster, ev }, battle: b };
+  }
+  const basic = (keys) => (push, b) => { for (const k of keys) push({ k: 'a', key: k, s: 'basic' }); push({ k: 'm' }); push({ k: 'e' }); };
+
+  const A = { row: mkHero('Хозяин') };
+  let ctxA = at(T0, 'host-uid');
+  PC.world.update(data, A.row.data, T0, ctxA.rng);
+  const mob = PC.world.aliveMobs(data, A.row.data)[0];
+  let res = runAt(A, 'fightStart', { id: uuid(1), uid: mob.uid }, ctxA);
+  assert.ok(res.ok && res.seed && res.tpl && res.monster, 'бой выдан');
+  const rec = ctxA.saveFight;
+  assert.strictEqual(rec.owner, 'host-uid');
+  assert.strictEqual(rec.mob.uid, mob.uid);
+  assert.strictEqual(runAt(A, 'fightStart', { id: uuid(2), uid: mob.uid }, at(T0 + 10, 'host-uid')).ok, false, 'занятого монстра второй раз не дают');
+  // сбросили бой выше (dropFight) — выдаём заново для честной проверки
+  A.row = { data: mkHero('Хозяин').data, stash: null };
+  ctxA = at(T0, 'host-uid');
+  PC.world.update(data, A.row.data, T0, ctxA.rng);
+  res = runAt(A, 'fightStart', { id: uuid(1), uid: mob.uid }, ctxA);
+  const fightRec = ctxA.saveFight;
+  const roster = [{ key: 'host-uid', tpl: res.tpl }];
+  const { hist, battle } = play(fightRec, roster, basic(['host-uid']));
+  assert.ok(battle.ended, 'бой закончился');
+  const endAt = T0 + battle.turn * PC.world.TICK_MS;
+  const tamper = (fn) => { const h = JSON.parse(JSON.stringify(hist)); fn(h); return h; };
+  const tryEnd = (h, now) => { const H = { row: JSON.parse(JSON.stringify(A.row)) }; return { r: runAt(H, 'fightEnd', { id: uuid(1), hist: h }, { ...at(now, 'host-uid'), fight: fightRec }), H }; };
+  assert.strictEqual(tryEnd(tamper((h) => { h.roster[0].tpl.stats.atk = 99999; }), endAt).r.ok, false, 'подделанный герой');
+  assert.strictEqual(tryEnd(tamper((h) => { h.monster.stats.maxHp = 1; }), endAt).r.ok, false, 'подделанный монстр');
+  assert.strictEqual(tryEnd(tamper((h) => { h.seed += 1; }), endAt).r.ok, false, 'другой seed');
+  if (battle.turn >= 2) assert.strictEqual(tryEnd(hist, T0 + 1000).r.ok, false, 'слишком быстрый бой');
+  const exp0 = A.row.data.exp + A.row.data.level * 1e6, goldA = A.row.data.gold;
+  const won = battle.winner === battle.player;
+  res = runAt(A, 'fightEnd', { id: uuid(1), hist }, { ...at(endAt, 'host-uid'), fight: fightRec });
+  assert.ok(res.ok, JSON.stringify(res));
+  assert.strictEqual(res.summary.win, won);
+  if (won) assert.ok(A.row.data.exp + A.row.data.level * 1e6 > exp0 && A.row.data.gold >= goldA, 'награда начислена');
+  assert.strictEqual(A.row.data.fight, null);
+  assert.strictEqual(runAt(A, 'fightEnd', { id: uuid(1), hist }, { ...at(endAt + 1, 'host-uid'), fight: fightRec }).ok, false, 'награда второй раз');
+
+  // общий бой: вступивший получает долю, подделанный снимок вступившего — ничего
+  const H2 = { row: mkHero('Хозяин2') }, J = { row: mkHero('Гость') };
+  const c2 = at(T0, 'h2');
+  PC.world.update(data, H2.row.data, T0, c2.rng);
+  const r2 = runAt(H2, 'fightStart', { id: uuid(3), uid: PC.world.aliveMobs(data, H2.row.data)[0].uid }, c2);
+  const rec2 = c2.saveFight;
+  const rj = runAt(J, 'fightJoin', { id: uuid(3) }, { ...at(T0 + 500, 'g1'), fight: rec2 });
+  assert.ok(rj.ok && rj.tpl);
+  assert.deepStrictEqual(runAt(J, 'fightJoin', { id: uuid(3) }, { ...at(T0 + 600, 'g1'), fight: rec2 }).tpl, rj.tpl, 'повторное вступление после обновления страницы');
+  const coop = play(rec2, [{ key: 'h2', tpl: r2.tpl }], (push, b, t) => {
+    if (t === 0) push({ k: 'j', key: 'g1', tpl: rj.tpl });
+    basic(['h2', 'g1'])(push, b);
+  });
+  const coopEnd = T0 + coop.battle.turn * PC.world.TICK_MS;
+  const bad = JSON.parse(JSON.stringify(coop.hist));
+  bad.ev[0].tpl.stats.atk = 99999;
+  const J2 = { row: JSON.parse(JSON.stringify(J.row)) };
+  assert.strictEqual(runAt(J2, 'fightEnd', { id: uuid(3), hist: bad }, { ...at(coopEnd, 'g1'), fight: rec2 }).ok, false, 'подделанный вступивший');
+  const rr = runAt(J, 'fightEnd', { id: uuid(3), hist: coop.hist }, { ...at(coopEnd, 'g1'), fight: rec2 });
+  assert.ok(rr.ok, JSON.stringify(rr));
+  if (rr.summary.win) assert.ok(rr.contrib && rr.contrib.n === 2, 'доля в общем бою');
+  assert.ok(runAt(H2, 'fightEnd', { id: uuid(3), hist: coop.hist }, { ...at(coopEnd, 'h2'), fight: rec2 }).ok);
+
+  // зелья: выпитое списывается из текущего запаса, продажа зелий во время боя не даёт дубля
+  const P3 = { row: mkHero('Зельевар') };
+  P3.row.data.materials.hp_potion_1 = 3;
+  const c3 = at(T0, 'p3');
+  PC.world.update(data, P3.row.data, T0, c3.rng);
+  const r3 = runAt(P3, 'fightStart', { id: uuid(4), uid: PC.world.aliveMobs(data, P3.row.data)[0].uid }, c3);
+  const rec3 = c3.saveFight;
+  const pot = play(rec3, [{ key: 'p3', tpl: r3.tpl }], (push, b, t) => {
+    if (t === 0) push({ k: 'p', key: 'p3', id: 'hp_potion_1' });
+    basic(['p3'])(push, b);
+  });
+  P3.row.data.materials.hp_potion_1 = 0;   // «продал» все зелья во время боя
+  runAt(P3, 'fightEnd', { id: uuid(4), hist: pot.hist }, { ...at(T0 + pot.battle.turn * PC.world.TICK_MS, 'p3'), fight: rec3 });
+  assert.strictEqual(P3.row.data.materials.hp_potion_1, 0, 'зелья не вернулись из снимка');
+
+  // вышел из боя (кнопка «Сбежать») — бегство: без потерь золота и без отправки домой
+  const P5 = { row: mkHero('Беглец') };
+  const c5 = at(T0, 'p5');
+  PC.world.update(data, P5.row.data, T0, c5.rng);
+  const r5 = runAt(P5, 'fightStart', { id: uuid(6), uid: PC.world.aliveMobs(data, P5.row.data)[0].uid }, c5);
+  const left = { seed: c5.saveFight.seed, monster: c5.saveFight.monster, roster: [{ key: 'p5', tpl: r5.tpl }], ev: [{ k: 'l', key: 'p5' }] };
+  const g5 = P5.row.data.gold;
+  const s5 = runAt(P5, 'fightEnd', { id: uuid(6), hist: left, fled: true }, { ...at(T0 + 1000, 'p5'), fight: c5.saveFight }).summary;
+  assert.ok(s5.fled && !s5.goldLost && P5.row.data.gold === g5 && P5.row.data.location === zone, 'бегство без потерь');
+
+  // переход: нельзя уйти посреди боя
+  const P4 = { row: mkHero('Путник') };
+  const c4 = at(T0, 'p4');
+  PC.world.update(data, P4.row.data, T0, c4.rng);
+  runAt(P4, 'fightStart', { id: uuid(5), uid: PC.world.aliveMobs(data, P4.row.data)[0].uid }, c4);
+  const to = Object.keys(data.locations[zone].routes)[0];
+  assert.strictEqual(runAt(P4, 'travel', { to }, at(T0 + 100, 'p4')).ok, false, 'переход в бою');
+  runAt(P4, 'fightAbort', { id: uuid(5) }, at(T0 + 200, 'p4'));
+  assert.ok(runAt(P4, 'travel', { to }, at(T0 + 300, 'p4')).ok);
+  assert.strictEqual(runAt(P4, 'arrive', {}, at(T0 + 400, 'p4')).ok, false, 'прийти раньше времени');
+  assert.ok(runAt(P4, 'arrive', {}, at(T0 + 3600e3, 'p4')).ok);
+  assert.strictEqual(P4.row.data.location, to);
+
+  console.log(`бои: одиночный ${won ? 'победа' : 'поражение'} за ${battle.turn} ход., общий ${rr.summary.win ? 'победа' : 'поражение'} (доля ${rr.contrib ? rr.contrib.pct : 0}%)`);
   console.log('server-test: ok');
 })().catch((e) => { console.error(e); process.exit(1); });

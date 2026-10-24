@@ -372,10 +372,10 @@
     const r = e.target.closest('[data-route]');
     if (r) {
       if (c.settings.autoHunt) { c.settings.autoHunt = false; }
-      const res = W.startTravel(data, c, r.dataset.route, Date.now());
-      if (!res.ok) return toast(res.reason, 'bad');
-      app.save();
-      render();
+      app.act('travel', { to: r.dataset.route }).then((res) => {
+        if (!res.ok) return res.shown || toast(res.reason, 'bad');
+        render();
+      });
       return;
     }
     const act = e.target.closest('[data-act]');
@@ -403,11 +403,11 @@
       PC.battles.join(c, act.dataset.battle).then((r) => {
         if (cancelled) { if (!r.error) PC.battles.end(); return; }
         if (r.error) { act.disabled = false; if (row) back(); return toast(r.error, 'bad'); }
-        if (!startFight(null, r)) { act.disabled = false; if (row) back(); }
+        startFight(null, r).then((ok) => { if (!ok) { act.disabled = false; if (row) back(); } });
       });
       return;
     }
-    if (act.dataset.act === 'cancel-travel') { W.cancelTravel(c); app.save(); render(); }
+    if (act.dataset.act === 'cancel-travel') { app.act('cancelTravel').then(() => render()); }
     if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { app.act('settings', { patch }).then(() => render()); });
     if (act.dataset.act === 'hunt') {
       c.settings.autoHunt = !c.settings.autoHunt;
@@ -491,8 +491,17 @@
     if (!c || $('#hub').hidden) return;
     const now = Date.now();
     if (c.transit) {
-      const done = W.completeTravel(data, c, now);
-      if (done) { app.save(); toast(`Вы пришли: ${data.locations[c.location].name}`); if (state.tab === 'world') render(); return; }
+      if (now >= c.transit.end) {
+        if (state.arriving) return;
+        state.arriving = true;
+        app.act('arrive').then((r) => {
+          state.arriving = false;
+          if (!r.ok) return;
+          toast(`Вы пришли: ${data.locations[state.char.location].name}`);
+          if (state.tab === 'world') render();
+        });
+        return;
+      }
       const t = W.travelProgress(c, now);
       const fill = $('#travel-fill');
       if (fill) { fill.style.width = `${t.progress * 100}%`; $('#travel-left').textContent = `Осталось ${Math.ceil(t.left / 1000)} с`; }
@@ -518,7 +527,79 @@
 
   // join — строка чужого боя (из PC.battles.join): тогда вступаем в бой, который считает его хозяин.
   // Онлайн каждый бой общий (PC.lockstep): хозяин — это тот, кто напал на монстра, остальные видят тот же бой.
+  // Бой с наградой от сервера (функция game и таблица боёв выложены, есть общий бой)
+  const serverFights = () => !!(PC.cloud && PC.cloud.server && PC.cloud.fights && PC.battles && PC.battles.canCoop());
+  // Начать бой: на монстра uid или вступить в бой join (строка боя). Отдаёт Promise<boolean> — начался ли бой.
   function startFight(uid, join) {
+    return serverFights() ? startFightServer(uid, join) : Promise.resolve(startFightLocal(uid, join));
+  }
+
+  // Сервер выдаёт монстра, seed и снимок героя, а в конце сам считает итог по истории боя (actions.js, fightEnd)
+  async function startFightServer(uid, join) {
+    clearTimeout(state.huntTimer);
+    if (state.session && state.session.host && !state.session.ended && !state.session.stopped) { toast('Вы ведёте бой, в котором уже погибли — дождитесь его конца', 'bad'); return false; }
+    const B = PC.battles;
+    const id = join ? join.id : crypto.randomUUID();
+    const r = await app.act(join ? 'fightJoin' : 'fightStart', join ? { id } : { id, uid });
+    if (!r.ok) { if (!r.shown) toast(r.reason, 'bad'); if (join) B.end(); return false; }
+    const c = state.char;
+    const mob = r.mob || { id: join.monster_id, level: join.monster_level };
+    const D = r.diff != null ? r.diff : (join && join.diff) || 0;
+    const monster = r.monster || M.monsterAt(mob.id, mob.level, D);
+    state.fight = { id, uid: mob.uid || uid, monsterId: mob.id, level: mob.level, diff: D };
+    $('#result').hidden = true;
+    closeSheet();
+    closeModal();
+    const common = {
+      settings: c.settings,
+      onMonsterInfo: () => monsterCard(mob, D),
+      onSettings: () => app.act('settings', { patch: { ...common.settings } }),
+      onEnd: (battle, { fled, share, aborted }) => {
+        const sess = state.session;
+        if ((aborted === 'version' || aborted === 'desync') && reloadForBattle(id, aborted)) return;
+        if (aborted) {   // бой оборвался (хозяин ушёл, мест нет): без потерь и наград
+          app.act('fightAbort', { id });
+          B.end();
+          state.session = null; closeChannel();
+          toast(abortText(aborted), 'bad');
+          show('hub'); render();
+          return;
+        }
+        const won = battle.winner === battle.player;
+        B.record(state.char, { location: state.char.location, monsterId: mob.id, level: mob.level, diff: D, result: won ? 'win' : fled ? 'fled' : 'lose',
+          turns: battle.turn, my: share && share.my, total: share && share.total, log: battle.log,
+          members: battle.players.map((f) => String(f.name).replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')) });
+        if (!(sess && sess.host && !sess.ended)) B.end();
+        app.act('fightEnd', { id, hist: sess && sess.hist, fled: !!fled }).then((res) => {
+          if (!res.ok) { if (!res.shown) toast(res.reason, 'bad'); show('hub'); render(); return; }
+          state.fight.contrib = res.contrib;
+          // вещи в сводке — копии из ответа сервера: «новыми» отмечаем те же вещи в сумке
+          for (const it of res.summary.items) { const f = I.findItem(state.char, it.uid); if (f) f.item.fresh = true; it.fresh = true; }
+          showResult(res.summary, battle);
+        });
+      },
+    };
+    runShared(c, mob, monster, D, join, common, { id, seed: r.seed, tpl: r.tpl });
+    return true;
+  }
+
+  // Бой разошёлся или у ведущего другая версия: один раз перезагружаем страницу (свежий код, возврат в бой из базы).
+  // false — уже пробовали, значит старая версия у хозяина: выходим без потерь.
+  function reloadForBattle(bid, aborted) {
+    const key = 'pc-reload-battle';
+    let again = false;
+    try { again = sessionStorage.getItem(key) === String(bid); sessionStorage.setItem(key, String(bid)); } catch (e) { again = true; }
+    if (again) return false;
+    state.session = null; closeChannel();
+    toast(aborted === 'version' ? 'Вышла новая версия игры — обновляем страницу' : 'Бой разошёлся с остальными — переподключаемся', 'bad');
+    setTimeout(() => location.reload(), 1200);
+    return true;
+  }
+  const abortText = (aborted) => (aborted === 'full' ? 'В бою уже нет мест' : aborted === 'nohost' ? 'Бой уже закончился или некому его вести'
+    : aborted === 'version' ? 'У ведущего бой другая версия игры — вступить нельзя' : aborted === 'desync' ? 'Бой разошёлся с остальными участниками' : 'Бой прерван');
+
+  // Бой без сервера (офлайн или функция ещё не выложена): итог считается здесь же
+  function startFightLocal(uid, join) {
     const c = state.char;
     clearTimeout(state.huntTimer);
     if (state.session && state.session.host && !state.session.ended && !state.session.stopped) { toast('Вы ведёте бой, в котором уже погибли — дождитесь его конца', 'bad'); return false; }
@@ -604,16 +685,17 @@
 
   // Общий бой: хозяин (напавший) считает и рассылает ходы, остальные получают их и видят то же самое
   function closeChannel() { if (state.channel) { state.channel.close(); state.channel = null; } }
-  function runShared(c, mob, monster, D, join, common) {
+  // srv: { id, seed, tpl } от сервера — бой с серверной наградой
+  function runShared(c, mob, monster, D, join, common, srv) {
     const B = PC.battles;
-    const id = join ? join.id : (window.crypto && crypto.randomUUID ? crypto.randomUUID() : null);
+    const id = srv ? srv.id : join ? join.id : (window.crypto && crypto.randomUUID ? crypto.randomUUID() : null);
     if (!id) { show('battle'); PC.battleUI.start({ ...common, player: P.toFighter(data, c), monster }); return; }
     const host = !join;
     if (host) B.start(c, mob, { hp: Math.max(1, Math.round(monster.stats.maxHp)), diff: D, id });
     closeChannel();
     let sess = null;
     const ch = state.channel = B.channel(id, (m) => { if (sess) sess.receive(m); });
-    const tpl = JSON.parse(JSON.stringify(P.toFighter(data, c)));
+    const tpl = srv ? srv.tpl : JSON.parse(JSON.stringify(P.toFighter(data, c)));
     const uid = PC.auth.user.id;
     ch.ready.then(() => {
       if (state.channel !== ch) return;
@@ -628,7 +710,7 @@
         host, uid, tpl, data, send: (m) => ch.send(m), saved,
         save: (d) => { try { localStorage.setItem(key, JSON.stringify(d)); } catch (e) { /* нет места — не критично */ } },
         monster: host ? JSON.parse(JSON.stringify(monster)) : undefined,
-        seed: host ? Math.floor(Math.random() * 2147483647) : undefined,
+        seed: host ? (srv ? srv.seed : Math.floor(Math.random() * 2147483647)) : undefined,
       });
       let started = false;
       const launch = () => {
@@ -657,16 +739,20 @@
   // Автоохота: после передышки — на живого монстра локации (боссов не трогает)
   function scheduleHunt() {
     clearTimeout(state.huntTimer);
-    const c = state.char;
-    if (!c.settings.autoHunt || c.transit || W.here(data, c).safe) return;
+    const c0 = state.char;
+    if (!c0.settings.autoHunt || c0.transit || W.here(data, c0).safe) return;
     const tick = () => {
-      if (!c.settings.autoHunt) return;
+      const c = state.char;   // герой мог смениться ответом сервера
+      if (!c || !c.settings.autoHunt) return;
       const now = Date.now();
       W.update(data, c, now, rng);
       const note = $('#hunt-note');
       const rest = W.restLeft(c, now);
       const mob = rest ? null : W.pickForAutoHunt(data, c, state.fight && state.fight.monsterId, rng);
-      if (mob && startFight(mob.uid)) return;
+      if (mob) {
+        startFight(mob.uid).then((ok) => { if (!ok) state.huntTimer = setTimeout(tick, 1500); });
+        return;
+      }
       if (note) note.textContent = rest ? `Следующий бой через ${Math.ceil(rest / 1000)} с…` : 'Ждём возрождения монстров…';
       state.huntTimer = setTimeout(tick, 500);
     };
@@ -723,9 +809,8 @@
   });
   // «Следующий бой»: ещё один монстр того же вида (или любой), как только закончится передышка
   $('#again').addEventListener('click', () => {
-    const c = state.char;
     const wait = () => {
-      const now = Date.now();
+      const c = state.char, now = Date.now();
       W.update(data, c, now, rng);
       const rest = W.restLeft(c, now);
       const mob = rest ? null : W.pickForAutoHunt(data, c, state.fight.monsterId, rng);
