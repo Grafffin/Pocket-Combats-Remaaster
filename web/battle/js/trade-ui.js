@@ -365,6 +365,15 @@
     }, 0);
   });
 
+  // Обмен без правок дольше TTL закрывает сервер по запросу: просим его, пока он не закрыт (сроки считает сервер, часы телефона лишь повод спросить)
+  setInterval(() => {
+    const r = T.row;
+    if (!r || !on() || r.state !== 'open' || T.expiring === r.id + r.ver) return;
+    if (Date.now() - Date.parse(r.updated_at) < PC.trade.T.TTL + 4000) return;
+    T.expiring = r.id + r.ver;
+    PC.cloud.act('tradeClaim', { id: r.id }).then((res) => { onRow(res.trade); }, () => { setTimeout(() => { T.expiring = null; }, 15000); });
+  }, 3000);
+
   // Ушёл с локации (переход, поражение, возврат в деревню) — обмен отменяется, залог возвращается
   setInterval(() => {
     const r = T.row, c = PC.app && PC.app.state.char;
