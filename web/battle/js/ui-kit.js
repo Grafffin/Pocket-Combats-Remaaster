@@ -32,7 +32,7 @@
     return many;
   }
 
-  const fmtNum = (n) => (n >= 10000 ? `${Math.round(n / 1000)}к` : String(Math.round(n)));
+  const fmtNum = (n) => (n >= 10000 ? `${Math.round(n / 1000)}${PC.i18n && PC.i18n.lang === 'en' ? 'K' : 'к'}` : String(Math.round(n)));
 
   // Шторка: содержимое и обработчик кликов задаёт тот, кто её открыл.
   // modal: шторку нельзя закрыть мимо кнопок.

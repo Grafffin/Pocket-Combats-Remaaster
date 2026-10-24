@@ -135,6 +135,7 @@ async function openPlayer(browser, uid, hero) {
     if (op === 'track') { metas.set(uid, args); for (const p of pages) p.page.evaluate((all) => window.__sync(all), Object.fromEntries(metas)).catch(() => {}); return null; }
     return null;
   });
+  if (process.env.I18N) await page.addInitScript(`localStorage.setItem('pc-lang', 'en')`);
   await page.addInitScript(`window.__UID = ${JSON.stringify(uid)}; localStorage.setItem('pc-character-v3', ${JSON.stringify(JSON.stringify(hero))});`);
   await page.route('**/cdn.jsdelivr.net/**', (r) => r.abort());
   await page.addInitScript(INIT);
@@ -145,8 +146,24 @@ async function openPlayer(browser, uid, hero) {
   return p;
 }
 
+// I18N=1: тест идёт в английском режиме, по ходу ищем русский текст на обеих страницах (узлы и атрибуты)
+const leftovers = new Map();
+const scanRu = () => Promise.all(pages.map((p) => p.page.evaluate(() => {
+  if (!(window.PC && PC.app && PC.app.state && PC.app.state.char)) return [];
+  const CYR = /[А-Яа-яЁё]/, out = [];
+  const walk = (n) => {
+    if (n.nodeType === 3) { if (CYR.test(n.nodeValue)) out.push(n.nodeValue.trim()); return; }
+    if (n.nodeType !== 1 || n.hasAttribute('data-notr') || ['SCRIPT', 'STYLE'].includes(n.tagName)) return;
+    for (const a of ['title', 'placeholder', 'aria-label', 'alt']) { const v = n.getAttribute(a); if (v && CYR.test(v)) out.push(`[${a}] ${v}`); }
+    n.childNodes.forEach(walk);
+  };
+  walk(document.body);
+  return out;
+}).then((l) => l.forEach((x) => leftovers.set(x, p.uid)), () => {})));
+
 (async () => {
   await new Promise((r) => server.listen(0, r));
+  if (process.env.I18N) setInterval(scanRu, 300);
   gameRun = (await import(path.join(__dirname, '..', '..', '..', 'supabase', 'functions', 'game', 'ops.js'))).run;
   const browser = await chromium.launch({ executablePath: process.env.CHROMIUM || '/opt/pw-browsers/chromium' });
   let stage = 'старт';
@@ -161,7 +178,7 @@ async function openPlayer(browser, uid, hero) {
     await until(() => A.page.evaluate(() => window.PC && PC.presence && PC.presence.players.length === 2 && !!document.querySelector('[data-player="bbbbbbbb-0000-4000-8000-000000000002"]')), 15000, 'Бета в списке игроков у Альфы');
     await A.page.click('[data-player="bbbbbbbb-0000-4000-8000-000000000002"]');
     const card = await A.page.evaluate(() => document.querySelector('#modal-title').textContent + '|' + document.querySelector('#modal-body').textContent);
-    assert.ok(/Бета/.test(card) && /уровень/.test(card) && /Здоровье/.test(card), `карточка игрока с характеристиками: ${card}`);
+    assert.ok(/Бета/.test(card) && /(уровень|Level)/.test(card) && /(Здоровье|Health)/.test(card), `карточка игрока с характеристиками: ${card}`);
     console.log('ok   тап по игроку открывает карточку с уровнем и характеристиками');
 
     stage = 'приглашение';
@@ -229,7 +246,7 @@ async function openPlayer(browser, uid, hero) {
     assert.strictEqual(a.gold, 1050); assert.strictEqual(b.gold, 950);
     assert.ok(!a.bag.some((x) => x && x.uid === sword.uid), 'меч не размножился');
     await until(() => A.page.evaluate(() => document.querySelector('#modal').hidden), 4000, 'окна закрылись');
-    const tt = await A.page.evaluate(() => window.__toasts.filter((t) => /Обмен завершён/.test(t)).length);
+    const tt = await A.page.evaluate(() => window.__toasts.filter((t) => /(Обмен завершён|Trade complete)/.test(t)).length);
     assert.strictEqual(tt, 1, 'итог показан один раз');
     console.log('ok   сделка завершена, вещи и золото у новых владельцев, окна закрыты');
     // уход с локации отменяет новый обмен
@@ -244,6 +261,12 @@ async function openPlayer(browser, uid, hero) {
     await until(() => B.page.evaluate(() => document.querySelector('#modal').hidden), 5000, 'окно у партнёра закрылось');
     console.log('ok   уход с локации отменяет обмен у обоих');
     assert.deepStrictEqual([A.errors, B.errors], [[], []], 'в страницах нет ошибок');
+    if (process.env.I18N) {
+      await scanRu();
+      console.log(`русских строк в английском режиме: ${leftovers.size}`);
+      for (const [x, who] of leftovers) if (!/^(Альфа|Бета)\b|\b(Альфа|Бета)$/.test(x)) console.log(`  ${JSON.stringify(x)} (${who.slice(0, 4)})`);
+      if (leftovers.size) process.exitCode = 1;
+    }
     console.log('\nвсе сквозные проверки обмена прошли');
   } catch (e) {
     console.error(`\nПРОВАЛ на этапе «${stage}»:`, e.message);

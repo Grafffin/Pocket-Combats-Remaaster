@@ -105,7 +105,7 @@
       for (const e of list) this.spawn(e.tpl, e.key);
       // напавший начинает бой с запасом агро: чтобы перетянуть монстра, остальным нужно его перебить
       if (this.players[0]) { this.players[0].opening = Math.round(this.baseHp * 0.1); this.tank = this.players[0]; }
-      this.say('poetry', this.rng.pick(data.haiku));
+      this.say('poetry', PC.i18n ? PC.i18n.tr(this.rng.pick(data.haiku)) : this.rng.pick(data.haiku));
       for (const f of this.fighters) {
         if (f.legendary.has('boneShield')) this.addShield(f, Math.round(f.maxHp * 0.15), 99, 'Костяной щит');
       }

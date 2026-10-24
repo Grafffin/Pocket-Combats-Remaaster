@@ -17,16 +17,30 @@
   const norm = (s) => s.replace(/\s+/g, ' ').trim();
   const esc = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 
-  // Ключ без {} — точное совпадение; с {} — шаблон, где {} — любой текст (его тоже переводим).
+  // Ключ без {} — точное совпадение; с {} — шаблон, где {} — любой текст (его тоже переводим, он может быть и пустым).
   // В английской части подстановки идут по порядку ({}), либо по номеру ({1}, {2}) — если порядок слов другой.
+  // Две подряд ({}{}) работают как одна: первая пустая, вторая забирает весь текст.
+  const BOUND = /(?<=[.!?])\s+(?=[А-ЯЁ«"(])/;   // граница предложений
   function add(obj) {
     for (const [k, v] of Object.entries(obj)) {
       const key = norm(k);
       if (!key.includes('{}')) { dict.set(key, v); continue; }
       const chunks = key.split('{}');
+      // «… до +7. {}»: после последней подстановки пробел необязателен (пустая подстановка, текст обрезан по краям)
+      const tail = chunks.length > 1 && chunks[chunks.length - 1] === '' && /\s$/.test(chunks[chunks.length - 2]);
+      if (tail) chunks[chunks.length - 2] = chunks[chunks.length - 2].replace(/\s+$/, '');
+      // подряд идущие {}{}: первая берёт число в начале (если оно есть), следующие — остальной текст («8» и « — их больше…»)
+      const rx = (cs) => {
+        const n = cs.length - 1;
+        let out = esc(cs[0]);
+        for (let i = 0; i < n; i++) out += (cs[i + 1] === '' && i + 1 < n ? '([+−-]?[\\d.,]*)' : '(.*?)') + esc(cs[i + 1]);
+        return out;
+      };
+      const src = tail ? `${rx(chunks.slice(0, -1))}(?:\\s(.*))?` : rx(chunks);
       pats.push({
-        re: new RegExp(`^${chunks.map(esc).join('(.+?)')}$`),
+        re: new RegExp(`^${src}$`),
         en: v, probe: chunks.reduce((a, b) => (b.length > a.length ? b : a), ''), lit: chunks.join('').length,
+        multi: BOUND.test(key),
       });
     }
     pats.sort((a, b) => b.lit - a.lit);   // конкретнее — раньше
@@ -35,27 +49,74 @@
 
   function fill(en, caps) {
     let i = 0;
-    return en.replace(/\{(\d*)\}/g, (_, n) => (n ? caps[Number(n) - 1] : caps[i++]) ?? '');
+    return en.replace(/\{(\d*)\}/g, (_, n) => (n ? caps[Number(n) - 1] : caps[i++]) ?? '').replace(/ {2,}/g, ' ').trim();
   }
 
-  const SEP = /( · |; |, | — |: | \/ | \| |\. )/;
+  // «меч» → «Sword» по записи «Меч» и наоборот: регистр первой буквы сохраняем
+  function caseVariant(core) {
+    const c = core[0], low = c === c.toLowerCase();
+    const alt = (low ? c.toUpperCase() : c.toLowerCase()) + core.slice(1);
+    const v = dict.get(alt);
+    if (v === undefined || !v) return v;
+    if (low) return /^[A-Z][a-z]/.test(v) ? v[0].toLowerCase() + v.slice(1) : v;
+    return v[0].toUpperCase() + v.slice(1);
+  }
+
+  // Разделители по убыванию «крупности»: режем по самому крупному из имеющихся, остальное разберёт рекурсия
+  const SEPS = [' · ', ' — ', '; ', ': ', ', ', ' / ', ' | '];
+  const CORE = /^([^А-Яа-яЁё]*)([А-Яа-яЁё][\s\S]*[А-Яа-яЁё][.!?…]?|[А-Яа-яЁё])([^А-Яа-яЁё]*)$/;
+  const quotes = (s) => s.replace(/«/g, '“').replace(/»/g, '”');
   function compute(core) {
-    const d = dict.get(core);
+    let d = dict.get(core);
     if (d !== undefined) return d;
+    d = caseVariant(core);
+    if (d !== undefined) return d;
+    const multi = BOUND.test(core);
     for (const p of pats) {
+      if (p.multi !== multi) continue;
       if (!core.includes(p.probe)) continue;
       const m = p.re.exec(core);
       if (m) return fill(p.en, m.slice(1).map(tr));
     }
-    // составной текст: «Атака · Защита», «Название: описание» — переводим части, разделители оставляем
-    const parts = core.split(SEP);
-    if (parts.length > 1) return parts.map((p, i) => (i % 2 ? p : tr(p))).join('');
-    // отдельные слова (названия вещей собираются из прилагательного и основы)
-    return core.replace(/[А-Яа-яЁё]+(?:-[А-Яа-яЁё]+)*/g, (w) => {
-      const x = dict.get(w) ?? dict.get(w.toLowerCase());
-      if (x !== undefined) return /^[А-ЯЁ]/.test(w) && /^[a-z]/.test(x) ? x[0].toUpperCase() + x.slice(1) : x;
-      return w;
-    });
+    // кавычки, скобки и значки по краям: «Проходи…», «✦ Гром небесный», «→ Лесная опушка»
+    const light = /^([«“"'✦★→←·•\s(\[]*)([\s\S]*?)([»”"')\]\s]*)$/.exec(core);
+    if (light && (light[1] || light[3]) && light[2]) return quotes(light[1]) + tr(light[2]) + quotes(light[3]);
+    // «Кузнец · Описание из двух предложений»: сначала крупные части
+    if (multi && core.includes(' · ')) return core.split(' · ').map(tr).join(' · ');
+    // несколько предложений: самые длинные подряд идущие группы, которые есть в словаре целиком, остальное — по одному
+    if (multi) {
+      const sent = core.split(BOUND), out = [];
+      for (let i = 0; i < sent.length;) {
+        let j = sent.length, hit;
+        for (; j > i + 1; j--) { hit = dict.get(sent.slice(i, j).join(' ')); if (hit !== undefined) break; }
+        if (j > i + 1 && hit !== undefined) { out.push(hit); i = j; } else { out.push(tr(sent[i])); i++; }
+      }
+      return out.join(' ');
+    }
+    // конец с точкой: «Камень заточки III.» → «Enhancement Stone III.»
+    if (/\.$/.test(core)) { const x = tr(core.slice(0, -1)); if (!CYR.test(x)) return `${x}.`; }
+    // составной текст: «Атака · Защита», «Название: описание» — переводим части, разделитель оставляем
+    for (const sep of SEPS) {
+      const parts = core.split(sep);
+      if (parts.length > 1) return parts.map(tr).join(sep);
+    }
+    // количество и приписки в конце: «Камень заточки I ×2», «Меч +3», «Зелье (5)»
+    const tailQ = /^([\s\S]*?[А-Яа-яЁёIVX])((?:\s*(?:[×xх]\s*\d[\d.,]*|[+−]\d[\d.,]*%?|\([^)]*\)|\d[\d.,]*\s*💰))+)$/.exec(core);
+    if (tailQ) { const x = tr(tailQ[1]); if (!CYR.test(x)) return x + tailQ[2]; }
+    // числа и знаки по краям: «+4 физическая атака», «Урон оружия +21»
+    const m = CORE.exec(core);
+    if (m && (m[1] || m[3])) return quotes(m[1]) + tr(m[2]) + quotes(m[3]);
+    // отдельные слова (названия вещей из прилагательного и основы): только если известны все слова, иначе не трогаем
+    const words = core.match(/[А-Яа-яЁё]+(?:-[А-Яа-яЁё]+)*/g) || [];
+    const known = words.map((w) => dict.get(w) ?? dict.get(w.toLowerCase()));
+    if (words.length && known.every((x) => x !== undefined)) {
+      let i = 0;
+      return core.replace(/[А-Яа-яЁё]+(?:-[А-Яа-яЁё]+)*/g, (w) => {
+        const x = known[i++];
+        return /^[А-ЯЁ]/.test(w) && /^[a-z]/.test(x) ? x[0].toUpperCase() + x.slice(1) : x;
+      }).replace(/\s{2,}/g, ' ');
+    }
+    return core;
   }
 
   // Перевод одной строки (с сохранением пробелов по краям); русский язык — строка как есть
@@ -133,6 +194,10 @@
     },
   };
 
+  if (lang === 'en' && typeof window !== 'undefined') {
+    // системные окна (confirm/alert) — не DOM, переводим сами
+    for (const k of ['confirm', 'alert']) { const orig = window[k].bind(window); window[k] = (m) => orig(tr(String(m))); }
+  }
   if (lang === 'en' && typeof document !== 'undefined') {
     // словари грузятся синхронно во время разбора страницы, до первого экрана
     for (const f of FILES) document.write(`<script src="js/lang/${f}"><\/script>`);
