@@ -127,7 +127,14 @@
     err.body = body;
     throw err;
   }
-  cloud.act = async function (op, args) {
+  // Действия идут строго по очереди: следующее уходит с версией героя, которую вернуло предыдущее
+  let queue = Promise.resolve();
+  cloud.act = function (op, args) {
+    const run = queue.then(() => act(op, args));
+    queue = run.catch(() => {});
+    return run;
+  };
+  async function act(op, args) {
     if (!auth.client || !auth.user) throw new Error('not_auth');
     if (cloud.status !== 'ok') await sync();
     if (cloud.status !== 'ok') throw new Error('offline');
@@ -145,11 +152,11 @@
     }
     if (res.rev !== meta.rev) {
       meta.rev = res.rev; meta.dirty = false; saveMeta();
-      if (res.char) app.adoptChar(res.char);
       if (app.stashApi && JSON.stringify(res.stash) !== JSON.stringify(app.stashApi.get())) app.stashApi.set(res.stash);
+      if (res.char) app.adoptChar(res.char); else if (app.state.char) app.applyRemote(null, res.stash);
     }
     return res.result;
-  };
+  }
 
   async function sync() {
     if (syncing || !auth.client || !auth.user) return;

@@ -185,7 +185,6 @@
   function done(res, okText, kind = 'good') {
     if (!res.ok) { f.flash = { kind: 'bad', text: res.reason }; app.render(); return false; }
     f.flash = { kind, text: okText };
-    app.save();
     app.render();
     return true;
   }
@@ -208,56 +207,70 @@
     const s = selected(c);
     if (a === 'card' && s) return PC.itemUI.openItem(c, s.item, s.slot ? 'equipped' : 'bag');
     if (a === 'to-world') return app.setTab('world');
+    // Действие считает сервер (или actions.js без сервера); пока ответ не пришёл, кнопки не нажимаются повторно
+    const go = (op, args, then) => {
+      if (f.busy) return;
+      f.busy = true;
+      app.act(op, args).then((r) => { f.busy = false; if (r.shown) return app.render(); then(r); });
+    };
     if (a === 'value') {
-      const r = I.rerollValue(data, c, f.uid, f.valueIdx, app.rng);
-      return done(r, r.ok ? `Значение: ${r.before} → ${r.after}` : '', r.ok && r.after >= r.before ? 'good' : 'neutral');
+      return go('rerollValue', { uid: f.uid, idx: f.valueIdx }, (r) =>
+        done(r, r.ok ? `Значение: ${r.before} → ${r.after}` : '', r.ok && r.after >= r.before ? 'good' : 'neutral'));
     }
     if (a === 'virtue') {
-      const r = I.rerollVirtue(data, c, f.uid, app.rng);
-      return done(r, r.ok ? `Знак: ${data.virtues[r.before].name} → ${data.virtues[r.after].name}` : '');
+      return go('rerollVirtue', { uid: f.uid }, (r) => done(r, r.ok ? `Знак: ${data.virtues[r.before].name} → ${data.virtues[r.after].name}` : ''));
     }
     if (a === 'enhance') {
       const info = I.enhanceInfo(data, s.item);
       if (info.fail === 'break' && !f.protect && !confirm('Без свитка защиты вещь может сломаться. Точить?')) return;
-      const r = I.enhance(data, c, f.uid, { protect: f.protect }, app.rng);
-      if (!r.ok) return done(r);
-      const text = {
-        success: `Успех! Теперь +${r.level}.${r.milestone ? ` ${r.milestone}` : ''}`,
-        fail: 'Неудача. Камень потрачен, вещь цела.',
-        down: `Неудача — заточка упала до +${r.level}.`,
-        protected: 'Неудача, но свиток защиты спас вещь.',
-        break: 'Металл не выдержал — вещь сломалась.',
-      }[r.outcome];
-      if (r.outcome === 'break') f.uid = null;
-      return done(r, text, r.outcome === 'success' ? 'good' : r.outcome === 'break' ? 'bad' : 'neutral');
+      return go('enhance', { uid: f.uid, protect: !!f.protect }, (r) => enhanced(r));
     }
     if (a === 'rank') {
-      const r = I.rankUp(data, c, f.uid, f.fodder);
+      const fodder = f.fodder;
       f.fodder = null;
-      return done(r, r.ok ? `Ранг повышен до ★${r.rank}.${r.virtue ? ` Вещь получила знак «${data.virtues[r.virtue].name}»!` : ''}` : '');
+      return go('rankUp', { uid: f.uid, fodder }, (r) =>
+        done(r, r.ok ? `Ранг повышен до ★${r.rank}.${r.virtue ? ` Вещь получила знак «${data.virtues[r.virtue].name}»!` : ''}` : ''));
     }
     if (a === 'inherit') {
-      const r = I.inherit(data, c, f.uid, f.donor);
+      const donor = f.donor;
       f.donor = null;
-      return done(r, 'Вложения перенесены.');
+      return go('inherit', { uid: f.uid, donor }, (r) => done(r, 'Вложения перенесены.'));
     }
     if (a === 'reroll') {
-      const r = I.rerollAffixes(data, c, f.uid, [...f.locks], app.rng);
-      if (r.ok) f.locks = new Set([...f.locks].map((_, i) => i)); // замкнутые теперь стоят первыми
-      return done(r, 'Свойства перекованы.');
+      const locks = [...f.locks];
+      return go('rerollAffixes', { uid: f.uid, locks }, (r) => {
+        if (r.ok) f.locks = new Set(locks.map((_, i) => i)); // замкнутые теперь стоят первыми
+        done(r, 'Свойства перекованы.');
+      });
     }
     if (a === 'requality') {
-      const r = I.requality(data, c, f.uid, app.rng);
-      return done(r, r.ok ? `Качество: ${r.before}% → ${r.after}%` : '', r.ok && r.after >= r.before ? 'good' : 'neutral');
+      return go('requality', { uid: f.uid }, (r) =>
+        done(r, r.ok ? `Качество: ${r.before}% → ${r.after}%` : '', r.ok && r.after >= r.before ? 'good' : 'neutral'));
     }
     if (a === 'craft') {
-      const r = I.craft(data, c, f.craftType, f.craftTier, app.rng);
-      if (!r.ok) return done(r);
-      r.item.fresh = true;
-      done(r, `Выковано: ${nameHtml(r.item)}`);
-      PC.itemUI.openItem(c, r.item, 'bag');
+      return go('craft', { type: f.craftType, tier: f.craftTier }, (r) => {
+        if (!r.ok) return done(r);
+        const made = I.findItem(app.state.char, r.item.uid);
+        const item = made ? made.item : r.item;
+        item.fresh = true;
+        done(r, `Выковано: ${nameHtml(item)}`);
+        PC.itemUI.openItem(app.state.char, item, 'bag');
+      });
     }
   });
+
+  function enhanced(r) {
+    if (!r.ok) return done(r);
+    const text = {
+      success: `Успех! Теперь +${r.level}.${r.milestone ? ` ${r.milestone}` : ''}`,
+      fail: 'Неудача. Камень потрачен, вещь цела.',
+      down: `Неудача — заточка упала до +${r.level}.`,
+      protected: 'Неудача, но свиток защиты спас вещь.',
+      break: 'Металл не выдержал — вещь сломалась.',
+    }[r.outcome];
+    if (r.outcome === 'break') f.uid = null;
+    return done(r, text, r.outcome === 'success' ? 'good' : r.outcome === 'break' ? 'bad' : 'neutral');
+  }
 
   $('#tab-forge').addEventListener('change', (e) => {
     if (e.target.matches('[data-lock]')) {

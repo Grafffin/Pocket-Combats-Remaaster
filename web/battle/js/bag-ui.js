@@ -8,7 +8,6 @@
   const { tile, emptyTile, nameHtml, openItem, isUpgrade } = PC.itemUI;
   const app = PC.app;
 
-  const SORT_KIND = { weapon: 0, offhand: 1, head: 2, body: 3, hands: 4, feet: 5, belt: 6, amulet: 7, ring: 8 };
   const MATS = ['hp_potion_1', 'hp_potion_2', 'hp_potion_3', 'mp_potion_1', 'mp_potion_2', 'mp_potion_3', 'elixir_power', 'elixir_fortune',
     'stone1', 'stone2', 'stone3', 'protect', 'reroll', 'ore', 'leather', 'essence'];
 
@@ -26,6 +25,7 @@
       PC.progression.fixAffixLevels(stash.items);
       stashStore.save(stash);
     },
+    save: saveStash,
   };
 
   // ---------- Вкладка «Сумка» ----------
@@ -168,15 +168,17 @@
   function drop(fromRef, toRef) {
     const c = app.state.char;
     const from = parse(fromRef), to = parse(toRef);
-    let res = { ok: true };
     if (to.kind === 'trash') return salvageAsk(c.bag[from.index]);
-    if (from.kind === 'bag' && to.kind === 'bag') I.moveInBag(c, from.index, to.index);
-    else if (from.kind === 'bag' && to.kind === 'slot') res = I.equip(data, c, from.index, to.slot);
-    else if (from.kind === 'slot' && to.kind === 'bag') res = c.bag[to.index] ? I.equip(data, c, to.index, from.slot) : I.unequip(c, from.slot, to.index);
-    else if (from.kind === 'slot' && to.kind === 'slot') [c.equipment[from.slot], c.equipment[to.slot]] = [c.equipment[to.slot], c.equipment[from.slot]];
-    if (!res.ok) return toast(res.reason || 'Не получилось', 'bad');
-    app.save();
-    app.render();
+    let op = null;
+    if (from.kind === 'bag' && to.kind === 'bag') op = ['move', { from: from.index, to: to.index }];
+    else if (from.kind === 'bag' && to.kind === 'slot') op = ['equip', { index: from.index, slot: to.slot }];
+    else if (from.kind === 'slot' && to.kind === 'bag') op = c.bag[to.index] ? ['equip', { index: to.index, slot: from.slot }] : ['unequip', { slot: from.slot, index: to.index }];
+    else if (from.kind === 'slot' && to.kind === 'slot') op = ['swapSlots', { a: from.slot, b: to.slot }];
+    if (!op) return;
+    app.act(...op).then((res) => {
+      if (!res.ok && !res.shown) toast(res.reason || 'Не получилось', 'bad');
+      app.render();
+    });
   }
 
   // ---------- Окно вещи из сумки ----------
@@ -194,15 +196,14 @@
       : `<button class="btn danger" data-act="salvage" ${item.locked ? 'disabled' : ''}>Разобрать</button>${village ? '<button class="btn" data-act="forge">В кузницу</button>' : ''}
          <button class="btn primary" data-act="equip" ${I.canEquip(data, c, item).ok ? '' : 'disabled'}>Надеть</button>`);
     openItem(c, item, where, actions(), (act) => {
-      let res = { ok: true };
-      if (act === 'equip') res = I.equip(data, c, r.index);
-      if (act === 'unequip') res = I.unequip(c, r.slot);
       if (act === 'forge') { closeModal(); app.setTab('forge', { uid: item.uid }); return; }
       if (act === 'salvage') { salvageAsk(item); return; }
-      if (!res.ok) return toast(res.reason || 'Не получилось', 'bad');
-      app.save();
-      closeModal();
-      app.render();
+      if (act !== 'equip' && act !== 'unequip') return;
+      app.act(act, act === 'equip' ? { index: r.index } : { slot: r.slot }).then((res) => {
+        if (!res.ok) return res.shown || toast(res.reason || 'Не получилось', 'bad');
+        closeModal();
+        app.render();
+      });
     });
   }
 
@@ -221,12 +222,12 @@
       ${risky ? '<p class="req">Это ценная вещь — точно разобрать?</p>' : ''}
       <div class="row-actions"><button class="btn" data-mclose>Отмена</button><button class="btn danger" data-act="yes">Разобрать</button></div>`, (e) => {
       if (!e.target.closest('[data-act="yes"]')) return;
-      const res = I.salvage(data, c, item.uid, app.rng);
       closeModal();
-      if (!res.ok) return toast(res.reason, 'bad');
-      toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}`, 'good');
-      app.save();
-      app.render();
+      app.act('salvage', { uid: item.uid }).then((res) => {
+        if (!res.ok) return res.shown || toast(res.reason, 'bad');
+        toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}`, 'good');
+        app.render();
+      });
     });
   }
 
@@ -240,30 +241,19 @@
     openModal('Разобрать оптом', `<p class="meta">Заточенные, со звёздами и запертые вещи не трогаются.</p><div class="list">${opts}</div>`, (e) => {
       const b = e.target.closest('[data-mass]');
       if (!b || b.disabled) return;
-      const got = {};
-      const list = pick(Number(b.dataset.mass));
-      for (const it of list) {
-        const r = I.salvage(data, c, it.uid, app.rng);
-        for (const [k, v] of Object.entries(r.got || {})) got[k] = (got[k] || 0) + v;
-      }
       closeModal();
-      toast(`Разобрано ${list.length}: ${Object.entries(got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}`, 'good');
-      app.save();
-      app.render();
+      app.act('salvageMass', { rarity: Number(b.dataset.mass) }).then((r) => {
+        if (!r.ok) return;
+        toast(`Разобрано ${r.count}: ${Object.entries(r.got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}`, 'good');
+        app.render();
+      });
     });
   }
 
   $('#tab-bag').addEventListener('click', (e) => {
     const b = e.target.closest('[data-act]');
     if (!b) return;
-    const c = app.state.char;
-    if (b.dataset.act === 'sort') {
-      const list = c.bag.filter(Boolean).sort((x, y) =>
-        (SORT_KIND[data.types[x.type].kind] - SORT_KIND[data.types[y.type].kind]) || (y.rarity - x.rarity) || (I.power(data, y) - I.power(data, x)));
-      c.bag = [...list, ...new Array(c.bag.length - list.length).fill(null)];
-      app.save();
-      app.render();
-    }
+    if (b.dataset.act === 'sort') app.act('sortBag').then(() => app.render());
     if (b.dataset.act === 'mass') massSalvage();
   });
 
@@ -344,10 +334,12 @@
         return openBuyer();
       }
       if (e.target.closest('[data-act="sell"]')) {
-        const r = E.sellMany(data, c, [...sell.marked]);
+        const uids = [...sell.marked];
         sell.marked.clear();
-        app.save(); app.render();
-        openBuyer(`Продано ${r.count} шт за ${fmtNum(r.total)} 💰`);
+        app.act('sell', { uids }).then((r) => {
+          app.render();
+          if (r.ok) openBuyer(`Продано ${r.count} шт за ${fmtNum(r.total)} 💰`); else openBuyer();
+        });
       }
     }, { onClose: () => { pressTap = null; reopen = null; } });
   }
@@ -367,22 +359,12 @@
     reopen = () => openStash();
     pressTap = (ref) => {
       const r = parse(ref);
-      if (r.kind === 'stash') {
-        const it = stash.items[r.index];
-        if (!it) return;
-        if (I.bagAdd(c, it) < 0) return toast('Сумка полна', 'bad');
-        stash.items[r.index] = null;
-      } else {
-        const it = c.bag[r.index];
-        if (!it) return;
-        const pageFree = stash.items.findIndex((x, i) => !x && i >= from && i < from + STASH_PAGE);
-        const j = pageFree >= 0 ? pageFree : stash.items.indexOf(null);
-        if (j < 0) return toast('Сундук полон', 'bad');
-        stash.items[j] = it;
-        c.bag[r.index] = null;
-      }
-      saveStash(); app.save(); app.render();
-      openStash();
+      const req = r.kind === 'stash' ? app.act('stashTake', { index: r.index }) : app.act('stashPut', { index: r.index, page: stashPage });
+      req.then((res) => {
+        if (!res.ok && !res.shown) toast(res.reason, 'bad');
+        app.render();
+        openStash();
+      });
     };
     openModal(data.npcs.stash.name, `${msg ? `<div class="flash good">${msg}</div>` : ''}
       <div class="bag-tools" style="padding:0"><b>Сундук</b><span class="meta grow">${used} / ${STASH_SIZE} · общий для всех героев</span>
@@ -395,11 +377,7 @@
       const pg = e.target.closest('[data-page]');
       if (pg) { stashPage = Number(pg.dataset.page); return openStash(); }
       if (e.target.closest('[data-act="sort-stash"]')) {
-        const list = stash.items.filter(Boolean).sort((x, y) =>
-          (SORT_KIND[data.types[x.type].kind] - SORT_KIND[data.types[y.type].kind]) || (y.rarity - x.rarity) || (I.power(data, y) - I.power(data, x)));
-        stash.items = [...list, ...new Array(STASH_SIZE - list.length).fill(null)];
-        saveStash();
-        openStash();
+        app.act('stashSort').then(() => openStash());
       }
     }, { onClose: () => { pressTap = null; reopen = null; } });
   }

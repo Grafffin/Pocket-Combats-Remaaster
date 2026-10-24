@@ -19,6 +19,11 @@
     create: { nick: '', gender: 'm', job: 'warrior' },
   };
 
+  const ACT_ERRORS = {
+    not_in_village: 'Это можно только в деревне', bad_args: 'Не получилось', offline: 'Нет связи с сервером',
+    not_saved: 'Нет связи с сервером', not_auth: 'Нужно войти в игру', stale: 'Герой обновлён с другого устройства',
+    version: 'Вышла новая версия игры', server: 'Ошибка сервера, попробуйте ещё раз',
+  };
   const app = {
     state, rng,
     tabs: {},
@@ -31,6 +36,30 @@
       state.pending = {}; state.fight = null;
       if (app.stashApi) app.stashApi.set(remoteStash);
       start();
+    },
+    // Действие над героем из actions.js. Если серверная функция выложена — считает сервер (его случайность,
+    // его проверки), иначе выполняется тут же. Всегда отдаёт результат { ok, reason, ... }, ошибки — тостом.
+    async act(op, args = {}) {
+      if (PC.cloud && PC.cloud.server) {
+        try { return (await PC.cloud.act(op, args)) || { ok: true }; } catch (e) {
+          const reason = ACT_ERRORS[e.message] || 'Не получилось, попробуйте ещё раз';
+          if (e.message !== 'version') toast(reason, 'bad');
+          return { ok: false, reason, shown: true };
+        }
+      }
+      const stash = app.stashApi ? app.stashApi.get() : null;
+      const S = { char: state.char, stash };
+      let r;
+      try { r = PC.actions.list[op](S, args, { now: Date.now(), rng }) || { ok: true }; } catch (e) {
+        if (!(e instanceof PC.actions.ActionError)) throw e;
+        const reason = ACT_ERRORS[e.message] || 'Не получилось';
+        toast(reason, 'bad');
+        return { ok: false, reason, shown: true };
+      }
+      state.char = S.char;
+      if (S.char) app.save(); else { charStore.clear(); if (PC.cloud) PC.cloud.touch(); }
+      if (app.stashApi && S.stash) app.stashApi.save();
+      return r;
     },
     // Герой, изменённый сервером (рынок): заменяем без перезапуска экрана.
     adoptChar(remote) {
@@ -75,11 +104,14 @@
   $('#nick').addEventListener('keydown', (e) => { if (e.key === 'Enter') createCharacter(); });
   $('#create-btn').addEventListener('click', createCharacter);
 
-  function createCharacter() {
+  async function createCharacter() {
     const nick = $('#nick').value.trim().slice(0, 16);
     if (!nick) { $('#nick').focus(); $('#nick').classList.add('err'); return; }
-    state.char = P.newCharacter(data, { nick, gender: state.create.gender, job: state.create.job });
-    app.save();
+    const btn = $('#create-btn');
+    btn.disabled = true;
+    const r = await app.act('create', { nick, gender: state.create.gender, job: state.create.job });
+    btn.disabled = false;
+    if (!r.ok) { if (!r.shown) toast(r.reason, 'bad'); return; }
     setTab('world');
   }
 
@@ -142,12 +174,12 @@
       const b = e.target.closest('[data-diff]');
       if (!b || b.disabled) return;
       if (state.fight && !$('#battle').hidden) return toast('Нельзя менять сложность в бою', 'bad');
-      const r = W.setDiff(data, c, Number(b.dataset.diff));
-      if (!r.ok) return toast(r.reason, 'bad');
-      app.save();
-      state.worldSig = null;
-      closeModal();
-      render();
+      app.act('setDiff', { d: Number(b.dataset.diff) }).then((r) => {
+        if (!r.ok) return r.shown || toast(r.reason, 'bad');
+        state.worldSig = null;
+        closeModal();
+        render();
+      });
       toast(`Сложность: ${data.difficulties[c.difficulty].name}`);
     });
   }
@@ -376,7 +408,7 @@
       return;
     }
     if (act.dataset.act === 'cancel-travel') { W.cancelTravel(c); app.save(); render(); }
-    if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { Object.assign(c.settings, patch); app.save(); render(); });
+    if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { app.act('settings', { patch }).then(() => render()); });
     if (act.dataset.act === 'hunt') {
       c.settings.autoHunt = !c.settings.autoHunt;
       if (c.settings.autoHunt) c.settings.autoBattle = true;
@@ -740,10 +772,12 @@
     openModal(data.npcs.shop.name, `${npcHead('shop')}${msg ? `<div class="flash good">${msg}</div>` : ''}<p class="meta">У вас ${fmtNum(c.gold)} 💰</p>${rows}`, (e) => {
       const b = e.target.closest('[data-buy]');
       if (!b || b.disabled) return;
-      const res = E.buy(data, c, b.dataset.buy, Number(b.dataset.n));
-      if (!res.ok) return toast(res.reason, 'bad');
-      app.save(); render();
-      openShop(`Куплено: ${data.materials[b.dataset.buy].name} ×${b.dataset.n}`);
+      b.disabled = true;
+      app.act('buy', { id: b.dataset.buy, n: Number(b.dataset.n) }).then((res) => {
+        if (!res.ok) { b.disabled = false; return res.shown || toast(res.reason, 'bad'); }
+        render();
+        openShop(`Куплено: ${data.materials[b.dataset.buy].name} ×${b.dataset.n}`);
+      });
     });
   }
 
@@ -764,10 +798,12 @@
       <p class="meta">Материалы падают с монстров своих зон. Нажмите на материал, чтобы узнать, где его искать.</p>${rows}`, (e) => {
       const b = e.target.closest('[data-brew]');
       if (!b || b.disabled) return;
-      const r = E.brew(data, c, Number(b.dataset.brew), Number(b.dataset.n));
-      if (!r.ok) return toast(r.reason, 'bad');
-      app.save(); render();
-      openAlchemist(`Сварено: ${data.materials[r.out].name} ×${r.count}`);
+      b.disabled = true;
+      app.act('brew', { i: Number(b.dataset.brew), n: Number(b.dataset.n) }).then((r) => {
+        if (!r.ok) { b.disabled = false; return r.shown || toast(r.reason, 'bad'); }
+        render();
+        openAlchemist(`Сварено: ${data.materials[r.out].name} ×${r.count}`);
+      });
     });
   }
 
@@ -990,36 +1026,38 @@
     const act = e.target.closest('[data-act]');
     if (act) {
       if (act.dataset.act === 'stats-reset') { state.pending = {}; return render(); }
-      if (act.dataset.act === 'stats-save') { P.allocate(c, state.pending); state.pending = {}; app.save(); return render(); }
+      if (act.dataset.act === 'stats-save') {
+        const alloc = state.pending;
+        state.pending = {};
+        app.act('allocate', { alloc }).then(() => render());
+        return;
+      }
       if (act.dataset.act === 'reset') {
         if (!confirm(`Удалить ${c.nick} навсегда? Уровень, вещи и золото пропадут. Сундук сохранится.`)) return;
-        charStore.clear();
-        state.char = null;
-        if (PC.cloud) PC.cloud.touch();
-        state.pending = {};
-        state.create = { nick: '', gender: 'm', job: 'warrior' };
-        renderCreate();
-        show('create');
+        app.act('remove').then((r) => {
+          if (!r.ok) return;
+          state.char = null;
+          state.pending = {};
+          state.create = { nick: '', gender: 'm', job: 'warrior' };
+          renderCreate();
+          show('create');
+        });
         return;
       }
     }
     const learn = e.target.closest('[data-learn]');
-    if (learn && !learn.disabled) { const r = P.learnSkill(data, c, learn.dataset.learn); if (!r.ok) toast(r.reason, 'bad'); app.save(); return render(); }
+    const done = (r) => { if (!r.ok && !r.shown) toast(r.reason, 'bad'); render(); };
+    if (learn && !learn.disabled) { app.act('learnSkill', { id: learn.dataset.learn }).then(done); return; }
     const pas = e.target.closest('[data-passive]');
-    if (pas && !pas.disabled) { const r = P.learnPassive(data, c, pas.dataset.passive); if (!r.ok) toast(r.reason, 'bad'); app.save(); return render(); }
+    if (pas && !pas.disabled) { app.act('learnPassive', { id: pas.dataset.passive }).then(done); return; }
     const slotTog = e.target.closest('[data-slot-toggle]');
     if (slotTog) {
-      const id = slotTog.dataset.slotToggle;
-      if (c.slots.includes(id)) c.slots = c.slots.filter((x) => x !== id);
-      else if (c.slots.length < data.SKILL_SLOTS) c.slots.push(id);
-      else return toast(`Все ${data.SKILL_SLOTS} ячейки заняты — сначала уберите умение`, 'bad');
-      app.save(); return render();
+      app.act('slotToggle', { id: slotTog.dataset.slotToggle }).then(done);
+      return;
     }
     const left = e.target.closest('[data-slot-left]');
     if (left) {
-      const i = Number(left.dataset.slotLeft);
-      [c.slots[i - 1], c.slots[i]] = [c.slots[i], c.slots[i - 1]];
-      app.save(); render();
+      app.act('slotLeft', { i: Number(left.dataset.slotLeft) }).then(done);
     }
   });
 

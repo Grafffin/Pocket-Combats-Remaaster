@@ -8,10 +8,16 @@ const fail = (code) => { throw new GameError(code); };
 
 // Каждая операция получает { char, stash } (можно менять на месте), аргументы клиента и ctx { now, rng },
 // возвращает результат для клиента. Ошибка игрока — fail('код').
+// Действия вне боя — общий с клиентом список web/battle/js/actions.js.
 export const ops = {
   ping: () => ({ build: G().BUILD }),
   load: () => ({}),
 };
+for (const [name, fn] of Object.entries(G().actions.list)) {
+  ops[name] = (S, args, ctx) => {
+    try { return fn(S, args, ctx); } catch (e) { if (e instanceof G().actions.ActionError) fail(e.message); throw e; }
+  };
+}
 export const READONLY = new Set(['ping', 'load']);
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
