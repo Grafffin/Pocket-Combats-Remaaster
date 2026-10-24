@@ -51,6 +51,11 @@ const tradeIo0 = {
     return data;
   },
   async create(a: string, b: string, loc: string) {
+    // Зависший обмен (без правок дольше TTL) освобождает игроков: закрываем его сами, не ждём срока из SQL (миграция 0017 держит 15 минут)
+    const stale = new Date(Date.now() - PC.trade.T.TTL).toISOString();
+    for (const col of ['a', 'b']) {
+      await db.from('game_trades').update({ state: 'cancel', ok_a: false, ok_b: false }).eq('state', 'open').lt('updated_at', stale).in(col, [a, b]);
+    }
     const { data, error } = await db.rpc('trade_create', { p_a: a, p_b: b, p_loc: loc });
     if (error) {
       if (/busy/.test(error.message)) throw new PC.trade.TradeError('busy');
