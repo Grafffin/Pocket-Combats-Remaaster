@@ -949,3 +949,12 @@ p.bag-expand { text-align: center; margin: 0; }
 .trade-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
 .trade-banner { position: absolute; left: 10px; right: 10px; bottom: calc(132px + env(safe-area-inset-bottom)); z-index: 60; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #1d2130; border: 1px solid var(--accent, #e8c36a); box-shadow: 0 6px 22px rgba(0, 0, 0, .6); }
 .trade-banner span { flex: 1; font-size: 14px; }
+
+/* Счётчик кадров */
+#fps { position: fixed; top: calc(2px + env(safe-area-inset-top)); right: 4px; z-index: 300; padding: 1px 6px; border-radius: 6px; font: 600 11px/16px ui-monospace, monospace; background: rgba(0, 0, 0, .55); color: #9fe39f; pointer-events: none; }
+#fps.mid { color: #e8c36a; }
+#fps.low { color: #ff7a7a; }
+
+/* Кузница и сумки в окнах: десятки вещей сразу — вращающиеся рамки и свечение редких вещей не анимируем (роняли fps) */
+.picker .tile, .picker .tile::before, .picker .tile::after, .modal-grid .tile, .modal-grid .tile::before { animation: none !important; }
+.picker .tile::before, .modal-grid .tile::before { filter: none !important; }

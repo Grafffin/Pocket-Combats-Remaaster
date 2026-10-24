@@ -25,7 +25,7 @@ function world() {
     async hero(uid) { const h = heroes.get(uid); return h ? clone(h) : null; },
     async trade(id) { const t = trades.get(id); return t ? clone(t) : null; },
     async create(a, b, loc) {
-      for (const t of trades.values()) if (t.state === 'open' && now - Date.parse(t.updated_at) < 15 * 60000 && [t.a, t.b].some((x) => x === a || x === b)) throw new TradeError('busy');
+      for (const t of trades.values()) if (t.state === 'open' && now - Date.parse(t.updated_at) < 2 * 60000 && [t.a, t.b].some((x) => x === a || x === b)) throw new TradeError('busy');
       const t = { id: `10000000-0000-4000-8000-${String(++seq).padStart(12, '0')}`, a, b, loc, state: 'open', accepted: false, ver: 0, offer_a: { items: [], gold: 0 }, offer_b: { items: [], gold: 0 }, ok_a: false, ok_b: false, claimed_a: false, claimed_b: false, updated_at: new Date(now).toISOString() };
       trades.set(t.id, t);
       return clone(t);
@@ -221,7 +221,7 @@ function ledger(w) {
     const id = await open(w);
     await w.call(A, 'tradeOffer', { id, items: [{ uid: it.uid }], gold: 50 });
     await w.expect('open', A, 'tradeClaim', { id }, 'сбор из открытой сделки');
-    w.tick(16 * 60000);
+    w.tick(3 * 60000);
     await w.expect('closed', B, 'tradeOffer', { id, items: [], gold: 1 }, 'правка устаревшей');
     await w.call(A, 'tradeClaim', { id });
     assert.strictEqual(w.trades.get(id).state, 'cancel');

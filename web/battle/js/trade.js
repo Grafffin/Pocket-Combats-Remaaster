@@ -7,7 +7,7 @@
   const PC = root.PC || (root.PC = {});
   const D = () => PC.data, I = () => PC.items, P = () => PC.progression;
 
-  const T = { SLOTS: 8, MAX_GOLD: 1e9, TTL: 15 * 60000 };
+  const T = { SLOTS: 8, MAX_GOLD: 1e9, TTL: 2 * 60000 };
   const OPS = ['tradeOpen', 'tradeAccept', 'tradeCancel', 'tradeOffer', 'tradeUnconfirm', 'tradeConfirm', 'tradeClaim'];
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
