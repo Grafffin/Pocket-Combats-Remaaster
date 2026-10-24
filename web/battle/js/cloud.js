@@ -126,6 +126,7 @@
   // Операция над героем в серверной функции game (docs/SERVER_AUTHORITY.md): сервер сам применяет действие
   // со своей случайностью и возвращает нового героя. cloud.server — функция выложена и отвечает.
   cloud.server = false;
+  cloud.trades = false;   // таблица обменов game_trades есть (миграция 0017): в карточке игрока появляется «Обмен»
   cloud.fights = false;   // таблица боёв game_fights есть: награды за бои тоже считает сервер
   async function invoke(op, args, rev) {
     const { data: res, error } = await auth.client.functions.invoke('game', { body: { op, args, rev, v: PC.BUILD } });
@@ -195,7 +196,7 @@
     syncing = true;
     // сначала узнаём, выложен ли сервер: от этого зависит, можно ли вообще писать героя с клиента
     if (!cloud.server) {
-      try { const r = await invoke('ping', {}); cloud.server = true; cloud.fights = !!(r && r.result && r.result.fights); } catch (e) { cloud.server = false; }
+      try { const r = await invoke('ping', {}); cloud.server = true; cloud.fights = !!(r && r.result && r.result.fights); cloud.trades = !!(r && r.result && r.result.trades); } catch (e) { cloud.server = false; }
     }
     try { await pull(false); } catch (e) { fail(e); } finally { syncing = false; }
   }

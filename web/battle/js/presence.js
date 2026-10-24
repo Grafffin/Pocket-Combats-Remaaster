@@ -10,7 +10,14 @@
   let channel = null, key = null;
 
   function meta(c) {
-    return { id: auth.user.id, nick: c.nick, level: c.level, job: c.job, busy: !$('#battle').hidden };
+    // st и score — для карточки игрока (только показ, обмен от них не зависит)
+    let st = null, score = 0;
+    try {
+      const s = PC.stats.compute(PC.data, c);
+      st = { hp: s.maxHp, atk: s.atk, matk: s.matk, def: s.def, mdef: s.mdef, speed: s.speed, crit: Math.round(s.crit) };
+      score = Math.round(PC.stats.combatScore(s));
+    } catch (e) { /* без характеристик карточка проще */ }
+    return { id: auth.user.id, nick: c.nick, level: c.level, job: c.job, busy: !$('#battle').hidden, st, score };
   }
 
   function collect() {
@@ -43,7 +50,7 @@
     const list = pres.players.slice(0, SHOW).map((p) => {
       const me = p.id === auth.user.id;
       const cls = PC.data.classes[p.job];
-      return `<div class="player${me ? ' me' : ''}${p.busy ? ' busy' : ''}"><b>${esc(p.nick)}</b><span class="meta">${cls ? cls.title : ''} · ${p.level} ур.${p.busy ? ' · в бою' : ''}</span></div>`;
+      return `<div class="player tap${me ? ' me' : ''}${p.busy ? ' busy' : ''}" data-player="${esc(p.id)}"><b>${esc(p.nick)}</b><span class="meta">${cls ? cls.title : ''} · ${p.level} ур.${p.busy ? ' · в бою' : ''}</span></div>`;
     }).join('');
     const more = pres.players.length > SHOW ? `<p class="hint">и ещё ${pres.players.length - SHOW}</p>` : '';
     return `<div class="card section" id="players-card"><h3>Игроки здесь <span class="note">${pres.players.length}</span></h3>

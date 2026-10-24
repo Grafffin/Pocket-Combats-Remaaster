@@ -105,6 +105,8 @@ node web/battle/tools/lockstep-stress.js 12       # 2–10 клиентов, з�
 node web/battle/tools/server-test.js              # операции сервера на игровом коде, подделки
 NODE_PATH=$(npm root -g) node web/battle/tools/e2e-coop.js   # сквозной тест в браузере (Playwright, Chromium)
 SERVER=1 NODE_PATH=$(npm root -g) node web/battle/tools/e2e-coop.js   # то же с подставной функцией game
+node web/battle/tools/trade-test.js               # обмен между игроками: мошеннические схемы (в CI)
+NODE_PATH=$(npm root -g) node web/battle/tools/e2e-trade.js   # обмен в браузере: карточка игрока → сделка → итог
 node web/battle/tools/server-smoke.js <версия>    # живой Supabase; только в Actions после деплоя
 node web/battle/tools/sim.js | compare.js | uniques.js [боёв] [фильтр]   # баланс
 node web/battle/tools/armor.js [боёв] [--variants] [--acc]   # материалы брони по уровням 5…35
