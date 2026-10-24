@@ -81,11 +81,12 @@
   }
 
   // Обработать наступившие тики: возродить монстров, вызвать босса
-  function update(data, char, now, rng) {
+  // players — число игроков на локации, если его знают снаружи (сервер берёт его у клиента)
+  function update(data, char, now, rng, players) {
     const tick = tickOf(now);
     const loc = here(data, char);
     const st = locState(data, char, char.location, rng);
-    if (!loc.safe) resize(loc, char.location, st, playersHere(char));
+    if (!loc.safe) resize(loc, char.location, st, players || playersHere(char));
     // Защита от сохранений с другой длиной тика: ничего не может ждать дольше положенного
     if ((char.restTick || 0) > tick + 1) char.restTick = tick + 1;
     for (const m of st.mobs) if (m.deadUntil != null && m.deadUntil > tick + RESPAWN_TICKS) m.deadUntil = tick + RESPAWN_TICKS;
@@ -103,6 +104,27 @@
       st.boss = { uid: newUid(), id: loc.boss[0], level: loc.boss[1], deadUntil: null, boss: true };
     }
     return st;
+  }
+
+  // Наложить общее состояние слотов (строки world_mobs: slot, cycle, dead_until, busy_until) на монстров локации героя.
+  // Отстающие от героя слоты отдаются в push. mine — uid монстра, с которым герой сейчас в бою (его «занят» не трогаем).
+  function applyShared(data, char, locId, rows, now, mine, push) {
+    const loc = data.locations[locId], st = char.world && char.world[locId];
+    if (!st || !loc || loc.safe) return;
+    const tick = tickOf(now);
+    const byslot = {};
+    for (const r of rows) byslot[r.slot] = r;
+    st.mobs.forEach((m, i) => {
+      const r = byslot[m.slot];
+      if (!r) return;
+      if (r.cycle > m.cycle) { m = st.mobs[i] = rollMob(loc, locId, m.slot, r.cycle); }
+      else if (r.cycle < m.cycle) { if (push) push(m, { dead_until: m.deadUntil, busy_until: m.busy ? (m.busySince || tick) + BUSY_TICKS : null }); return; }
+      if (r.dead_until != null && m.deadUntil == null) { m.deadUntil = Number(r.dead_until); m.busy = false; }
+      if (m.deadUntil == null && m.uid !== mine) {
+        if (r.busy_until != null && Number(r.busy_until) > tick) { m.busy = true; m.busySince = Number(r.busy_until) - BUSY_TICKS; }
+        else m.busy = false;
+      }
+    });
   }
 
   const restLeft = (char, now) => Math.max(0, Math.min(TICK_MS, tickStart(char.restTick || 0) - now));
@@ -203,7 +225,7 @@
 
   PC.world = {
     TICK_MS, RESPAWN_TICKS, BUSY_TICKS, POOL_PER_PLAYER, poolSize, playersHere, releaseAll, diffOf, diffUnlocked, setDiff, finalZone, tickOf, tickStart, msToNextTick,
-    here, monsterLevel, hashStr, rollMob, locState, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
+    here, monsterLevel, hashStr, rollMob, locState, applyShared, update, restLeft, canAttack, findMob, aliveMobs, engage, disengage, pickForAutoHunt,
     startTravel, cancelTravel, travelProgress, completeTravel,
   };
   if (typeof module !== 'undefined') module.exports = PC;

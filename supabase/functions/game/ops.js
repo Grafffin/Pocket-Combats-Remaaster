@@ -32,6 +32,10 @@ export function run(op, args, row, ctx) {
     stash: row ? clone(row.stash) : null,
   };
   const before = JSON.stringify(state);
-  const result = fn(state, args || {}, ctx) || {};
-  return { char: state.char, stash: state.stash, result, changed: !READONLY.has(op) && JSON.stringify(state) !== before };
+  // изменения общих монстров (world.js → PC.worldSync.push) копятся и пишутся в world_mobs после записи героя
+  const world = [], prev = PC.worldSync;
+  PC.worldSync = { push: (loc, m, patch) => world.push({ loc, slot: m.slot, cycle: m.cycle, dead: patch.dead_until ?? null, busy: patch.busy_until ?? null }) };
+  let result;
+  try { result = fn(state, args || {}, ctx) || {}; } finally { PC.worldSync = prev; }
+  return { char: state.char, stash: state.stash, result, world, changed: !READONLY.has(op) && JSON.stringify(state) !== before };
 }

@@ -28,6 +28,7 @@ async function fightsReady() {
   return fightsOk;
 }
 const FIGHT_OPS = new Set(['fightJoin', 'fightEnd']);
+const LOC = /^[a-z0-9_]{1,40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 // Проверенный сервером авторизации токен помним несколько минут: иначе каждое действие ждёт лишний запрос
@@ -66,9 +67,12 @@ Deno.serve(async (req) => {
 
     // Герой и запись боя читаются одновременно
     const fightId = FIGHT_OPS.has(op) && args && typeof args.id === 'string' && UUID.test(args.id) ? args.id.toLowerCase() : null;
-    const [{ data: row, error }, f] = await Promise.all([
+    // Нападение: слоты общего мира на локации монстра (uid монстра — «локация.слот.цикл»)
+    const mobLoc = op === 'fightStart' && args && typeof args.uid === 'string' ? args.uid.split('.')[0] : '';
+    const [{ data: row, error }, f, wm] = await Promise.all([
       db.from('characters').select('data,stash,rev').eq('user_id', uid).maybeSingle(),
       fightId ? db.from('game_fights').select('data').eq('id', fightId).maybeSingle() : null,
+      LOC.test(mobLoc) ? db.from('world_mobs').select('slot,cycle,dead_until,busy_until').eq('location_id', mobLoc) : null,
     ]);
     if (error) throw error;
     const current = () => ({ char: row ? row.data : null, stash: row ? row.stash : null, rev: row ? row.rev : 0 });
@@ -77,7 +81,8 @@ Deno.serve(async (req) => {
     // Запись боя (seed, монстр, снимок хозяина) — для вступления и итога боя
     if (f && f.error) throw f.error;
     const fight = f && f.data ? f.data.data : null;
-    const ctx: Record<string, unknown> = { now: Date.now(), rng: PC.makeRng(seed()), uid, fight };
+    const world = wm && !wm.error ? wm.data : null;
+    const ctx: Record<string, unknown> = { now: Date.now(), rng: PC.makeRng(seed()), uid, fight, world };
     const out = run(op, args, row, ctx);
     if (!out.changed) return json({ ...current(), result: out.result });
 
@@ -87,6 +92,16 @@ Deno.serve(async (req) => {
       : await db.from('characters').insert({ user_id: uid, data: out.char, stash: out.stash }).select('rev');
     if (res.error && res.error.code !== '23505') throw res.error;
     if (res.error || !res.data || !res.data.length) return json({ error: 'stale', ...current() }, 409);
+    // Общий мир: монстр занят, убит или возродился — видят все игроки на локации. Пишем от имени игрока
+    // через world_set (миграция 0006): она не даёт откатить цикл или «оживить» убитого.
+    if (out.world.length) {
+      const as = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
+        auth: { persistSession: false, autoRefreshToken: false }, global: { headers: { Authorization: `Bearer ${jwt}` } },
+      });
+      const rs = await Promise.all(out.world.map((w: { loc: string; slot: number; cycle: number; dead: number | null; busy: number | null }) =>
+        as.rpc('world_set', { p_loc: w.loc, p_slot: w.slot, p_cycle: w.cycle, p_dead: w.dead, p_busy: w.busy })));
+      for (const r of rs) if (r.error) console.error('world_set', r.error);
+    }
     const rec = ctx.saveFight as { id: string } | undefined;
     if (rec) {
       const ins = await db.from('game_fights').insert({ id: rec.id, owner: uid, data: rec });

@@ -15,6 +15,7 @@ const dir = path.join(__dirname, '..', 'js');
 for (const f of ['version', 'data', 'classes', 'stats', 'items-data', 'monsters', 'world-data', 'engine', 'items', 'progression', 'economy', 'world', 'actions']) require(path.join(dir, `${f}.js`));
 const PC = globalThis.PC;
 const SERVER = process.env.SERVER === '1';
+const crypto = require('crypto');
 let gameRun = null;   // run() из ops.js серверной функции
 
 // ---------- подставная серверная функция game (как supabase/functions/game/index.ts) ----------
@@ -29,7 +30,8 @@ function game(uid, body) {
   const row = chars.get(uid) || null;
   const cur = () => ({ char: row ? row.data : null, stash: row ? row.stash : null, rev: row ? row.rev : 0 });
   if (rev != null && (row ? row.rev : 0) !== rev) return fail('stale', 409, cur());
-  const ctx = { now: Date.now(), rng: PC.makeRng((Math.random() * 2 ** 31) | 0 || 1), uid, fight: args && fights.get(args.id) || null };
+  const mobLoc = op === 'fightStart' && args && typeof args.uid === 'string' ? args.uid.split('.')[0] : '';
+  const ctx = { now: Date.now(), rng: PC.makeRng((Math.random() * 2 ** 31) | 0 || 1), uid, fight: args && fights.get(args.id) || null, world: mobLoc ? worldRows(mobLoc) : null };
   if (process.env.DEBUG_E2E && op === 'fightEnd' && args.hist) {
     const h = args.hist, b = new PC.Battle({ players: h.roster, monster: h.monster, seed: h.seed, data: PC.data, localKey: uid });
     for (const e of h.ev) b.applyEvent(e);
@@ -42,6 +44,7 @@ function game(uid, body) {
   const next = { data: out.char, stash: out.stash, rev: (row ? row.rev : 0) + 1 };
   chars.set(uid, next);
   if (ctx.saveFight) fights.set(ctx.saveFight.id, ctx.saveFight);
+  for (const w of out.world) worldSet({ p_loc: w.loc, p_slot: w.slot, p_cycle: w.cycle, p_dead: w.dead, p_busy: w.busy });
   if (process.env.DEBUG_E2E && /^fight|travel|arrive/.test(op)) console.log('  [game]', uid, op, JSON.stringify(out.result).slice(0, 160), 'loc', next.data && next.data.location);
   return { data: { char: next.data, stash: next.stash, rev: next.rev, result: out.result }, error: null };
 }
@@ -58,7 +61,12 @@ const server = http.createServer((req, res) => {
 });
 
 // ---------- подставная «база» ----------
-const db = { battles: [], members: [] };
+const db = { battles: [], members: [], world: new Map() };   // world: «локация|слот» → строка world_mobs
+function worldSet(a) {   // как world_set из 0006
+  const k = `${a.p_loc}|${a.p_slot}`, w = db.world.get(k), cycle = Math.max(a.p_cycle, 0);
+  if (!w || w.cycle < cycle || (w.cycle === cycle && (w.dead_until == null || a.p_dead != null))) db.world.set(k, { location_id: a.p_loc, slot: a.p_slot, cycle, dead_until: a.p_dead, busy_until: a.p_busy });
+}
+const worldRows = (loc) => [...db.world.values()].filter((w) => w.location_id === loc).map(({ slot, cycle, dead_until, busy_until }) => ({ slot, cycle, dead_until, busy_until }));
 const pages = [];   // { uid, page }
 const uuid = () => 'b' + Math.random().toString(16).slice(2, 10) + Date.now().toString(16);
 
@@ -94,6 +102,7 @@ function query(uid, st) {
     }
   }
   if (st.table === 'battle_history') return ok(null);
+  if (st.table === 'world_mobs') return ok(worldRows((st.filters.find((f) => f[1] === 'location_id') || [])[2]));
   if (st.table === 'battles') {
     if (st.op === 'insert') {
       if (db.battles.some((b) => b.owner_id === st.payload.owner_id && Date.now() - Date.parse(b.started_at) < 2000)) return { data: null, error: { code: 'P0001', message: 'too fast' } };   // защита 0007
@@ -123,6 +132,7 @@ function query(uid, st) {
 }
 
 function rpc(uid, fn, a) {
+  if (fn === 'world_set') { worldSet(a); return { data: null, error: null }; }
   if (fn === 'join_battle') {
     const b = db.battles.find((x) => x.id === a.p_battle);
     if (!b || b.status !== 'running' || !(b.monster_hp > 0)) return { data: null, error: { message: 'battle_closed' } };
@@ -411,6 +421,22 @@ async function attack(p) {
       await A.page.evaluate((uid) => PC.app.act('lock', { uid }), it);
       await until(() => A.page.evaluate((uid) => !PC.items.findItem(PC.app.state.char, uid), it), 10000, 'откат показанного действия');
       console.log('ok   действия без случайности показываются сразу, отказ сервера откатывает их');
+
+      // монстра возродил другой игрок (цикл слота в общем мире ушёл вперёд): сервер узнаёт его по тому же uid
+      await noRest(A);
+      const loc = await A.page.evaluate(() => PC.app.state.char.location);
+      const free = await A.page.evaluate(() => PC.world.aliveMobs(PC.data, PC.app.state.char).filter((m) => m.slot != null).map((m) => ({ slot: m.slot, cycle: m.cycle })));
+      const pick = free[free.length - 1];
+      worldSet({ p_loc: loc, p_slot: pick.slot, p_cycle: pick.cycle + 5, p_dead: null, p_busy: null });
+      const want = `${loc}.${pick.slot}.${pick.cycle + 5}`;
+      await until(() => A.page.evaluate((u) => !!PC.world.findMob(PC.data, PC.app.state.char, u), want), 10000, 'клиент увидел новый цикл слота');
+      const fid = crypto.randomUUID();
+      const fs = await A.page.evaluate(([id, u]) => PC.app.act('fightStart', { id, uid: u }), [fid, want]);
+      assert.ok(fs.ok, `нападение на монстра нового цикла: ${fs.reason}`);
+      assert.ok(db.world.get(`${loc}|${pick.slot}`).busy_until != null, 'сервер отметил монстра занятым в общем мире');
+      await A.page.evaluate((id) => PC.app.act('fightAbort', { id }), fid);
+      assert.strictEqual(db.world.get(`${loc}|${pick.slot}`).busy_until, null, 'после отмены боя монстр снова свободен');
+      console.log('ok   монстр, возрождённый другим игроком, доступен для нападения (сервер видит общий мир)');
     }
     for (const p of pages) assert.deepStrictEqual(p.errors, [], `ошибки JS у ${p.nick}: ${p.errors}`);
     console.log('\nвсе сквозные проверки прошли');
