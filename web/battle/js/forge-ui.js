@@ -40,7 +40,7 @@
     const tabs = SUBS.map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
     const sub = SUBS.find((s) => s[0] === f.sub);
     const modeHead = `<div class="mode-head">${art(sub[2], '')}<div><b>${sub[1]}</b><span class="meta">${sub[3]} · ${sub[4]}</span></div></div>`;
-    const picker = f.sub === 'craft' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'чародейка Велена' : 'кузнец Тарас'}</span></h3>
+    const picker = f.sub === 'craft' ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
       <div class="picker">${items.map(({ it, worn }) => tile(it, { attrs: `data-pick="${it.uid}" title="${worn ? 'надето' : 'в сумке'}"`, cls: it.uid === f.uid ? 'sel' : '' })).join('')}</div>
       <p class="meta" style="margin-top:6px">Сначала надетые, затем вещи из сумки.</p></div>`;
     const flash = f.flash ? `<div class="flash ${f.flash.kind}" style="margin:12px">${f.flash.text}</div>` : '';
@@ -169,6 +169,8 @@
   }
 
   // ---------- Ковка ----------
+  const cap = (str) => str.charAt(0).toUpperCase() + str.slice(1);
+
   function craftPanel(c) {
     const kinds = ['weapon', 'offhand', 'head', 'body', 'hands', 'feet', 'belt', 'amulet', 'ring'].filter((k) => I.typesFor(data, k, c.job).length);
     const KIND_NAMES = { weapon: 'Оружие', offhand: 'Левая рука', head: 'Голова', body: 'Тело', hands: 'Руки', feet: 'Ноги', belt: 'Пояс', amulet: 'Амулет', ring: 'Кольцо' };
@@ -182,7 +184,7 @@
     f.craftTier = Math.min(f.craftTier, c.maxTier || 1);
     const kindOpts = kinds.map((k) => `<option value="${k}" ${k === type.kind ? 'selected' : ''}>${KIND_NAMES[k]}</option>`).join('');
     const matOpts = mats.map((m) => `<option value="${m}" ${m === type.armor ? 'selected' : ''}>${data.armorMaterials[m].name}</option>`).join('');
-    const baseOpts = bases.map((t) => `<option value="${t.id}" ${t.id === type.id ? 'selected' : ''}>${t.name}${t.note ? ` — ${t.note}` : ''}</option>`).join('');
+    const baseOpts = bases.map((t) => `<option value="${t.id}" ${t.id === type.id ? 'selected' : ''}>${cap(t.name)}${t.note ? ` — ${t.note}` : ''}</option>`).join('');
     const tierOpts = Array.from({ length: c.maxTier || 1 }, (_, i) => i + 1).map((t) => `<option value="${t}" ${t === f.craftTier ? 'selected' : ''}>T${t} · с ${data.TIER_LEVEL[t]} ур.</option>`).join('');
     const preview = `${data.adjectives[type.mat][f.craftTier - 1][type.g]} ${type.name}`;
     const stats = I.baseLines(data, { type: type.id, tier: f.craftTier, quality: 50, enhance: 0, rank: 0, ilvl: data.TIER_LEVEL[f.craftTier] })
