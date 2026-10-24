@@ -196,13 +196,15 @@
     const r = parse(ref);
     const where = r.kind === 'slot' ? 'equipped' : 'bag';
     const village = app.inVillage();
+    const shareBtn = PC.chat && PC.chat.canShare() ? '<button class="btn" data-act="share">Поделиться</button>' : '';
     const actions = () => (where === 'equipped'
-      ? `<button class="btn" data-act="unequip">Снять</button>${village ? '<button class="btn" data-act="forge">В кузницу</button>' : ''}`
-      : `<button class="btn danger" data-act="salvage" ${item.locked ? 'disabled' : ''}>Разобрать</button>${village ? '<button class="btn" data-act="forge">В кузницу</button>' : ''}
+      ? `<button class="btn" data-act="unequip">Снять</button>${village ? '<button class="btn" data-act="forge">В кузницу</button>' : ''}${shareBtn}`
+      : `<button class="btn danger" data-act="salvage" ${item.locked ? 'disabled' : ''}>Разобрать</button>${village ? '<button class="btn" data-act="forge">В кузницу</button>' : ''}${shareBtn}
          <button class="btn primary" data-act="equip" ${I.canEquip(data, c, item).ok ? '' : 'disabled'}>Надеть</button>`);
     openItem(c, item, where, actions(), (act) => {
       if (act === 'forge') { closeModal(); app.setTab('forge', { uid: item.uid }); return; }
       if (act === 'salvage') { salvageAsk(item); return; }
+      if (act === 'share') { closeModal(); PC.chat.share(item); return; }
       if (act !== 'equip' && act !== 'unequip') return;
       app.act(act, act === 'equip' ? { index: r.index } : { slot: r.slot }).then((res) => {
         if (!res.ok) return res.shown || toast(res.reason || 'Не получилось', 'bad');
