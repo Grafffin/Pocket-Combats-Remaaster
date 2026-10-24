@@ -162,7 +162,13 @@
   }
 
   // Конец боя: убитый монстр ждёт возрождения, после любого боя — передышка до следующего тика
-  function disengage(data, char, uid, won, now) {
+  // loc — локация боя: после поражения герой уже отправлен в деревню, и монстра надо искать на старой локации
+  function disengage(data, char, uid, won, now, loc) {
+    const here = char.location;
+    if (loc && loc !== here) char.location = loc;
+    try { disengageHere(data, char, uid, won, now); } finally { char.location = here; }
+  }
+  function disengageHere(data, char, uid, won, now) {
     const st = locState(data, char, char.location);
     const m = findMob(data, char, uid);
     char.restTick = tickOf(now) + 1;

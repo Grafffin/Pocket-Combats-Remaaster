@@ -280,7 +280,7 @@
       }
       // награда зоны боя: уйти с локации в бою нельзя (travel отказывает), поэтому c.location === rec.loc
       const summary = P().applyBattleResult(D(), c, b, fight, ctx.rng, { fled });
-      if (f.host) W().disengage(D(), c, f.mob, won, ctx.now); else c.restTick = W().tickOf(ctx.now) + 1;
+      if (f.host) W().disengage(D(), c, f.mob, won, ctx.now, rec.loc); else c.restTick = W().tickOf(ctx.now) + 1;
       c.fight = null;
       return { ok: true, summary, contrib, turns: b.turn };
     },
