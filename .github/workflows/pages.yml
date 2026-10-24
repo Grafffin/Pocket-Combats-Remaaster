@@ -3,7 +3,7 @@ name: Deploy web client to GitHub Pages
 on:
   push:
     branches: [main]
-    paths: ['web/**', '.github/workflows/pages.yml']
+    paths: ['web/**', 'supabase/functions/**', '.github/workflows/pages.yml']
   workflow_dispatch:
 
 permissions:
@@ -21,10 +21,15 @@ jobs:
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
+    env:
+      SUPABASE_ACCESS_TOKEN: ${{ secrets.SUPABASE_ACCESS_TOKEN }}
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
       - name: Battle tests
-        run: node web/battle/tools/lockstep-test.js && node web/battle/tools/lockstep-stress.js 4
+        run: node web/battle/tools/lockstep-test.js && node web/battle/tools/lockstep-stress.js 4 && node web/battle/tools/server-test.js
       # Версия сборки в коде и в адресах скриптов: после выкладки браузер берёт свежие файлы,
       # а игроки со старой страницей не попадают в общий бой с новыми (см. js/version.js)
       - name: Stamp build version
@@ -33,6 +38,17 @@ jobs:
           sed -i "s/__BUILD__/$V/" web/battle/js/version.js
           sed -i -E "s#(src=\"js/[a-z0-9-]+\.js)\"#\1?v=$V\"#; s#href=\"style\.css\"#href=\"style.css?v=$V\"#" web/battle/index.html
           grep -c "?v=$V" web/battle/index.html
+      # Серверная функция game с тем же кодом и той же версией, что и страница (docs/SERVER_AUTHORITY.md).
+      # Без секрета SUPABASE_ACCESS_TOKEN шаг пропускается, игра работает по-старому.
+      - uses: supabase/setup-cli@v1
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        with:
+          version: latest
+      - name: Deploy game function
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: |
+          sh supabase/functions/game/sync.sh
+          supabase functions deploy game --project-ref nyyeikzqcckovplxlbda
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:

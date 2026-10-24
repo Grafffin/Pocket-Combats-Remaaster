@@ -1,0 +1,5 @@
+# Настройки Supabase CLI для деплоя функций из GitHub Actions (pages.yml).
+project_id = "nyyeikzqcckovplxlbda"
+
+[functions.game]
+verify_jwt = true
