@@ -48,9 +48,15 @@
 
     const body = { enhance: enhancePanel, rank: rankPanel, inherit: inheritPanel, reroll: rerollPanel, craft: craftPanel }[f.sub](c);
     root.innerHTML = `<div class="forge-tabs">${tabs}</div>${modeHead}${flash}${body}${picker}
-      <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', 'ore', 'leather', 'cloth', 'chitin'].map((k) => [k, null])))}</div>`;
+      <div class="card section"><h3>Запасы</h3><!-- без количества costHtml показывает, сколько есть -->${costHtml(Object.fromEntries(['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'essence', ...craftStock(c)].map((k) => [k, null])))}</div>`;
   }
   app.tabs.forge = render;
+
+  // Ресурсы ковки, которые есть в сумке (по семействам и тирам); если нет ни одного — первые тиры
+  function craftStock(c) {
+    const ids = Object.keys(data.materials).filter((id) => data.materials[id].family && I.matCount(data, c, id) > 0);
+    return ids.length ? ids : Object.keys(data.CRAFT_MATS);
+  }
 
   const selected = (c) => (f.uid ? I.findItem(c, f.uid) : null);
 

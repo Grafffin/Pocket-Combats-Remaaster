@@ -24,7 +24,7 @@
   // Стак ресурса в сумке: значок и количество
   function stackTile(it, { attrs = '', cls = '', checked = false } = {}) {
     const m = data.materials[it.stack];
-    return `<div class="tile stack ${checked ? 'checked' : ''} ${cls}" ${attrs} title="${m.name}">${art(m.art, '•')}<span class="count">${it.count}</span>${checked ? '<span class="check-badge">✓</span>' : ''}</div>`;
+    return `<div class="tile stack ${checked ? 'checked' : ''} ${cls}" ${attrs} title="${m.name}">${art(m.art, '•')}${m.tier ? `<span class="tier">T${m.tier}</span>` : ''}<span class="count">${it.count}</span>${checked ? '<span class="check-badge">✓</span>' : ''}</div>`;
   }
 
   function emptyTile(slot, attrs = '') {
@@ -224,20 +224,26 @@
   const MAT_USE = {
     stone1: 'Заточка у кузнеца до +5.', stone2: 'Заточка с +6 до +10.', stone3: 'Заточка с +11 до +15.',
     protect: 'При заточке выше +10 спасает вещь от поломки.', reroll: 'Перековка свойств у чародейки.',
-    essence: 'Ранги, перековка, перенос и ковка.', ore: 'Ковка лат и металлического оружия.', leather: 'Ковка кожаной брони, поясов и луков.',
-    cloth: 'Ковка тканевой брони и кушаков.', chitin: 'Ковка хитиновой брони.',
+    essence: 'Ранги, перековка, перенос и ковка.',
   };
   const MAT_SOURCE = {
     stone1: 'Падает с монстров, продаётся в лавке, выпадает при разборе.', stone2: 'Падает с монстров с Гоблинской стоянки и боссов, продаётся в лавке.',
     stone3: 'Боссы поздних зон, разбор мифических вещей.', protect: 'Лавка.', reroll: 'Лавка, боссы, разбор легендарных вещей.',
-    essence: 'Любые монстры (заклинатели — чаще) и разбор редких вещей.', ore: 'Разбор металлических вещей.', leather: 'Разбор кожаных вещей.',
-    cloth: 'Разбор тканевых вещей.', chitin: 'Разбор хитиновых вещей.',
+    essence: 'Любые монстры (заклинатели — чаще) и разбор редких вещей.',
   };
-  // Кто роняет ресурс для ковки (monsters.js, loot) — перед разбором
-  for (const id of Object.keys(MAT_SOURCE)) {
-    const drop = Object.values(data.monsters).filter((m) => (m.loot || []).includes(id));
-    const who = drop.filter((m) => !m.boss).map((m) => m.name), boss = drop.filter((m) => m.boss).map((m) => m.name);
-    if (who.length) MAT_SOURCE[id] = `${who.join(', ')}${boss.length ? `; боссы: ${boss.join(', ')}` : ''}. ${MAT_SOURCE[id]}`;
+  // Ресурсы ковки: кто роняет ресурс этого тира (monsters.js, loot; тир монстра — по его уровню в зоне)
+  const tiersOf = (lo, hi) => [I.maxTierFor(data, lo), I.maxTierFor(data, hi)];
+  for (const [id, m] of Object.entries(data.materials)) {
+    if (!m.family) continue;
+    MAT_USE[id] = `Ковка вещей T${m.tier}: ${data.CRAFT_MATS[m.family].use}.`;
+    const who = [];
+    for (const z of Object.values(data.locations)) {
+      for (const [mid, lo, hi] of [...(z.safe ? [] : z.monsters), ...(z.boss ? [[z.boss[0], z.boss[1], z.boss[1]]] : [])]) {
+        const [a, b] = tiersOf(lo, hi);
+        if (a <= m.tier && m.tier <= b && (data.monsters[mid].loot || []).includes(m.family) && !who.includes(data.monsters[mid].name)) who.push(data.monsters[mid].name);
+      }
+    }
+    MAT_SOURCE[id] = `${who.length ? `${who.join(', ')}. ` : ''}Разбор вещей T${m.tier}.`;
   }
 
   function openInfo(id) {
@@ -297,7 +303,8 @@
     const short = need != null && have < need;
     const icon = id === 'gold' ? art('materials/gold', '💰') : art(m.art, '•');
     const label = need != null ? `${fmtNum(need)}` : fmtNum(have);
-    return `<span class="${short ? 'short' : ''} info-link" data-info="${id}" title="${id === 'gold' ? 'Золото' : m.name}: есть ${fmtNum(have)}">${icon}${label}</span>`;
+    const tier = m && m.tier ? `<i class="mat-tier">T${m.tier}</i>` : '';
+    return `<span class="${short ? 'short' : ''} info-link" data-info="${id}" title="${id === 'gold' ? 'Золото' : m.name}: есть ${fmtNum(have)}">${icon}${tier}${label}</span>`;
   }
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
