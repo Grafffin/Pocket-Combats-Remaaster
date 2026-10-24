@@ -30,8 +30,11 @@
     if (!S.stash || !Array.isArray(S.stash.items)) S.stash = { items: new Array(STASH_SIZE).fill(null) };
     return S.stash;
   };
-  const sortItems = (list) => list.filter(Boolean).sort((x, y) =>
-    ((SORT_KIND[D().types[x.type].kind] ?? 9) - (SORT_KIND[D().types[y.type].kind] ?? 9)) || (y.rarity - x.rarity) || (I().power(D(), y) - I().power(D(), x)));
+  // стаки ресурсов — после вещей, по порядку id
+  const sortItems = (list) => list.filter(Boolean).sort((x, y) => {
+    if (x.stack || y.stack) return (!!x.stack - !!y.stack) || (x.stack < y.stack ? -1 : x.stack > y.stack ? 1 : 0);
+    return ((SORT_KIND[D().types[x.type].kind] ?? 9) - (SORT_KIND[D().types[y.type].kind] ?? 9)) || (y.rarity - x.rarity) || (I().power(D(), y) - I().power(D(), x));
+  });
 
   // ---------- Бои (серверная правда наград) ----------
   // Бой выдаёт сервер: seed, монстра и снимок бойца (запись боя rec хранится вне героя, ctx.fight / ctx.saveFight).
@@ -126,7 +129,7 @@
     // ---------- Сумка ----------
     move(S, a) {
       const c = hero(S);
-      I().moveInBag(c, bagIndex(c, a.from), bagIndex(c, a.to));
+      I().moveInBag(c, bagIndex(c, a.from), bagIndex(c, a.to), D());
       return { ok: true };
     },
     equip(S, a) {
@@ -147,7 +150,9 @@
       return { ok: true };
     },
     sortBag(S) {
-      const c = hero(S), list = sortItems(c.bag);
+      const c = hero(S);
+      I().compactStacks(D(), c);
+      const list = sortItems(c.bag);
       c.bag = [...list, ...new Array(c.bag.length - list.length).fill(null)];
       return { ok: true };
     },
@@ -269,7 +274,7 @@
       // зелья: списываем выпитое в бою из того, что есть сейчас (а не возвращаем запас из снимка)
       for (const it of p.consumables) {
         const had = (f.tpl.consumables.find((x) => x.id === it.id) || { count: 0 }).count;
-        it.count = Math.max(0, (c.materials[it.id] || 0) - Math.max(0, had - it.count));
+        it.count = Math.max(0, I().matCount(D(), c, it.id) - Math.max(0, had - it.count));
       }
       const fight = { monsterId: rec.mob.id, level: rec.mob.level, diff: rec.diff };
       let contrib = null;
@@ -306,6 +311,7 @@
       const from = int(a.page == null ? 0 : a.page, 0, STASH_SIZE / STASH_PAGE - 1) * STASH_PAGE;
       const it = c.bag[i];
       if (!it) return no('Пусто');
+      if (it.stack) return no('В сундук кладутся только вещи');
       const pageFree = st.items.findIndex((x, j) => !x && j >= from && j < from + STASH_PAGE);
       const j = pageFree >= 0 ? pageFree : st.items.indexOf(null);
       if (j < 0) return no('Сундук полон');

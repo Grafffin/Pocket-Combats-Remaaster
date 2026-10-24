@@ -5,11 +5,11 @@
   'use strict';
   const { data, items: I, economy: E } = PC;
   const { $, $$, art, openModal, closeModal, toast, plural, fmtNum, storage } = PC.kit;
-  const { tile, emptyTile, nameHtml, openItem, isUpgrade } = PC.itemUI;
+  const { tile, stackTile, emptyTile, nameHtml, openItem, isUpgrade } = PC.itemUI;
   const app = PC.app;
 
-  const MATS = ['hp_potion_1', 'hp_potion_2', 'hp_potion_3', 'mp_potion_1', 'mp_potion_2', 'mp_potion_3', 'elixir_power', 'elixir_fortune',
-    'stone1', 'stone2', 'stone3', 'protect', 'reroll', 'ore', 'leather', 'essence'];
+  // ресурсы кузницы лежат отдельно без лимита; остальное — стаками в самой сумке
+  const MATS = ['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'ore', 'leather', 'essence'];
 
   // ---------- Сундук: общий для всех героев аккаунта ----------
   const STASH_SIZE = 300;
@@ -44,14 +44,11 @@
     }).join('');
 
     const cells = c.bag.map((it, i) => (it
-      ? tile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"`, cls: `${it.fresh ? 'new' : ''} ${isUpgrade(c, it) ? 'up' : ''}`, can: I.canEquip(data, c, it).ok })
+      ? (it.stack ? stackTile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"` }) : tile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"`, cls: `${it.fresh ? 'new' : ''} ${isUpgrade(c, it) ? 'up' : ''}`, can: I.canEquip(data, c, it).ok }))
       : `<div class="tile empty" data-drop="bag:${i}"></div>`)).join('');
 
     const free = I.bagFree(c);
-    const mats = MATS.filter((id) => c.materials[id] || ['hp_potion_1', 'stone1', 'essence'].includes(id))
-      .map((id) => `<div class="mat info-link" data-info="${id}" title="${data.materials[id].name}">${art(data.materials[id].art, '•')}${fmtNum(c.materials[id] || 0)}</div>`).join('');
-    const herbs = Object.entries(data.materials).filter(([id, m]) => m.kind === 'herb' && c.materials[id])
-      .map(([id, m]) => `<div class="mat info-link" data-info="${id}" title="${m.name}">${art(m.art, '•')}${fmtNum(c.materials[id])}</div>`).join('');
+    const mats = MATS.map((id) => `<div class="mat info-link" data-info="${id}" title="${data.materials[id].name}">${art(data.materials[id].art, '•')}${fmtNum(c.materials[id] || 0)}</div>`).join('');
 
     root.innerHTML = `
       <div class="card" style="margin:12px">
@@ -66,9 +63,8 @@
         <div class="trash" data-drop="trash">♻ Разобрать</div>
       </div>
       <div class="bag-grid">${cells}</div>
-      <div class="card section"><h3>Расходники</h3><div class="materials">${mats}</div></div>
-      ${herbs ? `<div class="card section"><h3>Материалы алхимии</h3><div class="materials">${herbs}</div></div>` : ''}
-      <p class="hint" style="padding:0 16px 16px">Зелёная стрелка — вещь лучше надетой. Перетащите вещь на слот куклы, чтобы надеть, или в корзину, чтобы разобрать (на телефоне — удерживайте). Нажмите на вещь — откроется её окно.</p>`;
+      <div class="card section"><h3>Ресурсы кузницы</h3><div class="materials">${mats}</div></div>
+      <p class="hint" style="padding:0 16px 16px">Зелёная стрелка — вещь лучше надетой. Перетащите вещь на слот куклы, чтобы надеть, или в корзину, чтобы разобрать (на телефоне — удерживайте). Зелья, эликсиры и материалы лежат в сумке стаками по ${data.STACK_MAX}; ресурсы кузницы — отдельно, без лимита. Нажмите на вещь — откроется её окно.</p>`;
   }
   app.tabs.bag = render;
 
@@ -95,11 +91,13 @@
     const from = parse(fromRef), to = parse(toRef);
     const item = itemAt(fromRef);
     if (!item || fromRef === toRef) return false;
+    if (item.stack) return from.kind === 'bag' && to.kind === 'bag';   // ресурсы только переставляются в сумке
     if (to.kind === 'trash') return from.kind === 'bag' && !item.locked;
     if (to.kind === 'bag') {
       if (from.kind === 'bag') return true;
       const target = c.bag[to.index];
-      return !target || I.canEquip(data, c, target, from.slot).ok;
+      if (!target) return true;
+      return !target.stack && I.canEquip(data, c, target, from.slot).ok;
     }
     if (to.kind === 'slot') return I.canEquip(data, c, item, to.slot).ok;
     return false;
@@ -110,7 +108,7 @@
     drag.active = true;
     src.classList.add('dragging');
     const g = document.createElement('div');
-    g.className = `drag-ghost tile r${itemAt(drag.from).rarity}`;
+    g.className = `drag-ghost tile r${itemAt(drag.from).rarity || 0}`;
     g.innerHTML = src.innerHTML;
     document.body.appendChild(g);
     drag.ghost = g;
@@ -195,6 +193,7 @@
     const c = app.state.char;
     const item = itemAt(ref);
     if (!item) return;
+    if (item.stack) { PC.itemUI.openInfo(item.stack); return; }
     if (item.fresh) { delete item.fresh; app.save(); app.render(); }
     const r = parse(ref);
     const where = r.kind === 'slot' ? 'equipped' : 'bag';
@@ -310,7 +309,7 @@
     const c = app.state.char;
     for (const uid of [...sell.marked]) { const f = I.findItem(c, uid); if (!f || f.slot || f.item.locked) sell.marked.delete(uid); }
     const cells = c.bag.map((it, i) => (it
-      ? tile(it, { attrs: `data-press="bag:${i}"`, checked: sell.marked.has(it.uid), cls: it.locked ? 'locked' : '' })
+      ? (it.stack ? stackTile(it, { attrs: `data-info="${it.stack}"` }) : tile(it, { attrs: `data-press="bag:${i}"`, checked: sell.marked.has(it.uid), cls: it.locked ? 'locked' : '' }))
       : '<div class="tile empty"></div>')).join('');
     const total = [...sell.marked].reduce((s, uid) => s + I.sellPrice(data, I.findItem(c, uid).item), 0);
     const filters = `<select data-mark>
@@ -329,12 +328,12 @@
     };
     openModal(data.npcs.buyer.name, `<div class="row npc-head">${PC.kit.avatar(data.npcs.buyer, 48)}<p>«${data.npcs.buyer.greeting}»</p></div>
       ${msg ? `<div class="flash good">${msg}</div>` : ''}
-      <div class="bag-tools" style="padding:0">${filters}<span class="meta grow">Тап — отметить, удержание — осмотреть</span></div>
+      <div class="bag-tools" style="padding:0">${filters}<span class="meta grow">Тап — отметить, удержание — осмотреть. Ресурсы: тап по стаку</span></div>
       <div class="bag-grid modal-grid">${cells}</div>
       <div class="row-actions"><button class="btn primary" data-act="sell" ${sell.marked.size ? '' : 'disabled'}>Продать отмеченные: ${sell.marked.size} шт · ${fmtNum(total)} 💰</button></div>`, (e) => {
       if (e.type === 'change' && e.target.matches('[data-mark]')) {
         const v = e.target.value;
-        const list = c.bag.filter((it) => it && !it.locked);
+        const list = c.bag.filter((it) => it && !it.stack && !it.locked);
         if (v === 'none') sell.marked.clear();
         else if (v.startsWith('r')) list.filter((it) => it.rarity <= Number(v.slice(1)) && !it.enhance && !it.rank).forEach((it) => sell.marked.add(it.uid));
         else if (v === 'other') list.filter((it) => { const t = data.types[it.type]; return (t.cls && !t.cls.includes(c.job)) || (t.armor && t.armor !== data.classes[c.job].armor); }).forEach((it) => sell.marked.add(it.uid));
@@ -362,7 +361,7 @@
     const from = stashPage * STASH_PAGE;
     const sCells = stash.items.slice(from, from + STASH_PAGE).map((it, i) => (it
       ? tile(it, { attrs: `data-press="stash:${from + i}"` }) : '<div class="tile empty"></div>')).join('');
-    const bCells = c.bag.map((it, i) => (it ? tile(it, { attrs: `data-press="bag:${i}"` }) : '<div class="tile empty"></div>')).join('');
+    const bCells = c.bag.map((it, i) => (it ? (it.stack ? stackTile(it, { cls: 'cant' }) : tile(it, { attrs: `data-press="bag:${i}"` })) : '<div class="tile empty"></div>')).join('');
     const tabs = Array.from({ length: pages }, (_, p) => `<button class="${p === stashPage ? 'on' : ''}" data-page="${p}">${p + 1}</button>`).join('');
     reopen = () => openStash();
     pressTap = (ref) => {

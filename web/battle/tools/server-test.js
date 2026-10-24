@@ -15,6 +15,52 @@ const order = [...html.matchAll(/src="js\/([a-z-]+)\.js/g)].map((m) => m[1]).fil
 assert.deepStrictEqual(order, imports, 'порядок файлов функции отличается от index.html');
 for (const f of imports) require(path.join(root, 'web', 'battle', 'js', `${f}.js`));
 const PC = globalThis.PC, data = PC.data;
+{ // стаки ресурсов в сумке: лимит ячейки, переполнение, миграция, кузнечные ресурсы отдельно
+  const I = PC.items, h = PC.progression.newCharacter(data, { nick: 'Стак', gender: 'm', job: Object.keys(data.classes)[0] });
+  const free0 = I.bagFree(h);
+  assert.strictEqual(I.matCount(data, h, 'hp_potion_1'), 5, 'стартовые зелья в сумке');
+  assert.strictEqual(h.materials.hp_potion_1, undefined, 'зелья не лежат в materials');
+  assert.strictEqual(I.matAdd(data, h, 'herb_stjohn', 450), 450);
+  assert.deepStrictEqual(h.bag.filter((x) => x && x.stack === 'herb_stjohn').map((x) => x.count).sort((p, q) => p - q), [50, 200, 200], 'стаки по 200');
+  assert.strictEqual(I.matAdd(data, h, 'stone1', 1e6), 1e6, 'кузнечные без лимита');
+  assert.strictEqual(I.bagFree(h), free0 - 3, 'кузнечные места в сумке не занимают');
+  I.matTake(data, h, 'herb_stjohn', 260);
+  assert.strictEqual(I.matCount(data, h, 'herb_stjohn'), 190);
+  assert.strictEqual(h.bag.filter((x) => x && x.stack === 'herb_stjohn').length, 1, 'пустые стаки убираются');
+  const idx = h.bag.findIndex((x) => x && x.stack === 'herb_stjohn');
+  I.matAdd(data, h, 'herb_stjohn', 30);   // 190 → стак 200 + новый 20
+  const [a, b] = h.bag.map((x, i) => (x && x.stack === 'herb_stjohn' ? i : -1)).filter((i) => i >= 0);
+  I.moveInBag(h, b, a, data);
+  assert.ok(h.bag.every((x) => !x || x.stack !== 'herb_stjohn' || x.count <= data.STACK_MAX), 'слияние не превышает лимит');
+  assert.strictEqual(I.matCount(data, h, 'herb_stjohn'), 220);
+  assert.ok(!I.equip(data, h, idx).ok, 'ресурс нельзя надеть');
+  // сумка полна: лишнее не помещается
+  h.bag = h.bag.map((x) => x || { stack: 'ore_dummy', count: 1 });
+  data.materials.ore_dummy = { name: 'x', art: 'x', price: 0 };
+  assert.strictEqual(I.matRoom(data, h, 'spider_gland'), 0);
+  assert.strictEqual(I.matAdd(data, h, 'spider_gland', 5), 0, 'в полную сумку не кладём');
+  delete data.materials.ore_dummy;
+  // миграция 6 → 7: нековальные ресурсы переезжают в сумку, остаток, не влезший, остаётся в materials
+  const old = PC.progression.newCharacter(data, { nick: 'Старый', gender: 'm', job: Object.keys(data.classes)[0] });
+  old.bag = old.bag.map(() => null);
+  old.materials = { hp_potion_1: 250, stone2: 7, herb_stjohn: 3 };
+  old.version = 6;
+  const m = PC.progression.migrate(data, old);
+  assert.strictEqual(m.version, PC.progression.CHAR_VERSION);
+  assert.strictEqual(m.materials.stone2, 7, 'кузнечные остались');
+  assert.strictEqual(m.materials.hp_potion_1, undefined);
+  assert.strictEqual(I.matCount(data, m, 'hp_potion_1'), 250);
+  assert.strictEqual(I.matCount(data, m, 'herb_stjohn'), 3);
+  // варка: результат не влез — откат
+  const r = PC.data.recipes[0], need = Object.keys(r.need);
+  const bk = PC.progression.newCharacter(data, { nick: 'Варка', gender: 'm', job: Object.keys(data.classes)[0] });
+  bk.gold = 1e6;
+  for (const k of need) I.matAdd(data, bk, k, 10);
+  bk.bag = bk.bag.map((x) => x || { stack: 'x', count: 1 });   // свободных ячеек нет, но стаки сырья освободят место...
+  const snap = JSON.stringify(bk);
+  const res = PC.economy.brew(data, bk, 0, 1);
+  if (!res.ok) assert.strictEqual(JSON.stringify(bk), snap, 'неудачная варка ничего не меняет');
+}
 { // автоохота: монстр уровня героя, иначе ближайший ниже
   const W = PC.world, h = PC.progression.newCharacter(data, { nick: 'Охотник', gender: 'm', job: Object.keys(data.classes)[0] });
   h.location = Object.keys(data.locations).find((k) => !data.locations[k].safe);
@@ -70,10 +116,10 @@ const PC = globalThis.PC, data = PC.data;
   const shopId = data.shopStock[0], price = data.materials[shopId].price;
   for (const n of [-100, 0, 1.5, '5', 1e6]) assert.throws(() => run('buy', { id: shopId, n }, cur, ctx()), /bad_args/, `buy n=${n}`);
   assert.throws(() => run('buy', { id: 'stone3', n: 1 }, cur, ctx()), /bad_args/, 'товара нет в лавке');
-  const had = cur.data.materials[shopId] || 0;
+  const had = PC.items.matCount(data, cur.data, shopId);
   assert.ok(step('buy', { id: shopId, n: 2 }).ok);
   assert.strictEqual(cur.data.gold, 1000 - 2 * price);
-  assert.strictEqual(cur.data.materials[shopId], had + 2);
+  assert.strictEqual(PC.items.matCount(data, cur.data, shopId), had + 2);
 
   cur.data.location = Object.keys(data.locations).find((k) => k !== data.HOME);
   assert.throws(() => run('buy', { id: shopId, n: 1 }, cur, ctx()), /not_in_village/);
@@ -188,7 +234,8 @@ const PC = globalThis.PC, data = PC.data;
 
   // зелья: выпитое списывается из текущего запаса, продажа зелий во время боя не даёт дубля
   const P3 = { row: mkHero('Зельевар') };
-  P3.row.data.materials.hp_potion_1 = 3;
+  PC.items.matTake(data, P3.row.data, 'hp_potion_1', PC.items.matCount(data, P3.row.data, 'hp_potion_1'));
+  PC.items.matAdd(data, P3.row.data, 'hp_potion_1', 3);
   const c3 = at(T0, 'p3');
   PC.world.update(data, P3.row.data, T0, c3.rng);
   const r3 = runAt(P3, 'fightStart', { id: uuid(4), uid: PC.world.aliveMobs(data, P3.row.data)[0].uid }, c3);
@@ -197,9 +244,9 @@ const PC = globalThis.PC, data = PC.data;
     if (t === 0) push({ k: 'p', key: 'p3', id: 'hp_potion_1' });
     basic(['p3'])(push, b);
   });
-  P3.row.data.materials.hp_potion_1 = 0;   // «продал» все зелья во время боя
+  PC.items.matTake(data, P3.row.data, 'hp_potion_1', PC.items.matCount(data, P3.row.data, 'hp_potion_1'));   // «продал» все зелья во время боя
   runAt(P3, 'fightEnd', { id: uuid(4), hist: pot.hist }, { ...at(T0 + pot.battle.turn * PC.world.TICK_MS, 'p3'), fight: rec3 });
-  assert.strictEqual(P3.row.data.materials.hp_potion_1, 0, 'зелья не вернулись из снимка');
+  assert.strictEqual(PC.items.matCount(data, P3.row.data, 'hp_potion_1'), 0, 'зелья не вернулись из снимка');
 
   // вышел из боя (кнопка «Сбежать») — бегство: без потерь золота и без отправки домой
   const P5 = { row: mkHero('Беглец') };

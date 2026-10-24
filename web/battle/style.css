@@ -850,3 +850,7 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .gear-grid .slot-cell { display: flex; flex-direction: column; gap: 3px; align-items: center; }
 .gear-grid .slot-cell small { font-size: 9px; color: var(--dim); text-transform: uppercase; letter-spacing: .03em; text-align: center; }
 .gear-grid .slot-cell .tile { width: 100%; cursor: pointer; }
+
+/* стак ресурса в сумке: количество в углу */
+.tile.stack { position: relative; }
+.tile.stack .count { position: absolute; right: 3px; bottom: 2px; font-size: 11px; font-weight: 700; color: #fff; text-shadow: 0 0 3px #000, 0 0 3px #000; font-variant-numeric: tabular-nums; }

@@ -21,6 +21,12 @@
     </div>`;
   }
 
+  // Стак ресурса в сумке: значок и количество
+  function stackTile(it, { attrs = '', cls = '' } = {}) {
+    const m = data.materials[it.stack];
+    return `<div class="tile stack ${cls}" ${attrs} title="${m.name}">${art(m.art, '•')}<span class="count">${it.count}</span></div>`;
+  }
+
   function emptyTile(slot, attrs = '') {
     return `<div class="tile empty" ${attrs}>${art(data.slots[slot].art, '')}</div>`;
   }
@@ -227,7 +233,7 @@
     if (id === 'gold') have = c.gold;
     const m = data.materials[id];
     if (m) {
-      title = m.name; img = m.art; have = c.materials[id] || 0;
+      title = m.name; img = m.art; have = I.matCount(data, c, id);
       const kind = { potion: 'Зелье: пьётся в бою (одно за ход, затем откат 3 хода).', elixir: 'Эликсир: выпить вне боя, действует несколько побед.', herb: 'Материал для алхимии.' }[m.kind] || '';
       const recipe = data.recipes.filter((r) => r.need[id]).map((r) => data.materials[r.out].name);
       text = [m.desc, kind, MAT_USE[id], recipe.length ? `Нужен для: ${recipe.join(', ')}.` : '', MAT_SOURCE[id] ? `Где взять: ${MAT_SOURCE[id]}` : '']
@@ -235,10 +241,22 @@
     }
     if (!title) return;
     const canDrink = m && m.kind === 'elixir' && have > 0;
+    const sellable = m && !m.forge && m.price > 0 && have > 0 && PC.app.inVillage();
+    const sellGold = sellable ? Math.max(1, Math.floor(m.price / 2)) * have : 0;
     const buff = c.buffs && c.buffs[id] ? `<p class="meta">Действует ещё ${c.buffs[id]} побед.</p>` : '';
     openSheet(title, `<div class="info-sheet">${img ? `<div class="ava" style="width:64px;height:64px">${art(img, '•')}</div>` : ''}
       <div><p>${text}</p>${have != null ? `<p class="meta">У вас: <b>${fmtNum(have)}</b></p>` : ''}${buff}</div></div>
-      ${canDrink ? '<div class="row-actions"><button class="btn primary" data-act="drink">Выпить</button></div>' : ''}`, (e) => {
+      ${canDrink ? '<div class="row-actions"><button class="btn primary" data-act="drink">Выпить</button></div>' : ''}
+      ${sellable ? `<div class="row-actions"><button class="btn" data-act="sell-all">Продать всё скупщику · ${fmtNum(sellGold)} 💰</button></div>` : ''}`, (e) => {
+      if (e.target.closest('[data-act="sell-all"]')) {
+        PC.app.act('sellMaterial', { id, n: have }).then((r) => {
+          if (!r.ok) return r.shown || toast(r.reason, 'bad');
+          PC.app.render();
+          toast(`Продано: ${m.name} ×${have} за ${fmtNum(r.price)} 💰`, 'good');
+          openInfo(id);
+        });
+        return;
+      }
       if (!e.target.closest('[data-act="drink"]')) return;
       PC.app.act('drink', { id }).then((r) => {
         if (!r.ok) return r.shown || toast(r.reason, 'bad');
@@ -261,7 +279,7 @@
   function matChip(id, need) {
     const c = PC.app.state.char;
     const m = data.materials[id];
-    const have = id === 'gold' ? c.gold : (c.materials[id] || 0);
+    const have = id === 'gold' ? c.gold : I.matCount(data, c, id);
     const short = need != null && have < need;
     const icon = id === 'gold' ? art('materials/gold', '💰') : art(m.art, '•');
     const label = need != null ? `${fmtNum(need)}` : fmtNum(have);
@@ -270,6 +288,6 @@
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
 
-  PC.itemUI = { KIND_EMOJI, tile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
+  PC.itemUI = { KIND_EMOJI, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
   void closeModal;
 })();
