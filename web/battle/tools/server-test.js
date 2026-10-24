@@ -198,6 +198,20 @@ const PC = globalThis.PC, data = PC.data;
   assert.ok(step('stashTake', { index: cur.stash.items.findIndex(Boolean) }).ok);
   assert.ok(cur.data.bag.some((x) => x && x.uid === item.uid) && !cur.stash.items.some(Boolean));
   assert.throws(() => run('stashTake', { index: 999 }, cur, ctx()), /bad_args/);
+  // ресурсы в сундуке: стак переезжает целиком, сумка и сундук не теряют и не плодят штуки
+  {
+    const total = () => PC.items.matCount(data, cur.data, 'ore') + cur.stash.items.reduce((n, x) => n + (x && x.stack === 'ore' ? x.count : 0), 0);
+    PC.items.matAdd(data, cur.data, 'ore', 250);
+    const before = total();
+    const bi = cur.data.bag.findIndex((x) => x && x.stack === 'ore');
+    assert.ok(step('stashPut', { index: bi }).ok);
+    assert.equal(total(), before, 'ресурсы не теряются при складывании');
+    assert.equal(PC.items.matCount(data, cur.data, 'ore'), before - cur.stash.items.filter((x) => x && x.stack === 'ore').reduce((n, x) => n + x.count, 0));
+    const si = cur.stash.items.findIndex((x) => x && x.stack === 'ore');
+    assert.ok(step('stashTake', { index: si }).ok);
+    assert.equal(total(), before, 'и при возврате');
+    assert.ok(cur.stash.items.every((x) => !x || x.count > 0 && x.count <= data.STACK_MAX));
+  }
 
   // продажа: цена считается сервером, дубли uid не продают дважды
   const gold0 = cur.data.gold;

@@ -270,7 +270,7 @@
       ${item('forge', 'npcs/blacksmith', 'Мастерская улица', village ? 'Заточка, ранги, перековка, ковка, ремонт' : 'Только в деревне', village)}
       ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
       ${item('market', 'npcs/market', 'Рынок', village ? 'Торговля вещами с другими игроками' : 'Только в деревне', village)}
-      ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
+      ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 ячеек: вещи и ресурсы' : 'Только в деревне', village)}
       ${item('history', 'ui/gear', 'История боёв', PC.battles && PC.battles.history ? 'Последние 30 боёв' : 'Недоступно', !!(PC.battles && PC.battles.history))}
       ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
       ${item('account', 'ui/gear', 'Аккаунт', accNote(), true)}
