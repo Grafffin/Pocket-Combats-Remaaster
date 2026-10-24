@@ -865,12 +865,12 @@ img[src*="assets/stats/"], img[src*="assets/ui/slots/"] { filter: invert(88%) se
 .market-tools .csel-face, .mf-range .csel-face { padding: 6px 26px 6px 8px; font-size: 13px; }
 .toggle .csel { min-width: 120px; }
 
-.picker { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-end; }
-.picker-back { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); animation: fade .2s; }
-.picker-sheet { position: relative; width: min(100%, 460px); max-height: 70vh; display: flex; flex-direction: column; background: #1d2130; border: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .5); animation: sheetUp .22s ease-out; padding-bottom: env(safe-area-inset-bottom); }
-.picker-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 8px 16px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
-.picker-x { font-size: 22px; line-height: 1; }
-.picker-list { overflow-y: auto; padding: 0 10px 12px; display: flex; flex-direction: column; gap: 4px; }
+.optpick { position: fixed; inset: 0; z-index: 70; display: flex; justify-content: center; align-items: flex-end; }
+.optpick-back { position: absolute; inset: 0; background: rgba(0, 0, 0, .6); animation: fade .2s; }
+.optpick-sheet { position: relative; width: min(100%, 460px); max-height: 70vh; display: flex; flex-direction: column; background: #1d2130; border: 1px solid var(--line); border-radius: 16px 16px 0 0; box-shadow: 0 -10px 30px rgba(0, 0, 0, .5); animation: sheetUp .22s ease-out; padding-bottom: env(safe-area-inset-bottom); }
+.optpick-head { display: flex; align-items: center; justify-content: space-between; padding: 12px 8px 8px 16px; color: var(--muted); font-size: 12px; text-transform: uppercase; letter-spacing: .08em; }
+.optpick-x { font-size: 22px; line-height: 1; }
+.optpick-list { overflow-y: auto; padding: 0 10px 12px; display: flex; flex-direction: column; gap: 4px; }
 .pick-opt { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; text-align: left; font: inherit; font-size: 15px; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; cursor: pointer; }
 .pick-opt:disabled { opacity: .4; }
 .pick-opt.on { border-color: var(--accent); background: rgba(217, 164, 65, .14); color: var(--accent-2); font-weight: 700; }
