@@ -577,11 +577,14 @@
   const requality = { gold: (item) => 40 * item.tier, essence: (item) => item.tier };
 
   // Перенос заточки, ранга и знака на другую вещь того же вида (донор разбирается) — вложения не сгорают
-  const inherit = { essence: (item) => 4 * item.tier, gold: (item) => 80 * item.tier };
+  // Ковка и перенос дорожают экспоненциально с тиром: золото ×2.3 за тир, ресурсы ×1.45.
+  // Ориентир: T1 — минуты охоты, T7 — около полутора часов дохода на Обычной (≈6 тыс. золота в час на 35 ур.).
+  const expo = (base, k) => (t) => Math.round(base * Math.pow(k, t - 1));
+  const inherit = { gold: (item) => expo(80, 2.3)(item.tier), essence: (item) => expo(3, 1.45)(item.tier), main: (item) => expo(3, 1.45)(item.tier) };
 
   // Ковка у кузнеца: вещь выбранного типа и тира с редкостью не ниже «Необычной»
   const craft = {
-    cost: (tier) => ({ main: 4 + 3 * tier, essence: 1 + tier, gold: 40 * tier * tier }),
+    cost: (tier) => ({ main: expo(5, 1.45)(tier), essence: expo(2, 1.4)(tier), gold: expo(60, 2.3)(tier) }),
     rarityFloor: 1,
     rarityBoost: 2,
   };

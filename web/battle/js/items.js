@@ -607,7 +607,13 @@
 
   // ---------- Наследование ----------
 
-  function inheritCost(data, target) { return { gold: data.inherit.gold(target), essence: data.inherit.essence(target) }; }
+  // Перенос: золото, эссенция и ресурс ковки материала и тира цели
+  function inheritCost(data, target) {
+    const cost = { gold: data.inherit.gold(target), essence: data.inherit.essence(target) };
+    const main = data.tierMat(data.types[target.type].salvage, target.tier);
+    cost[main] = (cost[main] || 0) + data.inherit.main(target);
+    return cost;
+  }
 
   // Можно ли перенести вложения донора на цель: вещь того же вида слота, донор из сумки, есть что переносить
   function inheritCheck(data, char, targetUid, donorUid) {
