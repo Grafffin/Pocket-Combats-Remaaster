@@ -15,6 +15,19 @@ const order = [...html.matchAll(/src="js\/([a-z-]+)\.js/g)].map((m) => m[1]).fil
 assert.deepStrictEqual(order, imports, 'порядок файлов функции отличается от index.html');
 for (const f of imports) require(path.join(root, 'web', 'battle', 'js', `${f}.js`));
 const PC = globalThis.PC, data = PC.data;
+{ // автоохота: монстр уровня героя, иначе ближайший ниже
+  const W = PC.world, h = PC.progression.newCharacter(data, { nick: 'Охотник', gender: 'm', job: Object.keys(data.classes)[0] });
+  h.location = Object.keys(data.locations).find((k) => !data.locations[k].safe);
+  W.update(data, h, Date.now(), PC.makeRng(1));
+  const lv = W.aliveMobs(data, h).map((m) => m.level).sort((a, b) => a - b);
+  assert.ok(lv.length > 1 && lv[0] < lv[lv.length - 1], 'нужны монстры разных уровней');
+  h.level = lv[lv.length - 1];
+  assert.strictEqual(W.pickForAutoHunt(data, h, null, PC.makeRng(2)).level, lv[lv.length - 1]);
+  h.level = lv[lv.length - 1] + 20;
+  assert.strictEqual(W.pickForAutoHunt(data, h, null, PC.makeRng(2)).level, lv[lv.length - 1]);
+  h.level = lv[0] - 1;
+  assert.strictEqual(W.pickForAutoHunt(data, h, null, PC.makeRng(2)).level, lv[0]);
+}
 
 (async () => {
   const { run, ops } = await import(path.join(fnDir, 'ops.js'));
