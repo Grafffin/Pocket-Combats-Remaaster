@@ -902,3 +902,8 @@ input[type="checkbox"]:disabled, input[type="radio"]:disabled { opacity: .4; }
 .toggle input[type="checkbox"]::after { position: absolute; left: 2px; top: 2px; width: 16px; height: 16px; margin: 0; border: 0; border-radius: 50%; background: var(--muted); transform: none; transition: transform .15s, background .15s; }
 .toggle input[type="checkbox"]:checked::after { background: var(--accent-ink); transform: translateX(18px); }
 input:focus-visible, .cnum-btn:focus-visible, .pick-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+
+/* рынок ресурсов: поля количества и цены */
+.mat-field { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); }
+.mat-form { padding-bottom: 10px; border-bottom: 1px dashed #262a38; margin-bottom: 12px; }
+.mat-form .row img, .mat-form .row .ico { width: 28px; height: 28px; }
