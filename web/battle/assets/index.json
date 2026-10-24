@@ -139,7 +139,8 @@
     "chitin_4": "materials/chitin_4.svg",
     "chitin_5": "materials/chitin_5.svg",
     "chitin_6": "materials/chitin_6.svg",
-    "chitin_7": "materials/chitin_7.svg"
+    "chitin_7": "materials/chitin_7.svg",
+    "elixir_guard": "materials/elixir_guard.svg"
   },
   "stats": {
     "atk": "stats/atk.svg",

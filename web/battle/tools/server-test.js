@@ -178,6 +178,17 @@ const PC = globalThis.PC, data = PC.data;
     w.dur = Dd.max;
   }
 
+  // начертание: закрытый рецепт — отказ, открытый даёт результат и опыт профессии
+  {
+    const I = PC.items, rs = data.scribeRecipes;
+    for (const [k, n] of Object.entries({ ...rs[0].need, ...rs[rs.length - 1].need })) I.matAdd(data, cur.data, k, n * 3);
+    assert.ok(!step('inscribe', { i: rs.length - 1, n: 1 }).ok, 'высокий рецепт закрыт на 1 уровне');
+    const before = I.matCount(data, cur.data, rs[0].out);
+    assert.ok(step('inscribe', { i: 0, n: 1 }).ok && I.matCount(data, cur.data, rs[0].out) >= before + rs[0].n, 'начерчено');
+    assert.ok(PC.progression.profOf(cur.data, 'scribe').exp > 0 || PC.progression.profLevel(cur.data, 'scribe') > 1, 'опыт начертания');
+    assert.throws(() => run('inscribe', { i: 99, n: 1 }, cur, ctx()), /bad_args/);
+  }
+
   // сундук: вещь из сумки и обратно, без дублей
   const item = PC.items.generate(data, { ilvl: 5, cls: job, mf: 0 }, PC.makeRng(7));
   PC.items.bagAdd(cur.data, item);

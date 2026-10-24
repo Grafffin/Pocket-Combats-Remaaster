@@ -912,26 +912,16 @@
 
   function openAlchemist(msg) {
     const c = state.char;
-    const rows = data.recipes.map((r, i) => {
-      const out = data.materials[r.out];
-      const can = E.canBrew(data, c, r);
-      const can5 = E.canBrew(data, c, r, 5);
-      return `<div class="recipe ${can ? '' : 'off'}">
-        <div class="row"><span class="ava info-link" data-info="${r.out}" style="width:44px;height:44px">${art(out.art, '🧪')}</span>
-          <div class="txt"><b>${out.name}</b> ×${r.n}<div class="meta">есть: ${I.matCount(data, c, r.out)}</div></div>
-          <button class="btn small" data-brew="${i}" data-n="1" ${can ? '' : 'disabled'}>Сварить</button>
-          <button class="btn small" data-brew="${i}" data-n="5" ${can5 ? '' : 'disabled'}>×5</button></div>
-        ${costHtml({ ...r.need, gold: r.gold })}</div>`;
-    }).join('');
     openModal(data.npcs.alchemist.name, `${npcHead('alchemist')}${msg ? `<div class="flash good">${msg}</div>` : ''}
-      <p class="meta">Материалы падают с монстров своих зон. Нажмите на материал, чтобы узнать, где его искать.</p>${rows}`, (e) => {
-      const b = e.target.closest('[data-brew]');
+      <p class="meta">Материалы падают с монстров своих зон. Нажмите на материал, чтобы узнать, где его искать.</p>
+      ${PC.itemUI.recipeRows(c, data.recipes, 'alchemy', 'Сварить')}`, (e) => {
+      const b = e.target.closest('[data-recipe]');
       if (!b || b.disabled) return;
       b.disabled = true;
-      app.act('brew', { i: Number(b.dataset.brew), n: Number(b.dataset.n) }).then((r) => {
+      app.act('brew', { i: Number(b.dataset.recipe), n: Number(b.dataset.n) }).then((r) => {
         if (!r.ok) { b.disabled = false; return r.shown || toast(r.reason, 'bad'); }
         render();
-        openAlchemist(`Сварено: ${data.materials[r.out].name} ×${r.count}`);
+        openAlchemist(`Сварено: ${data.materials[r.out].name} ×${r.count}${r.extra ? ` (удача: +${r.extra})` : ''}${PC.itemUI.profUpText(r, 'alchemy')}`);
       });
     });
   }

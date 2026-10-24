@@ -514,6 +514,7 @@
     // Эликсиры: действуют несколько побед подряд
     elixir_power: { name: 'Эликсир силы', art: 'materials/elixir_power', price: 0, kind: 'elixir', desc: '+12% всего урона на 8 побед.' },
     elixir_fortune: { name: 'Эликсир удачи', art: 'materials/elixir_fortune', price: 0, kind: 'elixir', desc: '+30% находки и +25% золота на 8 побед.' },
+    elixir_guard: { name: 'Эликсир стойкости', art: 'materials/elixir_guard', price: 0, kind: 'elixir', desc: '+10% здоровья и +10% сопротивления огню, холоду и яду на 8 побед.' },
     // Материалы зон — для алхимии
     herb_stjohn: { name: 'Зверобой', art: 'materials/herb_stjohn', price: 3, kind: 'herb', desc: 'Растёт на Лесной опушке.' },
     spider_gland: { name: 'Паучья железа', art: 'materials/spider_gland', price: 3, kind: 'herb', desc: 'Лесная опушка.' },
@@ -550,20 +551,34 @@
   const shopStock = ['hp_potion_1', 'mp_potion_1', 'stone1', 'stone2', 'reroll', 'protect'];
 
   // Рецепты алхимика: out — что получится, n — сколько, need — материалы, gold — плата
+  // Рецепты алхимика: out — что получится, n — сколько, need — материалы, gold — плата,
+  // lvl — нужный уровень алхимии, exp — опыт профессии за одну варку
   const recipes = [
-    { out: 'hp_potion_1', n: 2, need: { herb_stjohn: 2 }, gold: 5 },
-    { out: 'mp_potion_1', n: 2, need: { spider_gland: 2 }, gold: 5 },
-    { out: 'hp_potion_2', n: 2, need: { spirit_moss: 2, wolf_pelt: 1 }, gold: 25 },
-    { out: 'mp_potion_2', n: 2, need: { shaman_root: 2, goblin_brew: 1 }, gold: 25 },
-    { out: 'hp_potion_3', n: 2, need: { golem_heart: 1, ectoplasm: 2 }, gold: 80 },
-    { out: 'mp_potion_3', n: 2, need: { rune_dust: 2, bone_meal: 1 }, gold: 80 },
-    { out: 'elixir_power', n: 1, need: { harpy_feather: 2, wolf_pelt: 2, goblin_brew: 1 }, gold: 120 },
-    { out: 'elixir_fortune', n: 1, need: { stolen_spices: 2, rune_dust: 1, herb_stjohn: 3 }, gold: 150 },
+    { out: 'hp_potion_1', n: 2, need: { herb_stjohn: 2 }, gold: 5, lvl: 1, exp: 6 },
+    { out: 'mp_potion_1', n: 2, need: { spider_gland: 2 }, gold: 5, lvl: 1, exp: 6 },
+    { out: 'hp_potion_2', n: 2, need: { spirit_moss: 2, wolf_pelt: 1 }, gold: 25, lvl: 4, exp: 14 },
+    { out: 'mp_potion_2', n: 2, need: { shaman_root: 2, goblin_brew: 1 }, gold: 25, lvl: 4, exp: 14 },
+    { out: 'elixir_power', n: 1, need: { harpy_feather: 2, wolf_pelt: 2, goblin_brew: 1 }, gold: 120, lvl: 6, exp: 30 },
+    { out: 'hp_potion_3', n: 2, need: { golem_heart: 1, ectoplasm: 2 }, gold: 80, lvl: 8, exp: 28 },
+    { out: 'mp_potion_3', n: 2, need: { rune_dust: 2, bone_meal: 1 }, gold: 80, lvl: 8, exp: 28 },
+    { out: 'elixir_fortune', n: 1, need: { stolen_spices: 2, rune_dust: 1, herb_stjohn: 3 }, gold: 150, lvl: 10, exp: 40 },
+    // Трава первых зон нужна и ветеранам: её дёшево добывают новички
+    { out: 'elixir_guard', n: 1, need: { herb_stjohn: 4, wolf_pelt: 2, shaman_root: 2 }, gold: 200, lvl: 12, exp: 50 },
+  ];
+
+  // Начертание (чародейка): камни заточки и свитки из трофеев ранних зон — их добывают новички, а тратят все
+  const scribeRecipes = [
+    { out: 'stone1', n: 3, need: { herb_stjohn: 2, spider_gland: 1, essence: 1 }, gold: 20, lvl: 1, exp: 8 },
+    { out: 'reroll', n: 1, need: { spirit_moss: 2, stolen_spices: 1, essence: 3 }, gold: 60, lvl: 5, exp: 20 },
+    { out: 'stone2', n: 1, need: { wolf_pelt: 2, goblin_brew: 2, essence: 4 }, gold: 120, lvl: 8, exp: 30 },
+    { out: 'protect', n: 1, need: { harpy_feather: 3, spider_gland: 3, essence: 8 }, gold: 400, lvl: 12, exp: 55 },
+    { out: 'stone3', n: 1, need: { rune_dust: 2, bone_meal: 2, herb_stjohn: 4, essence: 15 }, gold: 900, lvl: 16, exp: 90 },
   ];
 
   // Действие эликсиров: прибавки к статам и сколько побед длится
   const elixirs = {
     elixir_power: { battles: 8, mods: { dmgPct: 0.12 } },
+    elixir_guard: { battles: 8, mods: { hpPct: 0.1, fireRes: 10, coldRes: 10, poisonRes: 10 } },
     elixir_fortune: { battles: 8, mods: { mf: 30, goldPct: 0.25 } },
   };
 
@@ -587,7 +602,17 @@
         name: 'Кузнечное дело', npc: 'smith',
         desc: 'Ковка, разбор и ремонт. Открывает тиры ковки, повышает шанс хорошей редкости и снижает цену ремонта.',
       },
+      alchemy: {
+        name: 'Алхимия', npc: 'alchemist',
+        desc: 'Варка зелий и эликсиров. Открывает рецепты и даёт шанс сварить вдвое больше.',
+      },
+      scribe: {
+        name: 'Начертание', npc: 'enchanter',
+        desc: 'Камни заточки и свитки из трофеев охоты. Открывает рецепты и даёт шанс начертить вдвое больше.',
+      },
     },
+    // Алхимия и начертание: +2% за уровень к шансу удвоить результат каждой варки
+    recipeBonus: 0.02,
     // Кузнечное дело: ковка тира T — с 2(T−1)+1 уровня (T7 — с 13-го); +5% к шансу высокой редкости и −2% к цене ремонта за уровень
     smith: {
       craftLevel: (tier) => 2 * (tier - 1) + 1,
@@ -619,7 +644,7 @@
   Object.assign(data, {
     durability, professions,
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
-    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, bagExpand, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
+    legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, bagExpand, shopStock, recipes, scribeRecipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
