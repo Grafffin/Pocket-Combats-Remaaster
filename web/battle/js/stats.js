@@ -26,9 +26,10 @@
   function fmtBig(n) {
     const a = Math.abs(n), sign = n < 0 ? '−' : '';
     const cut = (v) => (v >= 100 ? Math.round(v) : v >= 10 ? Math.round(v * 10) / 10 : Math.round(v * 100) / 100);
-    if (a >= 1e9) return `${sign}${cut(a / 1e9)}млрд`;
-    if (a >= 1e6) return `${sign}${cut(a / 1e6)}кк`;
-    if (a >= 1e4) return `${sign}${cut(a / 1e3)}к`;
+    const en = PC.i18n && PC.i18n.lang === 'en';   // по-английски K / M / B
+    if (a >= 1e9) return `${sign}${cut(a / 1e9)}${en ? 'B' : 'млрд'}`;
+    if (a >= 1e6) return `${sign}${cut(a / 1e6)}${en ? 'M' : 'кк'}`;
+    if (a >= 1e4) return `${sign}${cut(a / 1e3)}${en ? 'K' : 'к'}`;
     return `${sign}${Math.round(a).toLocaleString(PC.i18n ? PC.i18n.locale : 'ru-RU')}`;
   }
 

@@ -21,3 +21,5 @@ jobs:
         run: node web/battle/tools/server-test.js
       - name: Обмен между игроками (мошеннические схемы)
         run: node web/battle/tools/trade-test.js
+      - name: Перевод на английский (данные, журнал боя, токены)
+        run: node web/battle/tools/i18n-test.js

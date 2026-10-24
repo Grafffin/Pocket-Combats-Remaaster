@@ -29,7 +29,7 @@ jobs:
         with:
           node-version: 22
       - name: Battle tests
-        run: node web/battle/tools/lockstep-test.js && node web/battle/tools/lockstep-stress.js 4 && node web/battle/tools/server-test.js && node web/battle/tools/trade-test.js
+        run: node web/battle/tools/lockstep-test.js && node web/battle/tools/lockstep-stress.js 4 && node web/battle/tools/server-test.js && node web/battle/tools/trade-test.js && node web/battle/tools/i18n-test.js
       # Версия сборки в коде и в адресах скриптов: после выкладки браузер берёт свежие файлы,
       # а игроки со старой страницей не попадают в общий бой с новыми (см. js/version.js)
       - name: Stamp build version

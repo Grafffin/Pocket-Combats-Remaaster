@@ -42,7 +42,7 @@ const missing = new Set();
 const seen = new Set();
 (function walk(v, depth) {
   if (depth > 8 || v == null) return;
-  if (typeof v === 'string') { if (CYR.test(v) && CYR.test(PC.i18n.tr(v))) missing.add(v); return; }
+  if (typeof v === 'string') { if (CYR.test(v)) { const w = v.replace(/\/[mfn]$|\/pl$/, ''); if (CYR.test(PC.i18n.tr(w))) missing.add(v); } return; }
   if (typeof v !== 'object' || seen.has(v)) return;
   seen.add(v);
   for (const x of Object.values(v)) walk(x, depth + 1);
