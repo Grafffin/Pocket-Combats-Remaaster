@@ -174,10 +174,14 @@
     share(char, m, { dead_until: m.deadUntil });
   }
 
-  // Монстр для автоохоты: предпочтительно того же вида, боссы — никогда (их бьют вручную)
+  // Монстр для автоохоты: уровня героя, иначе ближайшего ниже (если все выше — самого слабого);
+  // среди них — предпочтительно того же вида. Боссы — никогда (их бьют вручную)
   function pickForAutoHunt(data, char, preferId, rng) {
-    const alive = aliveMobs(data, char);
+    let alive = aliveMobs(data, char);
     if (!alive.length) return null;
+    const below = alive.filter((m) => m.level <= char.level);
+    const lvl = below.length ? Math.max(...below.map((m) => m.level)) : Math.min(...alive.map((m) => m.level));
+    alive = alive.filter((m) => m.level === lvl);
     const same = alive.filter((m) => m.id === preferId);
     return rng.pick(same.length ? same : alive);
   }
