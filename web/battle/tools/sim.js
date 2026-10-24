@@ -78,7 +78,6 @@ function charAt(job, L, rng) {
 }
 
 if (!career) {
-  const rng = makeRng(7);
   const rows = [];
   for (const [zoneId, zone] of Object.entries(data.locations)) {
     if (zone.safe) continue;
@@ -87,7 +86,8 @@ if (!career) {
       const L = Math.round((lo + hi) / 2);
       const row = { zone: zoneId, monster: `${monId} ${L}` };
       for (const job of Object.keys(data.classes)) {
-        const c = charAt(job, Math.min(L, P.MAX_LEVEL), rng);
+        // Экипировка зависит только от класса и уровня: новые монстры не меняют удачу свойств в других строках
+        const c = charAt(job, Math.min(L, P.MAX_LEVEL), makeRng(1000 + L * 7 + Object.keys(data.classes).indexOf(job)));
         let wins = 0, turns = 0, hpLeft = 0;
         for (let i = 0; i < N; i++) {
           const b = fight(c, monId, L, i + 1);
@@ -136,6 +136,8 @@ if (!career) {
         if (rate(trial) > rate(c)) I.equip(data, c, i, slot);
       }
       for (const it of [...c.bag]) if (it && !it.stack) I.salvage(data, c, it.uid, rng);
+      // Ресурсы ковки бот не тратит: сдаёт скупщику, чтобы сумка не забивалась стаками разных тиров
+      for (const it of c.bag) if (it && it.stack && data.materials[it.stack].family) PC.economy.sellMaterial(data, c, it.stack, it.count);
       for (const it of Object.values(c.equipment)) {
         const info = I.enhanceInfo(data, it);
         if (!info.capped && !info.maxed && info.next <= 5 && I.matCount(data, c, 'stone1') > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);

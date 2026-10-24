@@ -23,7 +23,12 @@
     "ghoul": "monsters/ghoul.svg",
     "wraith": "monsters/wraith.svg",
     "lich": "monsters/lich.svg",
-    "scorpion": "monsters/scorpion.svg"
+    "scorpion": "monsters/scorpion.svg",
+    "vagrant": "monsters/vagrant.svg",
+    "poacher": "monsters/poacher.svg",
+    "riding_beetle": "monsters/riding_beetle.svg",
+    "cultist": "monsters/cultist.svg",
+    "carrion_beetle": "monsters/carrion_beetle.svg"
   },
   "npcs": {
     "shopkeeper": "npcs/shopkeeper.svg",
