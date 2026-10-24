@@ -8,9 +8,6 @@
   const { tile, stackTile, emptyTile, nameHtml, openItem, isUpgrade } = PC.itemUI;
   const app = PC.app;
 
-  // ресурсы кузницы лежат отдельно без лимита; остальное — стаками в самой сумке
-  const MATS = ['stone1', 'stone2', 'stone3', 'protect', 'reroll', 'ore', 'leather', 'essence'];
-
   // ---------- Сундук: общий для всех героев аккаунта ----------
   const STASH_SIZE = 300;
   const STASH_PAGE = 60;
@@ -48,7 +45,6 @@
       : `<div class="tile empty" data-drop="bag:${i}"></div>`)).join('');
 
     const free = I.bagFree(c);
-    const mats = MATS.map((id) => `<div class="mat info-link" data-info="${id}" title="${data.materials[id].name}">${art(data.materials[id].art, '•')}${fmtNum(c.materials[id] || 0)}</div>`).join('');
 
     root.innerHTML = `
       <div class="card" style="margin:12px">
@@ -63,8 +59,7 @@
         <div class="trash" data-drop="trash">♻ Разобрать</div>
       </div>
       <div class="bag-grid">${cells}</div>
-      <div class="card section"><h3>Ресурсы кузницы</h3><div class="materials">${mats}</div></div>
-      <p class="hint" style="padding:0 16px 16px">Зелёная стрелка — вещь лучше надетой. Перетащите вещь на слот куклы, чтобы надеть, или в корзину, чтобы разобрать (на телефоне — удерживайте). Зелья, эликсиры и материалы лежат в сумке стаками по ${data.STACK_MAX}; ресурсы кузницы — отдельно, без лимита. Нажмите на вещь — откроется её окно.</p>`;
+      <p class="hint" style="padding:0 16px 16px">Зелёная стрелка — вещь лучше надетой. Перетащите вещь на слот куклы, чтобы надеть, или в корзину, чтобы разобрать (на телефоне — удерживайте). Все ресурсы лежат в сумке стаками по ${data.STACK_MAX}. Нажмите на вещь — откроется её окно.</p>`;
   }
   app.tabs.bag = render;
 
@@ -214,6 +209,9 @@
     });
   }
 
+  // Сумка полна — часть ресурсов разбора не поместилась
+  const lostText = (lost) => (lost && Object.keys(lost).length ? `. Не поместилось: ${Object.entries(lost).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}` : '');
+
   function yieldText(item) {
     const y = I.salvageYield(data, item);
     const sure = Object.entries(y.sure).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ');
@@ -232,7 +230,7 @@
       closeModal();
       app.act('salvage', { uid: item.uid }).then((res) => {
         if (!res.ok) return res.shown || toast(res.reason, 'bad');
-        toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}`, 'good');
+        toast(`Получено: ${Object.entries(res.got).map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}${lostText(res.lost)}`, 'good');
         app.render();
       });
     });
@@ -251,7 +249,7 @@
       closeModal();
       app.act('salvageMass', { rarity: Number(b.dataset.mass) }).then((r) => {
         if (!r.ok) return;
-        toast(`Разобрано ${r.count}: ${Object.entries(r.got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}`, 'good');
+        toast(`Разобрано ${r.count}: ${Object.entries(r.got).map(([k, v]) => `${data.materials[k].name} ×${v}`).join(', ')}${lostText(r.lost)}`, 'good');
         app.render();
       });
     });

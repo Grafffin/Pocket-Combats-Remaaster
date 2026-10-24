@@ -132,7 +132,7 @@ if (!career) {
       for (const it of [...c.bag]) if (it) I.salvage(data, c, it.uid, rng);
       for (const it of Object.values(c.equipment)) {
         const info = I.enhanceInfo(data, it);
-        if (!info.capped && !info.maxed && info.next <= 5 && c.materials.stone1 > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
+        if (!info.capped && !info.maxed && info.next <= 5 && I.matCount(data, c, 'stone1') > 0 && c.gold > info.gold + 100) I.enhance(data, c, it.uid, {}, rng);
       }
       while (I.matCount(data, c, 'hp_potion_1') < 4 && c.gold > 100 && PC.economy.buy(data, c, 'hp_potion_1').ok);
       autoBuild(c);

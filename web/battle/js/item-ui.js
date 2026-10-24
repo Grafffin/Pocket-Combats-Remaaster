@@ -241,7 +241,7 @@
     }
     if (!title) return;
     const canDrink = m && m.kind === 'elixir' && have > 0;
-    const sellable = m && !m.forge && m.price > 0 && have > 0 && PC.app.inVillage();
+    const sellable = m && m.price > 0 && have > 0 && PC.app.inVillage();
     const sellGold = sellable ? Math.max(1, Math.floor(m.price / 2)) * have : 0;
     const buff = c.buffs && c.buffs[id] ? `<p class="meta">Действует ещё ${c.buffs[id]} побед.</p>` : '';
     openSheet(title, `<div class="info-sheet">${img ? `<div class="ava" style="width:64px;height:64px">${art(img, '•')}</div>` : ''}

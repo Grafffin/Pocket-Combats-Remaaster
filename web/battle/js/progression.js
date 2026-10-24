@@ -5,7 +5,7 @@
   const PC = root.PC || (root.PC = {});
   const I = () => PC.items;
 
-  const CHAR_VERSION = 7;
+  const CHAR_VERSION = 8;
   const STAT_POINTS_PER_LEVEL = 3;
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
@@ -22,7 +22,7 @@
       skills: {}, slots: [], passives: {},
       equipment: {},
       bag: new Array(I().BAG_SIZE).fill(null),
-      materials: { stone1: 3 },
+      materials: {},
       gold: 50,
       location: data.HOME, transit: null,
       zoneKills: {}, maxTier: 1,
@@ -30,6 +30,7 @@
       settings: { autoSalvage: -1, autoBattle: false, autoHunt: false, potionAt: 35 },
       wins: 0, losses: 0,
     };
+    I().matAdd(data, char, 'stone1', 3);
     I().matAdd(data, char, 'hp_potion_1', 5);
     I().matAdd(data, char, 'mp_potion_1', 2);
     // Первое умение класса выучено сразу
@@ -74,11 +75,20 @@
     if (char.version === 6) {
       // Ресурсы, кроме кузнечных, переезжают стаками в сумку; что не влезло — остаётся в materials и тратится первым
       for (const id of Object.keys(char.materials)) {
-        if (!data.materials[id] || data.materials[id].forge || !(char.materials[id] > 0)) continue;
+        if (!data.materials[id] || !(char.materials[id] > 0)) continue;
         char.materials[id] -= I().matAdd(data, char, id, char.materials[id]);
         if (!char.materials[id]) delete char.materials[id];
       }
       char.version = 7;
+    }
+    if (char.version === 7) {
+      // Теперь в сумку идут все ресурсы, включая кузнечные: остаток, не влезший, лежит в materials
+      for (const id of Object.keys(char.materials)) {
+        if (!data.materials[id] || !(char.materials[id] > 0)) continue;
+        char.materials[id] -= I().matAdd(data, char, id, char.materials[id]);
+        if (!char.materials[id]) delete char.materials[id];
+      }
+      char.version = 8;
     }
     return char;
   }
@@ -265,7 +275,7 @@
       if (!auto && I().bagAdd(char, item) >= 0) { summary.items.push(item); continue; }
       // Автоматический разбор (или сумка полна): ничего не пропадает
       const y = I().salvageYield(data, item);
-      for (const [mat, n] of Object.entries(y.sure)) I().matAdd(data, char, mat, n);
+      for (const [mat, n] of Object.entries(y.sure)) { const d = I().matAdd(data, char, mat, n); if (d < n) summary.lost[mat] = (summary.lost[mat] || 0) + n - d; }
       summary.salvaged.push({ item, full: !auto });
     }
     return summary;

@@ -259,21 +259,17 @@
   }
   const bagFree = (char) => char.bag.filter((x) => !x).length;
 
-  // ---------- Ресурсы: кузнечные без лимита в char.materials, остальные стаками в сумке ----------
-  // В char.materials у обычного ресурса может лежать остаток старого сохранения, не влезший в сумку: он считается и тратится первым.
-
-  const isForge = (data, id) => !!data.materials[id].forge;
+  // ---------- Ресурсы: все стаками в сумке ----------
+  // В char.materials может лежать остаток старого сохранения, не влезший в сумку: он считается и тратится первым.
 
   function matCount(data, char, id) {
     let n = char.materials[id] || 0;
-    if (isForge(data, id)) return n;
     for (const it of char.bag) if (it && it.stack === id) n += it.count;
     return n;
   }
 
   // Сколько ещё влезет: добить стаки + свободные ячейки
   function matRoom(data, char, id) {
-    if (isForge(data, id)) return Infinity;
     let room = 0;
     for (const it of char.bag) room += !it ? data.STACK_MAX : it.stack === id ? data.STACK_MAX - it.count : 0;
     return room;
@@ -281,7 +277,6 @@
 
   // Кладёт ресурс; возвращает, сколько реально положено (остальное не влезло)
   function matAdd(data, char, id, n) {
-    if (isForge(data, id)) { char.materials[id] = (char.materials[id] || 0) + n; return n; }
     let left = n;
     for (const it of char.bag) {
       if (left <= 0) break;
@@ -301,7 +296,6 @@
     let left = n;
     const legacy = Math.min(char.materials[id] || 0, left);
     if (legacy) { char.materials[id] -= legacy; left -= legacy; }
-    if (isForge(data, id)) return;
     const idx = char.bag.map((it, i) => (it && it.stack === id ? i : -1)).filter((i) => i >= 0).sort((a, b) => char.bag[a].count - char.bag[b].count);
     for (const i of idx) {
       if (left <= 0) break;
@@ -421,9 +415,10 @@
     const y = salvageYield(data, found.item);
     const got = { ...y.sure };
     for (const [m, pct] of y.chance) if (rng.chance(pct)) got[m] = (got[m] || 0) + 1;
-    for (const [m, n] of Object.entries(got)) matAdd(data, char, m, n);
-    char.bag[found.index] = null;
-    return { ok: true, got };
+    char.bag[found.index] = null;   // ячейка освобождается раньше, чем кладём добычу
+    const lost = {};
+    for (const [m, n] of Object.entries(got)) { const d = matAdd(data, char, m, n); if (d < n) lost[m] = n - d; }
+    return { ok: true, got, lost };
   }
 
   // ---------- Заточка ----------
@@ -456,12 +451,12 @@
     const info = enhanceInfo(data, item);
     if (info.maxed) return { ok: false, reason: 'Заточка на максимуме' };
     if (info.capped) return { ok: false, reason: `Потолок заточки для ★${item.rank} — +${info.cap}. Повысьте ранг.` };
-    if ((char.materials[info.stone] || 0) < 1) return { ok: false, reason: `Нужен ${data.materials[info.stone].name}` };
+    if (matCount(data, char, info.stone) < 1) return { ok: false, reason: `Нужен ${data.materials[info.stone].name}` };
     if (char.gold < info.gold) return { ok: false, reason: 'Не хватает золота' };
-    const useProtect = protect && info.fail === 'break' && (char.materials.protect || 0) > 0;
-    char.materials[info.stone]--;
+    const useProtect = protect && info.fail === 'break' && matCount(data, char, 'protect') > 0;
+    matTake(data, char, info.stone, 1);
     char.gold -= info.gold;
-    if (useProtect) char.materials.protect--;
+    if (useProtect) matTake(data, char, 'protect', 1);
 
     if (rng.chance(info.chance)) {
       item.enhance = info.next;
@@ -509,9 +504,9 @@
     if (info.maxed) return { ok: false, reason: 'Ранг максимальный' };
     const f = info.fodder.find((x) => x.uid === fodderUid);
     if (!f) return { ok: false, reason: 'Нужна копия: та же база и тир, редкость не ниже, ранг не ниже ★' + Math.max(0, item.rank - 1) };
-    if ((char.materials.essence || 0) < info.essence) return { ok: false, reason: 'Не хватает эссенции' };
+    if (matCount(data, char, 'essence') < info.essence) return { ok: false, reason: 'Не хватает эссенции' };
     if (char.gold < info.gold) return { ok: false, reason: 'Не хватает золота' };
-    char.materials.essence -= info.essence;
+    matTake(data, char, 'essence', info.essence);
     char.gold -= info.gold;
     char.bag[char.bag.indexOf(f)] = null;
     item.rank++;
@@ -533,14 +528,14 @@
     return { reroll: Math.ceil(r.scrolls * m), essence: Math.ceil(r.essence(item) * m), gold: Math.ceil(r.gold(item) * m) };
   }
 
-  function pay(char, cost) {
+  function pay(data, char, cost) {
     for (const [k, v] of Object.entries(cost)) {
-      const have = k === 'gold' ? char.gold : (char.materials[k] || 0);
+      const have = k === 'gold' ? char.gold : matCount(data, char, k);
       if (have < v) return false;
     }
     for (const [k, v] of Object.entries(cost)) {
       if (k === 'gold') char.gold -= v;
-      else char.materials[k] -= v;
+      else matTake(data, char, k, v);
     }
     return true;
   }
@@ -549,7 +544,7 @@
     const found = findItem(char, uid);
     const af = found && found.item.affixes[idx];
     if (!af) return { ok: false, reason: 'Нет такого свойства' };
-    if (!pay(char, rerollValueCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, rerollValueCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const before = affixValue(data, af);
     af.roll = data.rarities[found.item.rarity].high ? 0.5 + rng.next() * 0.5 : rng.next();
     return { ok: true, before, after: affixValue(data, af) };
@@ -562,7 +557,7 @@
     const item = found.item;
     const locked = new Set(locks || []);
     if (locked.size >= item.affixes.length) return { ok: false, reason: 'Все свойства замкнуты' };
-    if (!pay(char, rerollAffixesCost(data, item, locked.size))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, rerollAffixesCost(data, item, locked.size))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const keep = item.affixes.filter((_, i) => locked.has(i));
     const count = item.affixes.length;
     item.affixes = keep;
@@ -577,7 +572,7 @@
   function requality(data, char, uid, rng) {
     const found = findItem(char, uid);
     if (!found) return { ok: false, reason: 'Вещь не найдена' };
-    if (!pay(char, requalityCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, requalityCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const before = found.item.quality;
     found.item.quality = rollQuality(rng);
     return { ok: true, before, after: found.item.quality };
@@ -592,7 +587,7 @@
     if (char.level < VIRTUE_REROLL_LEVEL) return { ok: false, reason: `Откроется на ${VIRTUE_REROLL_LEVEL} уровне` };
     const found = findItem(char, uid);
     if (!found || !found.item.virtue) return { ok: false, reason: 'У вещи нет знака' };
-    if (!pay(char, virtueRerollCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, virtueRerollCost(data, found.item))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const before = found.item.virtue;
     const others = Object.keys(data.virtues).filter((v) => v !== before);
     found.item.virtue = rng.pick(others);
@@ -618,7 +613,7 @@
     const c = inheritCheck(data, char, targetUid, donorUid);
     if (!c.ok) return c;
     const target = c.t.item, donor = c.d.item;
-    if (!pay(char, inheritCost(data, target))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, inheritCost(data, target))) return { ok: false, reason: 'Не хватает материалов или золота' };
     target.rank = Math.max(target.rank, donor.rank);
     target.enhance = Math.min(Math.max(target.enhance, donor.enhance), data.enhance.capByRank[target.rank]);
     if (!target.virtue && donor.virtue) target.virtue = donor.virtue;
@@ -639,7 +634,7 @@
   function craft(data, char, typeId, tier, rng) {
     if (bagFree(char) < 1) return { ok: false, reason: 'Сумка полна' };
     if (tier > (char.maxTier || 1)) return { ok: false, reason: 'Этот тир ещё не открыт — дойдите до его зоны' };
-    if (!pay(char, craftCost(data, typeId, tier))) return { ok: false, reason: 'Не хватает материалов или золота' };
+    if (!pay(data, char, craftCost(data, typeId, tier))) return { ok: false, reason: 'Не хватает материалов или золота' };
     const item = generate(data, {
       ilvl: data.TIER_LEVEL[tier] + 2, tier, type: typeId, cls: char.job,
       rarityFloor: data.craft.rarityFloor, rarityBoost: data.craft.rarityBoost, mf: 0,
@@ -649,7 +644,7 @@
   }
 
   PC.items = {
-    BAG_SIZE, compactStacks, matCount, matRoom, matAdd, matTake, isForge, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
+    BAG_SIZE, compactStacks, matCount, matRoom, matAdd, matTake, newUid, generate, generateUnique, maxTierFor, qualityMult, qualityName,
     affixValue, affixText, baseStats, baseLines, totals, weaponDamage, isShield, reqLevel, name, power,
     bagAdd, bagFree, findItem, slotsFor, canEquip, equip, unequip, moveInBag,
     sellPrice, salvageYield, salvage,
