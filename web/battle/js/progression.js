@@ -198,7 +198,8 @@
       drops.items.push(I().generate(data, { ilvl: level + dd.ilvl, cls, mf, boss: m.boss, rarityFloor: m.boss ? 2 : 0 }, rng));
     }
     const tier = I().maxTierFor(data, level);
-    if (ch(DROP.main)) addMat(rng.pick(['ore', 'leather']), rng.int(1, 1 + Math.floor(tier / 2)));
+    // Ресурсы для ковки — только «свои» для монстра (с крысы не падает руда); босс даёт вдвое больше
+    if (m.loot && ch(DROP.main)) addMat(rng.pick(m.loot), rng.int(1, 1 + Math.floor(tier / 2)) * (m.boss ? 2 : 1));
     if (ch(DROP.essence)) addMat('essence', rng.int(1, tier));
     if (ch(DROP.stone1)) addMat('stone1', 1);
     if (tier >= 3 && ch(DROP.stone2)) addMat('stone2', 1);

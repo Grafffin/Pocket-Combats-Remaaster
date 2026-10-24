@@ -9,6 +9,7 @@
   const monsterSkills = {
     bite_frenzy: { name: 'Бешеный укус', cd: 3, run: (b, a, t) => { b.attack(a, t, { mult: 0.7 }); b.attack(a, t, { mult: 0.7 }); } },
     venom_bite: { name: 'Ядовитый укус', cd: 3, run: (b, a, t) => { if (b.attack(a, t, { mult: 0.9 }).hit) b.applyDot(t, a, 'poison', 0.25, 3); } },
+    sting: { name: 'Жало', cd: 3, run: (b, a, t) => { if (b.attack(a, t, { mult: 1.2 }).hit) b.applyDot(t, a, 'poison', 0.25, 3); } },
     gore: { name: 'Таран', cd: 4, run: (b, a, t) => { const r = b.attack(a, t, { mult: 1.5 }); if (r.hit && b.roll(0.3)) b.applyStun(t, a); } },
     rend: { name: 'Рваная рана', cd: 3, run: (b, a, t) => { if (b.attack(a, t, { mult: 1.1 }).hit) b.applyDot(t, a, 'bleed', 0.25, 3); } },
     howl: { name: 'Вой', cd: 5, run: (b, a) => b.buff(a, { id: 'howl', name: 'Вой', turns: 3, mods: { atkPct: 0.3 } }) },
@@ -33,6 +34,7 @@
 
   // ---------- Архетипы ----------
   // kind — тип для аффиксов «урон по …». m — множители к базовой кривой. caster — бьёт магией.
+  // loot — ресурсы для ковки, которые с него падают (по логике: руда — с тех, кто носит металл, хитин — с членистоногих).
   const monsters = {
     dummy: {
       name: 'Учебный манекен', gender: 'm', forms: { gen: 'Учебного манекена', dat: 'Учебному манекену', acc: 'Учебный манекен' },
@@ -43,6 +45,7 @@
     rat: {
       name: 'Лесная крыса', gender: 'f', forms: { gen: 'Лесной крысы', dat: 'Лесной крысе', acc: 'Лесную крысу' },
       kind: 'beast', art: 'monsters/rat', emoji: '🐀',
+      loot: ['leather'],
       m: { hp: 0.8, atk: 0.85, eva: 1.6, speed: 1.08 },
       skills: ['bite_frenzy'],
       verbs: [{ m: 'укусил', f: 'укусила', c: 'acc' }, { m: 'цапнул', f: 'цапнула', c: 'acc' }, { m: 'полоснул когтями', f: 'полоснула когтями', p: 'по', c: 'dat' }],
@@ -51,6 +54,7 @@
     spider: {
       name: 'Лесной паук', gender: 'm', forms: { gen: 'Лесного паука', dat: 'Лесному пауку', acc: 'Лесного паука' },
       kind: 'beast', art: 'monsters/spider', emoji: '🕷️',
+      loot: ['chitin'],
       m: { hp: 0.9, atk: 0.9, res: { poisonRes: 50 } },
       skills: ['venom_bite'],
       verbs: [{ m: 'укусил', f: 'укусила', c: 'acc' }, { m: 'ужалил', f: 'ужалила', c: 'acc' }, { m: 'хлестнул лапой', f: 'хлестнула лапой', p: 'по', c: 'dat' }],
@@ -59,6 +63,7 @@
     boar: {
       name: 'Кабан', gender: 'm', forms: { gen: 'Кабана', dat: 'Кабану', acc: 'Кабана' },
       kind: 'beast', art: 'monsters/boar', emoji: '🐗',
+      loot: ['leather'],
       m: { hp: 1.3, atk: 1.0, def: 1.3, eva: 0.6, speed: 0.95 },
       skills: ['gore'],
       verbs: [{ m: 'боднул', f: 'боднула', c: 'acc' }, { m: 'поддел клыком', f: 'поддела клыком', c: 'acc' }, { m: 'врезался в', f: 'врезалась в', c: 'acc' }],
@@ -67,6 +72,7 @@
     wolf: {
       name: 'Серый волк', gender: 'm', forms: { gen: 'Серого волка', dat: 'Серому волку', acc: 'Серого волка' },
       kind: 'beast', art: 'monsters/wolf', emoji: '🐺',
+      loot: ['leather'],
       m: { hp: 1.0, atk: 1.05, eva: 1.2, speed: 1.05 },
       skills: ['rend', 'howl'],
       verbs: [{ m: 'укусил', f: 'укусила', c: 'acc' }, { m: 'рванул клыками', f: 'рванула клыками', c: 'acc' }, { m: 'ударил лапой', f: 'ударила лапой', p: 'по', c: 'dat' }],
@@ -75,6 +81,7 @@
     forest_spirit: {
       name: 'Лесной дух', gender: 'm', forms: { gen: 'Лесного духа', dat: 'Лесному духу', acc: 'Лесного духа' },
       kind: 'construct', art: 'monsters/forest_spirit', emoji: '🌿', caster: true, element: 'poison',
+      loot: ['essence'],
       m: { hp: 1.1, atk: 0.95, def: 0.8, mdef: 1.4, res: { poisonRes: 75, fireRes: -30 } },
       skills: ['thorn_lash', 'regrowth'],
       blurb: 'Хлещет терновником и зарастает раны мхом. Боится огня.',
@@ -82,6 +89,7 @@
     goblin_warrior: {
       name: 'Гоблин-воин', gender: 'm', forms: { gen: 'Гоблина-воина', dat: 'Гоблину-воину', acc: 'Гоблина-воина' },
       kind: 'goblin', art: 'monsters/goblin_warrior', emoji: '👺', shield: true,
+      loot: ['ore', 'leather'],
       m: { hp: 1.1, atk: 1.0, def: 1.3, block: 15 },
       skills: ['shield_wall'],
       verbs: [{ m: 'рубанул', f: 'рубанула', p: 'по', c: 'dat' }, { m: 'ткнул копьём', f: 'ткнула копьём', c: 'acc' }],
@@ -90,6 +98,7 @@
     goblin_shaman: {
       name: 'Гоблин-шаман', gender: 'm', forms: { gen: 'Гоблина-шамана', dat: 'Гоблину-шаману', acc: 'Гоблина-шамана' },
       kind: 'goblin', art: 'monsters/goblin_shaman', emoji: '🧙', caster: true,
+      loot: ['cloth', 'essence'],
       m: { hp: 0.85, atk: 1.05, def: 0.7, mdef: 1.5 },
       skills: ['dark_spark', 'hex'],
       blurb: 'Колдует и насылает порчу. Магию не заблокировать.',
@@ -97,6 +106,7 @@
     bandit: {
       name: 'Разбойник', gender: 'm', forms: { gen: 'Разбойника', dat: 'Разбойнику', acc: 'Разбойника' },
       kind: 'human', art: 'monsters/bandit', emoji: '🧔', shield: true,
+      loot: ['ore', 'cloth'],
       m: { hp: 1.1, atk: 1.05, def: 1.2, block: 18, crit: 2 },
       skills: ['dirty_strike', 'shield_bash_m'],
       blurb: 'Бьёт исподтишка и прикрывается щитом.',
@@ -104,6 +114,7 @@
     bandit_archer: {
       name: 'Разбойник-лучник', gender: 'm', forms: { gen: 'Разбойника-лучника', dat: 'Разбойнику-лучнику', acc: 'Разбойника-лучника' },
       kind: 'human', art: 'monsters/bandit_archer', emoji: '🏹', weaponType: 'bow',
+      loot: ['leather', 'cloth'],
       m: { hp: 0.85, atk: 1.15, def: 0.8, eva: 1.3, crit: 2.5 },
       skills: ['volley_m'],
       blurb: 'Стреляет метко и часто. Хрупок вблизи.',
@@ -111,14 +122,25 @@
     harpy: {
       name: 'Гарпия', gender: 'f', forms: { gen: 'Гарпии', dat: 'Гарпии', acc: 'Гарпию' },
       kind: 'beast', art: 'monsters/harpy', emoji: '🦅',
+      loot: ['leather'],
       m: { hp: 0.9, atk: 1.05, eva: 1.6, speed: 1.12 },
       skills: ['dive'],
       verbs: [{ m: 'полоснул когтями', f: 'полоснула когтями', p: 'по', c: 'dat' }, { m: 'клюнул', f: 'клюнула', c: 'acc' }],
       blurb: 'Быстрая и вёрткая. Атакует с неба.',
     },
+    scorpion: {
+      name: 'Каменный скорпион', gender: 'm', forms: { gen: 'Каменного скорпиона', dat: 'Каменному скорпиону', acc: 'Каменного скорпиона' },
+      kind: 'beast', art: 'monsters/scorpion', emoji: '🦂',
+      loot: ['chitin'],
+      m: { hp: 1.1, atk: 1.0, def: 1.5, mdef: 0.7, eva: 0.6, speed: 0.95, res: { poisonRes: 75 } },
+      skills: ['sting'],
+      verbs: [{ m: 'щёлкнул клешнёй по', f: 'щёлкнула клешнёй по', c: 'dat' }, { m: 'стиснул клешнями', f: 'стиснула клешнями', c: 'acc' }],
+      blurb: 'Панцирь крепче камня, жало сочится ядом. Магия берёт его легче, чем оружие.',
+    },
     golem: {
       name: 'Каменный голем', gender: 'm', forms: { gen: 'Каменного голема', dat: 'Каменному голему', acc: 'Каменного голема' },
       kind: 'construct', art: 'monsters/golem', emoji: '🗿',
+      loot: ['ore'],
       m: { hp: 1.4, atk: 1.0, def: 2.0, mdef: 0.6, eva: 0.3, speed: 0.85, res: { poisonRes: 75 } },
       skills: ['stone_fist', 'harden'],
       verbs: [{ m: 'ударил кулаком', f: 'ударила кулаком', p: 'по', c: 'dat' }, { m: 'придавил', f: 'придавила', c: 'acc' }],
@@ -127,6 +149,7 @@
     stone_troll: {
       name: 'Каменный тролль', gender: 'm', forms: { gen: 'Каменного тролля', dat: 'Каменному троллю', acc: 'Каменного тролля' },
       kind: 'construct', art: 'monsters/stone_troll', emoji: '🪨',
+      loot: ['ore'],
       m: { hp: 1.4, atk: 1.0, def: 1.3, eva: 0.4, speed: 0.9 },
       skills: ['boulder'],
       verbs: [{ m: 'ударил кулачищем', f: 'ударила кулачищем', p: 'по', c: 'dat' }, { m: 'отшвырнул', f: 'отшвырнула', c: 'acc' }],
@@ -135,6 +158,7 @@
     skeleton: {
       name: 'Скелет', gender: 'm', forms: { gen: 'Скелета', dat: 'Скелету', acc: 'Скелета' },
       kind: 'undead', art: 'monsters/skeleton', emoji: '💀',
+      loot: ['ore'],
       m: { hp: 1.0, atk: 1.0, def: 1.1, res: { poisonRes: 75, coldRes: 40 } },
       skills: ['bone_rattle'],
       blurb: 'Яд ему нипочём. Стучит костями, ослабляя защиту.',
@@ -142,6 +166,7 @@
     ghoul: {
       name: 'Упырь', gender: 'm', forms: { gen: 'Упыря', dat: 'Упырю', acc: 'Упыря' },
       kind: 'undead', art: 'monsters/ghoul', emoji: '🧟',
+      loot: ['cloth', 'leather'],
       m: { hp: 1.2, atk: 1.1, speed: 1.02, res: { poisonRes: 60 } },
       skills: ['devour'],
       verbs: [{ m: 'вцепился в', f: 'вцепилась в', c: 'acc' }, { m: 'полоснул когтями', f: 'полоснула когтями', p: 'по', c: 'dat' }],
@@ -150,6 +175,7 @@
     wraith: {
       name: 'Призрак', gender: 'm', forms: { gen: 'Призрака', dat: 'Призраку', acc: 'Призрака' },
       kind: 'undead', art: 'monsters/wraith', emoji: '👻', caster: true, element: 'cold',
+      loot: ['cloth', 'essence'],
       m: { hp: 0.85, atk: 1.1, def: 0.6, mdef: 1.4, eva: 1.5, res: { coldRes: 75, poisonRes: 75 } },
       skills: ['wail', 'life_drain'],
       blurb: 'Ледяные стоны замедляют, а прикосновение крадёт жизнь.',
@@ -163,6 +189,7 @@
     lich: {
       name: 'Лич', gender: 'm', forms: { gen: 'Лича', dat: 'Личу', acc: 'Лича' },
       kind: 'undead', art: 'monsters/lich', emoji: '☠️', caster: true, element: 'cold', boss: true,
+      loot: ['cloth', 'essence', 'ore'],
       m: { hp: 1.0, atk: 1.15, def: 0.9, mdef: 1.6, res: { coldRes: 75, poisonRes: 75 } },
       skills: ['frost_bolt_m', 'life_drain', 'bone_rattle'],
       blurb: 'Хозяин Затопленного склепа.',
