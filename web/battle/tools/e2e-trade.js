@@ -181,8 +181,7 @@ async function openPlayer(browser, uid, hero) {
     assert.strictEqual(chars.get('aaaaaaaa-0000-4000-8000-000000000001').data.bag.filter((x) => x && x.uid === sword.uid).length, 0, 'вещь Альфы ушла в залог');
     // Бета предлагает вещь и золото
     await B.page.click(`[data-bag="${await idxOf(B.page, ringB.uid)}"]`);
-    await B.page.fill('[data-gold]', '50');
-    await B.page.dispatchEvent('[data-gold]', 'change');
+    await B.page.evaluate(() => { const el = document.querySelector('[data-gold]'); el.value = '50'; el.dispatchEvent(new Event('change', { bubbles: true })); });
     await until(() => trades.size && [...trades.values()][0].offer_b.gold === 50 && [...trades.values()][0].offer_b.items.length === 1, 8000, 'залог Беты на сервере');
     console.log('ok   предложения обеих сторон на сервере, вещи ушли в залог');
 

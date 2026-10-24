@@ -226,6 +226,9 @@
         return shown ? PC.itemUI.stackTile({ stack: it.stack, count: shown }, { cls: 'cant', attrs: `data-bag="${i}"` }) : '<div class="tile empty"></div>';
       })()
         : PC.itemUI.tile(it, { cls: usedUid.has(it.uid) || it.locked ? 'cant' : '', attrs: `data-bag="${i}"` }))).join('');
+    // обновление от партнёра перерисовывает окно: недописанное число в поле и фокус не теряем
+    const ae = document.activeElement;
+    const typing = ae && ae.matches && ae.matches('#modal [data-gold], #modal [data-qty]') ? { k: ae.hasAttribute('data-gold') ? '[data-gold]' : '[data-qty]', v: ae.value } : null;
     const myOk = r[`ok_${s}`], theirOk = r[`ok_${o}`];
     const rest = Math.max(0, T.restUntil - Date.now());
     const busy = T.dirty || T.sending;
@@ -241,7 +244,7 @@
         <p class="meta">${theirOk ? 'Партнёр подтвердил ✓' : 'Партнёр ещё не подтвердил'} · тап по вещи — осмотреть</p></div>
       <div class="row-actions"><button class="btn" data-act="cancel">Отменить обмен</button>
         <button class="btn primary" data-act="confirm" ${busy || (!myOk && rest) ? 'disabled' : ''}>${myOk ? 'Вы подтвердили — отменить' : rest ? `Подтвердить (${Math.ceil(rest / 1000)})` : 'Подтвердить'}</button></div>
-      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}</p>
+      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}${PC.cloud.lastMs ? ` <span class="meta">Отклик сервера: ${PC.cloud.lastMs} мс</span>` : ''}</p>
       <div class="bag-tools" style="padding:6px 0 0"><b>Ваша сумка</b><span class="meta grow">тап — предложить, удержание — осмотреть</span></div>
       <div class="bag-grid modal-grid">${bag}</div>`, handler, { onClose: () => {
         T.dismissed = T.row ? T.row.id : null; T.view = false; clearTimeout(T.timer);
@@ -249,6 +252,7 @@
         if (r && r.state === 'open' && r.accepted) showBanner(`Обмен с ${nick(r[otherSide(sideOf(r))])} идёт`, 'Открыть', () => openView());
       } });
     $('#modal-title').dataset.trade = '1';
+    if (typing) { const el = $('#modal').querySelector(typing.k); if (el) { el.value = typing.v; el.focus(); } }
     if (rest) { clearTimeout(T.restTimer); T.restTimer = setTimeout(() => { if (T.view) render(); }, Math.min(rest, 1000)); }
   }
 
