@@ -353,6 +353,7 @@
         closeSheet(); closeModal();
         show('battle');
         PC.battleUI.preview({ player: P.toFighter(data, c), monster: M.monsterAt(row.monster_id, row.monster_level, row.diff || 0), hp: row.monster_hp, maxHp: row.monster_max,
+          onMonsterInfo: () => monsterCard({ id: row.monster_id, level: row.monster_level }, row.diff || 0),
           settings: c.settings, onSettings: () => app.save(), onCancel: () => {
             cancelled = true;
             if (state.session && !state.session.host) { state.session.leave(); state.session = null; closeChannel(); PC.battles.end(); }
@@ -384,9 +385,15 @@
   function openMonsterInfo(uid) {
     const c = state.char;
     const m = W.findMob(data, c, uid);
-    if (!m) return;
+    if (m) monsterCard(m, W.diffOf(c, c.location), uid);
+  }
+
+  // m — { id, level } и, на локации, deadUntil/busy; uid есть только на локации (тогда кнопка «Напасть»).
+  // Из боя (без uid) карточка та же, но без кнопки.
+  function monsterCard(m, D, uid) {
+    const c = state.char;
     const def = data.monsters[m.id];
-    const D = W.diffOf(c, c.location);
+    if (!def) return;
     const dd = data.difficulties[D];
     const t = M.monsterAt(m.id, m.level, D);
     const s = t.stats;
@@ -420,10 +427,10 @@
       <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[2].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
       ${def.boss ? uniqueDrops(m.id, D, m.level + dd.ilvl) : ''}
       <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
-      ${m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
+      ${uid != null && m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
       const un = e.target.closest('[data-unique]');
-      if (un) PC.itemUI.openUnique(un.dataset.unique, m.level + dd.ilvl, () => openMonsterInfo(uid));
+      if (un) PC.itemUI.openUnique(un.dataset.unique, m.level + dd.ilvl, () => monsterCard(m, D, uid));
     });
   }
 
@@ -496,6 +503,7 @@
     const B = PC.battles;
     const common = {
       settings: c.settings,
+      onMonsterInfo: () => monsterCard(mob, D),
       onSettings: () => app.save(),
       onEnd: (battle, { fled, share, aborted }) => {
         const sess = state.session;

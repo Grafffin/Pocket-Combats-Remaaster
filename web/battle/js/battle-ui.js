@@ -143,7 +143,7 @@
       const pct = Math.max(0, Math.min(1, s.hp / f.maxHp));
       const rp = f.resMax ? Math.max(0, Math.min(1, s.res / f.resMax)) : null;
       const col = f.resource ? (data.resources[f.resource] || {}).color : '';
-      const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
+      const fx = (s.effects || []).filter((e) => e.id !== 'shield').map((e) => `<span class="chip ${e.kind}" data-fx="${f.id}|${e.id}" title="${e.name}">${e.name.slice(0, 2)}</span>`).join('');
       return `<div class="pmate${s.hp <= 0 ? ' dead' : ''}${tank === f.id ? ' aggro' : ''}${join}">${avatar(f, 28)}<div class="who"><div class="name">${f.name}</div><div class="lvl">${f.level} ур.</div></div><div class="vit"><div class="meter hp"><div class="track"><div class="fill" style="width:${pct * 100}%;background-color:${pct > 0.5 ? 'var(--hp)' : pct > 0.25 ? 'var(--hp-mid)' : 'var(--hp-low)'}"></div><span class="v">${fmt(s.hp)}</span></div></div>
         ${rp != null ? `<div class="meter res"><div class="track"><div class="fill" style="width:${rp * 100}%;background:${col || '#c9a227'}"></div></div></div>` : ''}</div><div class="effects">${fx}</div></div>`;
     }).join('');
@@ -256,6 +256,7 @@
   }
 
   function applySnapshot(snap) {
+    ui.snap = snap;
     renderParty(snap);
     const me = $('#f-p > .head');
     if (me) me.classList.toggle('aggro', !!ui.battle.player && tankOf(snap) === ui.battle.player.id);
@@ -277,7 +278,7 @@
         res.title = `${f.resName}: ${Math.round(s.res)} / ${f.resMax}`;
       }
       el.querySelector('.effects').innerHTML = s.effects.filter((e) => e.id !== 'shield').map((e) =>
-        `<span class="chip ${e.kind}" title="${e.name}">${e.name.slice(0, 2)}${e.disable || e.turns > 50 ? '' : e.turns}</span>`).join('');
+        `<span class="chip ${e.kind}" data-fx="${f.id}|${e.id}" title="${e.name}">${e.name.slice(0, 2)}${e.disable || e.turns > 50 ? '' : e.turns}</span>`).join('');
       el.classList.toggle('dead', s.hp <= 0);
     }
   }
@@ -524,8 +525,11 @@
 
   // Подсказки по бойцам
   $('#arena').addEventListener('click', (e) => {
+    const chip = e.target.closest('[data-fx]');
+    if (chip) { openEffect(...chip.dataset.fx.split('|')); return; }
     const card = e.target.closest('.fighter');
     if (!card) return;
+    if (card.id === 'f-m' && ui.opts && ui.opts.onMonsterInfo) { ui.opts.onMonsterInfo(); return; }
     const f = card.id === 'f-p' ? ui.battle.player : ui.battle.monster;
     const s = f.s;
     const rows = [
@@ -540,10 +544,58 @@
       (f.effects.length ? `<p class="hint">${f.effects.map((x) => x.name).join(', ')}</p>` : ''));
   });
 
+  // Подробности эффекта: что он делает и сколько ему осталось. Только чтение — состояние боя не меняется.
+  const MOD_NAMES = {
+    atkPct: 'Атака', matkPct: 'Магическая атака', defPct: 'Защита', mdefPct: 'Магическая защита', speedPct: 'Скорость',
+    dmgPct: 'Наносимый урон', dmgTakenPct: 'Получаемый урон', lifesteal: 'Вампиризм', crit: 'Шанс крита',
+  };
+  const DOT_NAMES = { poison: 'ядом', bleed: 'кровотечением', burn: 'огнём' };
+  const signed = (n) => `${n > 0 ? '+' : '−'}${Math.abs(n)}%`;
+
+  function describeEffect(e) {
+    const lines = [];
+    if (e.disable) lines.push(e.id === 'freeze' ? 'Скован льдом и пропускает ход.' : 'Оглушён и пропускает ход.');
+    if (e.dot) lines.push(`Каждый ход получает ${fmt(e.dot.per)} урона ${DOT_NAMES[e.dot.kind] || ''}.`.replace(' .', '.'));
+    for (const [k, v] of Object.entries(e.mods || {})) {
+      if (!v || !MOD_NAMES[k]) continue;
+      lines.push(`${MOD_NAMES[k]} ${signed(Math.round(k === 'crit' ? v : v * 100))}.`);
+    }
+    if (e.dodge) lines.push(`Шанс уклониться от удара +${Math.round(e.dodge * 100)}%.`);
+    if (e.nextCrit) lines.push('Следующий удар — критический.');
+    if (e.nextSpell) lines.push(`Следующее заклинание +${Math.round(e.nextSpell * 100)}% урона.`);
+    if (e.counter) lines.push(`Отвечает на каждый удар контратакой на ${Math.round(e.counter * 100)}% атаки.`);
+    if (e.shieldHp) lines.push(`Поглощает ${fmt(e.shieldHp)} урона.`);
+    return lines.length ? lines : [e.kind === 'debuff' ? 'Ослабляющий эффект.' : 'Усиливающий эффект.'];
+  }
+
+  function openEffect(fid, eid) {
+    const b = ui.battle;
+    const f = b && b.fighters.find((x) => String(x.id) === fid);
+    if (!f) return;
+    const shown = ui.snap && ui.snap[f.id] && (ui.snap[f.id].effects || []).find((x) => x.id === eid);
+    const live = f.effects.find((x) => x.id === eid);
+    const e = live || shown;
+    if (!e) return;
+    // длительность — как на экране (по проигранной строке лога), а не «из будущего»
+    const turns = shown ? shown.turns : e.turns;
+    const left = e.disable ? 'До конца хода' : turns > 50 ? 'До конца боя' : `${turns} ${plural(turns, 'ход', 'хода', 'ходов')}`;
+    const src = e.source != null && e.source !== f.id ? b.fighters.find((x) => x.id === e.source) : null;
+    openModal(e.name, `
+      <div class="row" style="gap:8px;margin-bottom:8px"><span class="tag ${e.kind === 'debuff' ? 'boss' : 'kind'}">${e.kind === 'debuff' ? 'Ослабление' : 'Усиление'}</span><span class="meta">${f.name}</span></div>
+      ${describeEffect(e).map((t) => `<p class="meta" style="margin:4px 0">${t}</p>`).join('')}
+      <div class="kv"><span>Осталось</span><b>${left}</b></div>
+      ${src ? `<div class="kv"><span>Наложил</span><b>${src.name}</b></div>` : ''}`);
+  }
+
+  function plural(n, one, few, many) {
+    const m10 = n % 10, m100 = n % 100;
+    return m10 === 1 && m100 !== 11 ? one : m10 >= 2 && m10 <= 4 && (m100 < 12 || m100 > 14) ? few : many;
+  }
+
   // Окно боя сразу по «Вступить»: монстр и герой из строки списка боёв, пока хозяин не прислал историю
   function preview(o) {
     stop();
-    ui.opts = { settings: o.settings || {}, onSettings: o.onSettings, preview: true, onCancel: o.onCancel };
+    ui.opts = { settings: o.settings || {}, onSettings: o.onSettings, preview: true, onCancel: o.onCancel, onMonsterInfo: o.onMonsterInfo };
     ui.session = null;
     ui.turn = null;
     ui.battle = new Battle({ player: o.player, monster: o.monster, data });
