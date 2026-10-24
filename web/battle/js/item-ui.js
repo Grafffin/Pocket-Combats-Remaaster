@@ -180,7 +180,15 @@
       const t = e.target.closest('[data-tool]');
       if (t) {
         if (t.dataset.tool === 'lens') { prefs.lens = !prefs.lens; savePrefs(); }
-        if (t.dataset.tool === 'lock') { item.locked = !item.locked; PC.app.save(); PC.app.render(); toast(item.locked ? 'Вещь заперта: не продаётся и не разбирается' : 'Замок снят'); }
+        if (t.dataset.tool === 'lock') {
+          PC.app.act('lock', { uid: item.uid }).then((r) => {
+            if (!r.ok) return r.shown || toast(r.reason || 'Не получилось', 'bad');
+            item.locked = r.locked;   // карточка показывает свой объект вещи, герой уже обновлён
+            PC.app.render(); render();
+            toast(item.locked ? 'Вещь заперта: не продаётся и не разбирается' : 'Замок снят');
+          });
+          return;
+        }
         return render();
       }
       const a = e.target.closest('[data-act]');
@@ -232,11 +240,12 @@
       <div><p>${text}</p>${have != null ? `<p class="meta">У вас: <b>${fmtNum(have)}</b></p>` : ''}${buff}</div></div>
       ${canDrink ? '<div class="row-actions"><button class="btn primary" data-act="drink">Выпить</button></div>' : ''}`, (e) => {
       if (!e.target.closest('[data-act="drink"]')) return;
-      const r = PC.economy.drink(data, c, id);
-      if (!r.ok) return toast(r.reason, 'bad');
-      PC.app.save(); PC.app.render();
-      toast(`${m.name}: действует ${r.battles} побед`, 'good');
-      openInfo(id);
+      PC.app.act('drink', { id }).then((r) => {
+        if (!r.ok) return r.shown || toast(r.reason, 'bad');
+        PC.app.render();
+        toast(`${m.name}: действует ${r.battles} побед`, 'good');
+        openInfo(id);
+      });
     });
     $('#sheet').classList.add('over-modal');
   }

@@ -11,3 +11,4 @@ import './_game/items.js';
 import './_game/progression.js';
 import './_game/economy.js';
 import './_game/world.js';
+import './_game/actions.js';

@@ -31,6 +31,7 @@ Deno.serve(async (req) => {
     const { op, args, rev, v } = await req.json();
     // Другой код у клиента и сервера посчитает по-разному: клиент перезагрузит страницу
     if (v !== PC.BUILD) return json({ error: 'version', build: PC.BUILD }, 409);
+    if (op === 'ping') return json({ result: { build: PC.BUILD } });
 
     const jwt = (req.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
     const { data: auth, error: authError } = await db.auth.getUser(jwt);

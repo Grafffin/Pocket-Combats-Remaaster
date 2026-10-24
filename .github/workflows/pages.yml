@@ -49,6 +49,9 @@ jobs:
         run: |
           sh supabase/functions/game/sync.sh
           supabase functions deploy game --project-ref nyyeikzqcckovplxlbda
+      - name: Smoke test game function
+        if: env.SUPABASE_ACCESS_TOKEN != ''
+        run: node web/battle/tools/server-smoke.js "${GITHUB_SHA::10}"
       - uses: actions/configure-pages@v5
       - uses: actions/upload-pages-artifact@v3
         with:
