@@ -267,7 +267,7 @@
     const item = (id, icon, title, note, on) => `<button class="menu-item" data-menu="${id}" ${on ? '' : 'disabled'}>
       <span class="menu-ico">${art(icon, '•')}</span><span><b>${title}</b><small class="meta">${note}</small></span></button>`;
     openModal('Меню', `<div class="menu-list">
-      ${item('forge', 'npcs/blacksmith', 'Кузница', village ? 'Заточка, ранги, перенос, перековка, ковка' : 'Только в деревне', village)}
+      ${item('forge', 'npcs/blacksmith', 'Мастерская улица', village ? 'Заточка, ранги, перековка, ковка, ремонт' : 'Только в деревне', village)}
       ${item('alchemist', 'npcs/alchemist', 'Алхимик', village ? 'Зелья и эликсиры' : 'Только в деревне', village)}
       ${item('market', 'npcs/market', 'Рынок', village ? 'Торговля вещами с другими игроками' : 'Только в деревне', village)}
       ${item('stash', 'npcs/chest', 'Сундук', village ? 'Хранилище на 300 вещей' : 'Только в деревне', village)}
@@ -875,8 +875,7 @@
   // ---------- NPC: лавка и алхимик ----------
 
   function openNpc(id) {
-    if (id === 'smith') return setTab('forge', 'enhance');
-    if (id === 'enchanter') return setTab('forge', 'reroll');
+    if (id === 'workshop') return setTab('forge', 'enhance');
     if (id === 'shop') return openShop();
     if (id === 'alchemist') return openAlchemist();
     if (id === 'buyer') return PC.bagUI.openBuyer();

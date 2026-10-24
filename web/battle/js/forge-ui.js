@@ -7,6 +7,7 @@
   const app = PC.app;
 
   // Режимы: id, название, иконка, кто делает, что делает (одной строкой)
+  const HIDDEN = new Set(['inherit']);   // скрыто до нового назначения «Переноса»
   const SUBS = [
     ['enhance', 'Заточка', 'stats/atk', 'Кузнец Тарас', 'Камнями поднимает +N: больше базовых характеристик, вехи на +5/+10/+15.'],
     ['rank', 'Ранг ★', 'stats/exp', 'Кузнец Тарас', 'Скармливает копию вещи: +10% базовых, выше потолок заточки, на ★3 — знак.'],
@@ -24,7 +25,7 @@
 
   function render(root, arg) {
     const c = app.state.char;
-    if (typeof arg === 'string') f.sub = arg;
+    if (typeof arg === 'string' && !HIDDEN.has(arg)) f.sub = arg;
     if (arg && arg.uid) f.uid = arg.uid;
     app.state.tabArg = null;
     if (f.uid && !I.findItem(c, f.uid)) f.uid = null;
@@ -33,13 +34,13 @@
 
     // Кузница и чародейка работают только в деревне
     if (!app.inVillage()) {
-      root.innerHTML = `<div class="card section"><h3>Кузница</h3>
-        <p>Кузнец Тарас и чародейка Велена принимают только в деревне ${data.locations[data.HOME].name}.</p>
+      root.innerHTML = `<div class="card section"><h3>Мастерская улица</h3>
+        <p>Мастера принимают только в деревне ${data.locations[data.HOME].name}.</p>
         <p class="meta">Вернитесь туда через переходы на экране «Мир».</p>
         <div class="row-actions"><button class="btn primary" data-act="to-world">К переходам</button></div></div>`;
       return;
     }
-    const tabs = SUBS.map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
+    const tabs = SUBS.filter(([id]) => !HIDDEN.has(id)).map(([id, name]) => `<button class="${f.sub === id ? 'on' : ''}" data-sub="${id}">${name}</button>`).join('');
     const sub = SUBS.find((s) => s[0] === f.sub);
     const modeHead = `<div class="mode-head">${art(sub[2], '')}<div><b>${sub[1]}</b><span class="meta">${sub[3]} · ${sub[4]}</span></div></div>`;
     const picker = ['craft', 'repair', 'scribe'].includes(f.sub) ? '' : `<div class="card section"><h3>Вещь <span class="note">${f.sub === 'reroll' ? 'Чародейка Велена' : 'Кузнец Тарас'}</span></h3>
