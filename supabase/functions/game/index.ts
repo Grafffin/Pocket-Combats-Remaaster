@@ -39,7 +39,7 @@ async function tradesReady() {
   return tradesOk;
 }
 // Доступ к базе для правил обмена (web/battle/js/trade.js): запись героя и сделки — одна транзакция trade_commit
-const tradeIo = {
+const tradeIo0 = {
   async hero(u: string) {
     const { data, error } = await db.from('characters').select('data,stash,rev').eq('user_id', u).maybeSingle();
     if (error) throw error;
@@ -69,6 +69,12 @@ const tradeIo = {
     return data;
   },
 };
+const tradeIo = {
+  hero: (u: string) => timed(() => tradeIo0.hero(u)),
+  trade: (id: string) => timed(() => tradeIo0.trade(id)),
+  create: (a: string, b: string, loc: string) => timed(() => tradeIo0.create(a, b, loc)),
+  commit: (c: Parameters<typeof tradeIo0.commit>[0]) => timed(() => tradeIo0.commit(c)),
+};
 const FIGHT_OPS = new Set(['fightJoin', 'fightEnd']);
 const LOC = /^[a-z0-9_]{1,40}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
@@ -77,10 +83,24 @@ const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 // к auth (~100–300 мс). Токен живёт час, поэтому выход из аккаунта действует не позже чем через AUTH_TTL.
 const AUTH_TTL = 5 * 60000;
 const authCache = new Map<string, { uid: string; until: number }>();
+// Шлюз Supabase (verify_jwt включён при деплое) уже проверил подпись и срок токена, поэтому sub читаем из него сами:
+// это экономит запрос к auth (~100–300 мс), когда токен ещё не в кэше. Анонимный ключ без sub сюда не проходит.
+function subOf(jwt: string) {
+  try {
+    const p = JSON.parse(new TextDecoder().decode(Uint8Array.from(atob(jwt.split('.')[1].replace(/-/g, '+').replace(/_/g, '/')), (c) => c.charCodeAt(0))));
+    return p && p.role === 'authenticated' && UUID.test(p.sub) && p.exp * 1000 > Date.now() ? String(p.sub).toLowerCase() : null;
+  } catch (_) { return null; }
+}
 async function userOf(jwt: string) {
   if (!jwt) return null;
   const hit = authCache.get(jwt);
   if (hit && hit.until > Date.now()) return hit.uid;
+  const sub = subOf(jwt);
+  if (sub) {
+    if (authCache.size > 5000) authCache.clear();
+    authCache.set(jwt, { uid: sub, until: Date.now() + AUTH_TTL });
+    return sub;
+  }
   const { data, error } = await db.auth.getUser(jwt);
   if (error || !data.user) return null;
   if (authCache.size > 5000) authCache.clear();
@@ -93,6 +113,13 @@ function seed() {
   crypto.getRandomValues(a);
   return a[0] || 1;
 }
+
+// Замеры обращений к базе в одном запросе: показываются в окне обмена, чтобы видеть, где уходит время
+let dbTimes: number[] = [];
+const timed = async <T>(f: () => Promise<T>): Promise<T> => {
+  const t = performance.now();
+  try { return await f(); } finally { dbTimes.push(Math.round(performance.now() - t)); }
+};
 
 Deno.serve(async (req) => {
   if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
@@ -111,7 +138,10 @@ Deno.serve(async (req) => {
     if (PC.trade.OPS.includes(op)) {
       if (!(await tradesReady())) return json({ error: 'no_trades' }, 400);
       try {
-        return json(await PC.trade.handle(op, args || {}, tradeIo, { uid, now: Date.now() }));
+        dbTimes = [];
+        const t0 = performance.now();
+        const out = await PC.trade.handle(op, args || {}, tradeIo, { uid, now: Date.now() });
+        return json({ ...out, t: { region: Deno.env.get('SB_REGION') || Deno.env.get('DENO_REGION') || '?', total: Math.round(performance.now() - t0), db: dbTimes } });
       } catch (e) {
         if (e instanceof PC.trade.TradeError && e.message === 'stale') {
           const row = await tradeIo.hero(uid);

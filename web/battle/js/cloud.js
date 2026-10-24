@@ -132,7 +132,7 @@
     const t0 = performance.now();
     const { data: res, error } = await auth.client.functions.invoke('game', { body: { op, args, rev, v: PC.BUILD } });
     cloud.lastMs = Math.round(performance.now() - t0);   // отклик функции: показывается в окне обмена для диагностики
-    if (!error) return res;
+    if (!error) { if (res && res.t) cloud.lastT = res.t; return res; }
     let body = null;
     try { body = error.context && await error.context.json(); } catch (e) { body = null; }
     if (body && body.error === 'version') {
