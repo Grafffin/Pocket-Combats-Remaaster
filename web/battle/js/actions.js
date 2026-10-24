@@ -311,6 +311,14 @@
       const c = village(hero(S)), st = stashOf(S), i = int(a.index, 0, STASH_SIZE - 1);
       const it = st.items[i];
       if (!it) return no('Пусто');
+      if (it.stack) {
+        // ресурсы — сколько влезет в сумку, остаток остаётся в сундуке
+        const put = I().matAdd(D(), c, it.stack, it.count);
+        if (!put) return no('Сумка полна');
+        it.count -= put;
+        if (!it.count) st.items[i] = null;
+        return { ok: true, moved: put };
+      }
       if (I().bagAdd(c, it) < 0) return no('Сумка полна');
       st.items[i] = null;
       return { ok: true };
@@ -321,7 +329,23 @@
       const from = int(a.page == null ? 0 : a.page, 0, STASH_SIZE / STASH_PAGE - 1) * STASH_PAGE;
       const it = c.bag[i];
       if (!it) return no('Пусто');
-      if (it.stack) return no('В сундук кладутся только вещи');
+      if (it.stack) {
+        // ресурсы: добиваем неполные стаки сундука, остальное — в свободные ячейки; что не влезло, остаётся в сумке
+        let left = it.count;
+        for (const x of st.items) {
+          if (!left) break;
+          if (x && x.stack === it.stack && x.count < D().STACK_MAX) { const d = Math.min(left, D().STACK_MAX - x.count); x.count += d; left -= d; }
+        }
+        for (let j = 0; j < st.items.length && left; j++) {
+          if (st.items[j]) continue;
+          const d = Math.min(left, D().STACK_MAX);
+          st.items[j] = { stack: it.stack, count: d };
+          left -= d;
+        }
+        if (left === it.count) return no('Сундук полон');
+        if (left) it.count = left; else c.bag[i] = null;
+        return { ok: true };
+      }
       const pageFree = st.items.findIndex((x, j) => !x && j >= from && j < from + STASH_PAGE);
       const j = pageFree >= 0 ? pageFree : st.items.indexOf(null);
       if (j < 0) return no('Сундук полон');

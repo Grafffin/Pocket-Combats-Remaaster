@@ -303,6 +303,7 @@
   function showPressed(ref) {
     const item = itemAt(ref);
     if (!item) return;
+    if (item.stack) return PC.itemUI.openInfo(item.stack);
     const back = reopen;
     openItem(app.state.char, item, 'bag', '<button class="btn wide" data-act="back">Назад</button>', (act) => { if (act === 'back' && back) back(); });
   }
@@ -366,8 +367,8 @@
     const pages = Math.ceil(STASH_SIZE / STASH_PAGE);
     const from = stashPage * STASH_PAGE;
     const sCells = stash.items.slice(from, from + STASH_PAGE).map((it, i) => (it
-      ? tile(it, { attrs: `data-press="stash:${from + i}"` }) : '<div class="tile empty"></div>')).join('');
-    const bCells = c.bag.map((it, i) => (it ? (it.stack ? stackTile(it, { cls: 'cant' }) : tile(it, { attrs: `data-press="bag:${i}"` })) : '<div class="tile empty"></div>')).join('');
+      ? (it.stack ? stackTile(it, { attrs: `data-press="stash:${from + i}"` }) : tile(it, { attrs: `data-press="stash:${from + i}"` })) : '<div class="tile empty"></div>')).join('');
+    const bCells = c.bag.map((it, i) => (it ? (it.stack ? stackTile(it, { attrs: `data-press="bag:${i}"` }) : tile(it, { attrs: `data-press="bag:${i}"` })) : '<div class="tile empty"></div>')).join('');
     const tabs = Array.from({ length: pages }, (_, p) => `<button class="${p === stashPage ? 'on' : ''}" data-page="${p}">${p + 1}</button>`).join('');
     reopen = () => openStash();
     pressTap = (ref) => {
@@ -386,7 +387,7 @@
       <div class="bag-grid modal-grid">${sCells}</div>
       <div class="bag-tools" style="padding:8px 0 0"><b>Сумка</b><span class="meta grow">${c.bag.filter(Boolean).length} / ${c.bag.length}</span></div>
       <div class="bag-grid modal-grid">${bCells}</div>
-      <p class="hint">Тап — переложить между сундуком и сумкой, удержание — осмотреть.</p>`, (e) => {
+      <p class="hint">Тап — переложить между сундуком и сумкой (ресурсы — стаком), удержание — осмотреть.</p>`, (e) => {
       const pg = e.target.closest('[data-page]');
       if (pg) { stashPage = Number(pg.dataset.page); return openStash(); }
       if (e.target.closest('[data-act="sort-stash"]')) {
