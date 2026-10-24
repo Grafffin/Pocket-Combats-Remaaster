@@ -14,8 +14,23 @@
     || !$('#modal').hidden || !$('#sheet').hidden || document.querySelector('#chat.open, .drag-ghost')
     || e.target.closest('input, textarea, select, [data-noswipe]');
 
+  // Въезд вкладки: «вперёд» по порядку (Мир → Герой → Сумка) — справа, «назад» — слева. Вкладки вне порядка (кузница) — без анимации
+  let busyUntil = 0;
+  function enter(from, to) {
+    const a = ORDER.indexOf(from), b = ORDER.indexOf(to);
+    if (a < 0 || b < 0 || document.hidden) return;
+    const el = $(`#tab-${to}`);
+    el.classList.remove('slide-l', 'slide-r');
+    void el.offsetWidth;   // перезапуск анимации
+    el.classList.add(b > a ? 'slide-l' : 'slide-r');
+    busyUntil = performance.now() + 260;
+    el.addEventListener('animationend', () => el.classList.remove('slide-l', 'slide-r'), { once: true });
+  }
+  PC.swipe = { enter };
+
   body.addEventListener('touchstart', (e) => {
-    if (blocked(e)) { g = null; return; }
+    // пока вкладка въезжает, новый свайп не берём: иначе частое листание копит перерисовки и роняет fps
+    if (performance.now() < busyUntil || blocked(e)) { g = null; return; }
     const t = e.touches[0];
     g = { x: t.clientX, y: t.clientY, dx: 0, mode: null, at: performance.now() };
   }, { passive: true });
@@ -56,12 +71,7 @@
     const go = (Math.abs(s.dx) > DIST || (Math.abs(s.dx) > 35 && Math.abs(s.dx) / dt > FAST)) && next >= 0 && next < ORDER.length;
     if (!go) return reset(s.el, true);
     reset(s.el, false);
-    PC.app.setTab(ORDER[next]);
-    const el = $(`#tab-${ORDER[next]}`);
-    el.classList.remove('slide-l', 'slide-r');
-    void el.offsetWidth;   // перезапуск анимации
-    el.classList.add(s.dx < 0 ? 'slide-l' : 'slide-r');   // свайп влево — новая вкладка приезжает справа
-    el.addEventListener('animationend', () => el.classList.remove('slide-l', 'slide-r'), { once: true });
+    PC.app.setTab(ORDER[next]);   // въезд новой вкладки включает сам setTab → PC.swipe.enter
   }
   body.addEventListener('touchend', end, { passive: true });
   body.addEventListener('touchcancel', () => { const s = g; g = null; if (s && s.el) reset(s.el, true); }, { passive: true });

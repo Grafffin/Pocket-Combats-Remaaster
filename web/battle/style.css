@@ -965,3 +965,7 @@ p.bag-expand { text-align: center; margin: 0; }
 .tab.slide-r { animation: tabInR .24s cubic-bezier(.2, .8, .3, 1); }
 @keyframes tabInL { from { transform: translateX(46px); opacity: .25; } to { transform: none; opacity: 1; } }
 @keyframes tabInR { from { transform: translateX(-46px); opacity: .25; } to { transform: none; opacity: 1; } }
+
+/* Пока вкладка въезжает: рамки редких вещей стоят, слой готовится заранее — частое листание не роняет fps */
+.tab.slide-l, .tab.slide-r { will-change: transform, opacity; }
+.tab.slide-l .tile, .tab.slide-r .tile, .tab.slide-l .tile::before, .tab.slide-r .tile::before { animation-play-state: paused !important; }

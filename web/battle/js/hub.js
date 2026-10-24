@@ -151,14 +151,18 @@
   // ---------- Каркас ----------
 
   function setTab(tab, arg) {
+    const prev = state.tab;
     state.tab = tab;
     state.tabArg = arg;
     show('hub');
-    render();
+    render(true);
     $('#hub-body').scrollTop = 0;
+    if (PC.swipe && prev !== tab) PC.swipe.enter(prev, tab);   // въезд вкладки сбоку: и при свайпе, и при кнопках снизу
   }
 
-  function render() {
+  // reuse — вызов из setTab: вкладки «Герой» и «Сумка» не пересобираем, если герой с прошлой отрисовки не менялся
+  // (частое листание иначе перестраивает сотни плиток на каждый жест); все остальные вызовы render() перерисовывают всегда
+  function render(reuse) {
     const c = state.char;
     if (!c) return;
     W.update(data, c, Date.now(), rng);
@@ -168,7 +172,14 @@
     $('#badge-bag').hidden = !c.bag.some((x) => x && x.fresh);
     for (const id of ['world', 'hero', 'bag', 'forge']) $(`#tab-${id}`).hidden = id !== state.tab;
     const fn = { world: renderWorld, hero: renderHero }[state.tab] || app.tabs[state.tab];
-    if (fn) fn($(`#tab-${state.tab}`), state.tabArg);
+    if (!fn) return;
+    const el = $(`#tab-${state.tab}`);
+    if (state.tab === 'hero' || state.tab === 'bag') {
+      const sig = JSON.stringify(c);
+      if (reuse && state.tabArg == null && el.firstChild && el._sig === sig) return;
+      el._sig = sig;
+    }
+    fn(el, state.tabArg);
   }
 
   function renderHeroBar() {
