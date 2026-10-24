@@ -31,7 +31,8 @@
     "enchanter": "npcs/enchanter.svg",
     "elder": "npcs/elder.svg",
     "alchemist": "npcs/alchemist.svg",
-    "chest": "npcs/chest.svg"
+    "chest": "npcs/chest.svg",
+    "market": "npcs/market.svg"
   },
   "locations": {
     "village": "locations/village.svg",

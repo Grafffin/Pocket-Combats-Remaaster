@@ -475,6 +475,42 @@ select { font: inherit; color: var(--text); background: var(--card-2); border: 1
 .toast.good { border-color: #2f6b3a; } .toast.bad { border-color: #6b2f37; }
 @keyframes toastIn { from { opacity: 0; transform: translateY(-8px); } }
 
+/* ---------- Рынок ---------- */
+.market-seg { margin-bottom: 10px; }
+.market-seg button { flex: 1; padding: 9px 6px; position: relative; font-size: 13px; }
+.market-seg .dot-badge { top: 6px; right: 6px; }
+.market-tools { display: flex; gap: 6px; align-items: center; margin-bottom: 6px; }
+.market-tools select { flex: 1; min-width: 0; padding: 6px 8px; font-size: 13px; }
+.market-tools .icon-btn { flex: none; color: var(--muted); }
+.lot { display: flex; gap: 10px; align-items: center; padding: 8px; border: 1px solid var(--line); border-radius: 12px; background: var(--card-2); cursor: pointer; }
+.lot > .tile { width: 52px; flex: none; }
+.lot-txt { flex: 1; min-width: 0; font-size: 14px; }
+.lot-txt b { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.lot-props { font-size: 12px; color: #c3c9d6; margin-top: 2px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lot-props .leg { color: var(--r4); font-weight: 600; }
+.lot-props .neg { color: var(--bad); }
+.lot-side { display: flex; flex-direction: column; align-items: flex-end; gap: 4px; flex: none; max-width: 104px; text-align: right; }
+.lot-side .btn { white-space: nowrap; }
+.market-pay { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 10px; }
+.market-filters { display: flex; flex-direction: column; gap: 14px; }
+.mf-block h4 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .08em; color: var(--muted); }
+.mf-block h4 small { text-transform: none; letter-spacing: 0; font-weight: 500; color: var(--dim, var(--muted)); }
+.mf-sub { font-size: 12px; color: var(--muted); margin: 8px 0 4px; }
+.chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.chips .chip-btn { padding: 6px 10px; font-size: 12px; }
+.chips .chip-btn[style] { color: var(--chip); }
+.chips .chip-btn[style].on { border-color: var(--chip); background: color-mix(in srgb, var(--chip) 18%, transparent); }
+.mf-range { display: flex; gap: 6px; align-items: center; }
+.mf-range select, .mf-range input { flex: 1; min-width: 0; padding: 7px 8px; font-size: 13px; }
+.mf-range span { color: var(--muted); }
+.mf-toggle { display: flex; gap: 8px; align-items: center; font-size: 14px; }
+.mf-toggle input { width: 18px; height: 18px; accent-color: var(--accent); }
+.market-apply { position: sticky; bottom: -16px; background: #171a23; padding: 10px 0 2px; margin-bottom: -4px; }
+.sell-form label { display: flex; flex-direction: column; gap: 6px; font-size: 12px; color: var(--muted); margin-top: 12px; }
+input[type="number"] { font: inherit; color: var(--text); background: var(--card); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; }
+input[type="number"]:focus { outline: 2px solid var(--accent); border-color: transparent; }
+.lot-info { margin-top: 6px; }
+
 @media (max-width: 380px) {
   .bag-grid, .picker { grid-template-columns: repeat(5, 1fr); }
   .skillbar { grid-template-columns: repeat(3, 1fr); }
