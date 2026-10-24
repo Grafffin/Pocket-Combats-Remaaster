@@ -40,7 +40,7 @@
   function openSheet(title, html, onClick, { modal = false, onClose = null } = {}) {
     sheetModal = modal;
     sheetOnClose = onClose;
-    $('#sheet').classList.remove('over-modal');
+    $('#sheet').classList.remove('over-modal', 'centered');
     $('#sheet-title').textContent = title;
     $('#sheet-body').innerHTML = html;
     sheetHandler = onClick || null;

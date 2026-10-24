@@ -816,7 +816,7 @@
       if (sum.unlocked) html += `<p class="levelup">Открыта сложность «${sum.unlocked}» для этой зоны!</p>`;
       if (sum.items.length) html += `<div class="loot-grid">${sum.items.map((it) => tile(it, { attrs: `data-loot="${it.uid}"`, can: I.canEquip(data, c, it).ok })).join('')}</div>`;
       const mats = Object.entries(sum.materials);
-      if (mats.length) html += `<div class="cost" style="justify-content:center">${mats.map(([k, n]) => `<span class="info-link" data-info="${k}">${art(data.materials[k].art, '•')}+${n}</span>`).join('')}</div>`;
+      if (mats.length) html += `<div class="loot-grid">${mats.map(([k, n]) => PC.itemUI.stackTile({ stack: k, count: n }, { attrs: `data-info="${k}"` })).join('')}</div>`;
       const lost = Object.entries(sum.lost || {});
       if (lost.length) html += `<p class="req">Сумка полна — не поместилось: ${lost.map(([k, n]) => `${data.materials[k].name} ×${n}`).join(', ')}.</p>`;
       if (sum.salvaged.length) {
