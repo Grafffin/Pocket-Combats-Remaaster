@@ -402,6 +402,8 @@
     if (info) return openMonsterInfo(info.dataset.mobinfo);
     const n = e.target.closest('[data-npc]');
     if (n) return openNpc(n.dataset.npc);
+    const pl = e.target.closest('[data-player]');
+    if (pl && PC.tradeUI) return PC.tradeUI.openPlayer(pl.dataset.player);
     const r = e.target.closest('[data-route]');
     if (r) {
       if (c.settings.autoHunt) { c.settings.autoHunt = false; }

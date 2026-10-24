@@ -934,3 +934,18 @@ p.bag-expand { text-align: center; margin: 0; }
 .chat-fab.moving { transform: scale(1.15); box-shadow: 0 0 0 3px rgba(232, 195, 106, .5), 0 6px 18px rgba(0, 0, 0, .6); }
 .chat-item { display: inline; padding: 0 3px; border: 1px solid var(--line); border-radius: 6px; background: #0e1015; font: inherit; font-weight: 600; cursor: pointer; }
 .chat-item.rc0 { color: #b8bfcc; }
+
+/* ---------- Игроки на локации и обмен ---------- */
+.player.tap { cursor: pointer; }
+.player.tap:active { background: rgba(255, 255, 255, .09); }
+.pc-head { display: flex; gap: 12px; align-items: center; margin-bottom: 10px; }
+.pc-stats { display: grid; grid-template-columns: 1fr 1fr; gap: 6px 14px; margin-bottom: 8px; }
+.pc-stat { display: flex; justify-content: space-between; font-size: 14px; padding: 4px 8px; border-radius: 8px; background: rgba(255, 255, 255, .04); }
+.trade-side { margin-bottom: 10px; }
+.trade-side.their.ok { box-shadow: 0 0 0 1px rgba(100, 200, 120, .6); border-radius: 10px; padding: 4px; }
+.trade-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; margin: 6px 0; }
+.trade-gold { display: flex; align-items: center; gap: 6px; margin: 4px 0; }
+.trade-gold input, .trade-edit input { width: 110px; padding: 6px 8px; border-radius: 8px; border: 1px solid var(--line); background: #0e1015; color: #e6e9f2; font: inherit; font-size: 16px; }
+.trade-edit { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin: 6px 0; }
+.trade-banner { position: absolute; left: 10px; right: 10px; bottom: calc(132px + env(safe-area-inset-bottom)); z-index: 60; display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-radius: 12px; background: #1d2130; border: 1px solid var(--accent, #e8c36a); box-shadow: 0 6px 22px rgba(0, 0, 0, .6); }
+.trade-banner span { flex: 1; font-size: 14px; }
