@@ -156,6 +156,7 @@
       c.bag = [...list, ...new Array(c.bag.length - list.length).fill(null)];
       return { ok: true };
     },
+    expandBag: (S) => I().expandBag(D(), hero(S)),
     lock(S, a) {
       const found = I().findItem(hero(S), str(a.uid));
       if (!found) return no('Вещь не найдена');

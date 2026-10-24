@@ -908,3 +908,5 @@ input:focus-visible, .cnum-btn:focus-visible, .pick-opt:focus-visible { outline:
 .mat-field { display: flex; flex-direction: column; gap: 6px; margin-top: 10px; font-size: 12px; color: var(--muted); }
 .mat-form { padding-bottom: 10px; border-bottom: 1px dashed #262a38; margin-bottom: 12px; }
 .mat-form .row img, .mat-form .row .ico { width: 28px; height: 28px; }
+.bag-expand { padding: 10px 12px 0; justify-content: center; }
+p.bag-expand { text-align: center; margin: 0; }

@@ -138,6 +138,15 @@ const PC = globalThis.PC, data = PC.data;
   assert.throws(() => run('settings', { patch: { gold: 5 } }, cur, ctx()), /bad_args/);
   assert.ok(step('settings', { patch: { potionAt: 50 } }).ok);
 
+  // расширение сумки: платно, +8 ячеек, не больше максимума
+  const bag0 = cur.data.bag.length;
+  cur.data.gold = 0;
+  assert.ok(!step('expandBag', {}).ok && cur.data.bag.length === bag0, 'без золота — отказ');
+  cur.data.gold = 1e6;
+  while (step('expandBag', {}).ok);
+  assert.ok(cur.data.bag.length === data.bagExpand.max && cur.data.bag.length > bag0, 'сумка расширена до максимума');
+  assert.ok(!step('expandBag', {}).ok, 'дальше максимума нельзя');
+
   // сундук: вещь из сумки и обратно, без дублей
   const item = PC.items.generate(data, { ilvl: 5, cls: job, mf: 0 }, PC.makeRng(7));
   PC.items.bagAdd(cur.data, item);
