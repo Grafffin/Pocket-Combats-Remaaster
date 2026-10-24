@@ -19,3 +19,5 @@ jobs:
         run: node web/battle/tools/lockstep-stress.js 12
       - name: Серверная функция game (операции на игровом коде)
         run: node web/battle/tools/server-test.js
+      - name: Обмен между игроками (мошеннические схемы)
+        run: node web/battle/tools/trade-test.js

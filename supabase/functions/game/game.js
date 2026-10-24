@@ -12,3 +12,4 @@ import './_game/progression.js';
 import './_game/economy.js';
 import './_game/world.js';
 import './_game/actions.js';
+import './_game/trade.js';
