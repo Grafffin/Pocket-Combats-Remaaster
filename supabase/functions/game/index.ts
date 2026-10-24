@@ -10,6 +10,8 @@ const cors = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
   'Access-Control-Allow-Methods': 'POST, OPTIONS',
+  // браузер помнит разрешение и не делает лишний запрос OPTIONS перед каждым действием (экономит круг до сервера)
+  'Access-Control-Max-Age': '7200',
 };
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });

@@ -129,7 +129,9 @@
   cloud.trades = false;   // таблица обменов game_trades есть (миграция 0017): в карточке игрока появляется «Обмен»
   cloud.fights = false;   // таблица боёв game_fights есть: награды за бои тоже считает сервер
   async function invoke(op, args, rev) {
+    const t0 = performance.now();
     const { data: res, error } = await auth.client.functions.invoke('game', { body: { op, args, rev, v: PC.BUILD } });
+    cloud.lastMs = Math.round(performance.now() - t0);   // отклик функции: показывается в окне обмена для диагностики
     if (!error) return res;
     let body = null;
     try { body = error.context && await error.context.json(); } catch (e) { body = null; }
