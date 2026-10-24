@@ -52,8 +52,7 @@
     pmin: '', pmax: '', affixes: [], special: [], noNeg: false, fit: false, sort: 'new' });
   const filterStore = storage('pc-market-filter-v1', null);
   const st = { tab: 'search', view: 'list', f: { ...blank(), ...(filterStore.load() || {}) }, lots: [], more: false, loading: false, mine: null, busy: false, msg: '',
-    mats: { sel: '', lots: [], mine: null, loading: false, msg: '', form: { mat: '', qty: 1, unit: 0 } } };
-  const FORGE = Object.keys(data.materials).filter((id) => data.materials[id].forge);
+    mats: { sel: '', lots: [], mine: null, loading: false, msg: '', picked: [], form: {}, lot: null, qty: 1 } };
   const saveFilter = () => filterStore.save(st.f);
 
   function affixName(id) {
@@ -158,7 +157,7 @@
     refresh();
   }
 
-  // Ресурсы кузницы: свои лоты (без вещей) и предложения
+  // Ресурсы: предложения и свои лоты
   async function searchMats() {
     const m = st.mats;
     if (m.loading) return;
@@ -174,8 +173,8 @@
   async function loadMatMine() {
     try {
       const { data: rows, error } = await auth.client.from('market_mat_listings')
-        .select('id,mat,qty,unit,fee,status,claimed,created_at,expires_at')
-        .eq('seller_id', auth.user.id).in('status', ['active', 'sold'])
+        .select('id,mat,qty,unit,fee,sold_qty,pending,status,claimed,created_at,expires_at')
+        .eq('seller_id', auth.user.id).or('status.in.(active,sold),pending.gt.0')
         .order('created_at', { ascending: false }).limit(40);
       if (error) throw error;
       st.mats.mine = rows;
@@ -223,7 +222,7 @@
   }
 
   function tabsHtml() {
-    const pay = (st.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length + (st.mats.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length;
+    const pay = (st.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length + (st.mats.mine || []).filter((l) => l.pending > 0).length;
     const t = (id, name) => `<button class="${st.tab === id ? 'on' : ''}" data-mtab="${id}">${name}</button>`;
     return `<div class="seg market-seg">${t('search', 'Поиск')}${t('sell', 'Продать')}${t('mats', 'Ресурсы')}${t('mine', `Мои лоты${pay ? ' <i class="dot-badge"></i>' : ''}`)}</div>`;
   }
@@ -295,8 +294,15 @@
   function mineHtml() {
     if (!st.mine) return '<p class="empty-note">Загружаем…</p>';
     const pay = st.mine.filter((l) => l.status === 'sold' && !l.claimed).reduce((s, l) => s + l.price - l.fee, 0)
-      + (st.mats.mine || []).filter((l) => l.status === 'sold' && !l.claimed).reduce((s, l) => s + l.qty * l.unit - l.fee, 0);
+      + (st.mats.mine || []).reduce((s, l) => s + (l.pending || 0), 0);
     const now = Date.now();
+    const mats = (st.mats.mine || []).map((l) => {
+      const expired = new Date(l.expires_at).getTime() <= now;
+      const side = l.status === 'active'
+        ? `<b>${fmtNum(l.unit)} 💰/шт</b><span class="meta">${expired ? 'срок истёк' : left(l.expires_at)}</span><button class="btn small" data-matcancel="${l.id}">${expired ? 'Забрать остаток' : 'Снять остаток'}</button>`
+        : `<span class="meta">${l.pending > 0 ? 'продано, ждёт' : 'продано'}</span><b>${fmtNum(l.pending || 0)} 💰</b>`;
+      return matLotRow(l, side, true);
+    }).join('');
     const rows = st.mine.map((l) => {
       let side;
       if (l.status === 'sold') side = `<span class="meta">${l.claimed ? 'продано' : 'продано, ждёт'}</span><b>${fmtNum(l.price - l.fee)} 💰</b>`;
@@ -306,69 +312,149 @@
     }).join('');
     return `${pay ? `<div class="flash good market-pay">Выручка к получению: ${fmtNum(pay)} 💰<button class="btn small primary" data-act="claim">Забрать</button></div>` : ''}
       ${st.msg ? `<div class="flash bad">${st.msg}</div>` : ''}
-      <div class="list">${rows || '<p class="empty-note">Вы ещё ничего не выставляли</p>'}</div>
-      <p class="meta">Лоты ресурсов — во вкладке «Ресурсы»; выручка за них забирается здесь же.</p>`;
+      <div class="list">${mats + rows || '<p class="empty-note">Вы ещё ничего не выставляли</p>'}</div>`;
   }
 
   // ---------- Вкладка «Ресурсы» ----------
+  // Ресурсы лежат в сумке стаками. Продажа: «Продать ресурсы» → выбор стаков в сумке → окно с количеством и ценой для каждого.
+  // Покупка: тап по лоту → окно с количеством (можно взять часть стака). Лот хранит цену за штуку.
 
   const matName = (id) => data.materials[id].name;
-  function matLotRow(l, side) {
+  const MAT_IDS = Object.keys(data.materials);
+
+  function matLotRow(l, side, mine) {
     const m = data.materials[l.mat];
-    return `<div class="lot" data-matlot="${l.id}"><div class="tile">${art(m.art, '•')}</div>
-      <div class="lot-txt"><b>${m.name} ×${fmtNum(l.qty)}</b>
-        <div class="meta">${fmtNum(l.unit)} 💰 за штуку${l.seller_nick ? ` · ${escapeHtml(l.seller_nick)}` : ''}</div></div>
+    const qtyTxt = mine ? `${fmtNum(l.qty)} ост.${l.sold_qty ? ` · продано ${fmtNum(l.sold_qty)}` : ''}` : `×${fmtNum(l.qty)}`;
+    return `<div class="lot" ${mine ? '' : `data-matlot="${l.id}"`}><div class="tile stack">${art(m.art, '•')}</div>
+      <div class="lot-txt"><b>${m.name} ${qtyTxt}</b>
+        <div class="meta">${fmtNum(l.unit)} 💰 за штуку${l.seller_nick ? ` · ${escapeHtml(l.seller_nick)}` : ''}${!mine && l.expires_at ? ` · ${left(l.expires_at)}` : ''}</div></div>
       <div class="lot-side">${side}</div></div>`;
   }
 
   function matsHtml() {
-    const c = app.state.char, m = st.mats, f = m.form;
-    const chipsHtml = ['', ...FORGE].map((id) => `<button class="chip-btn ${m.sel === id ? 'on' : ''}" data-mchip="${id}">${id ? matName(id) : 'Все'}</button>`).join('');
-    const sellOpts = FORGE.map((id) => `<option value="${id}" ${f.mat === id ? 'selected' : ''}>${matName(id)} (есть ${fmtNum(c.materials[id] || 0)})</option>`).join('');
-    const net = (v) => fmtNum(v - Math.floor(v * FEE / 100));
-    const total = Math.max(0, Math.floor(f.qty)) * Math.max(0, Math.floor(f.unit));
-    const offers = m.lots.map((l) => matLotRow(l, l.seller_id === auth.user.id
+    const c = app.state.char, m = st.mats;
+    const refreshBtn = `<button class="icon-btn" data-act="mat-refresh" title="Обновить" aria-label="Обновить">${refreshIcon}</button>`;
+    const filter = `<select data-mfilter data-title="Ресурс">${opt([['', 'Все ресурсы'], ...MAT_IDS.map((id) => [id, matName(id)])], m.sel)}</select>`;
+    const rows = m.lots.map((l) => matLotRow(l, l.seller_id === auth.user.id
       ? '<span class="meta">ваш лот</span>'
-      : `<button class="btn small primary" data-matbuy="${l.id}" ${c.gold < l.qty * l.unit ? 'disabled' : ''}>${fmtNum(l.qty * l.unit)} 💰</button>`)).join('');
-    const mine = (m.mine || []).map((l) => {
-      const expired = new Date(l.expires_at).getTime() <= Date.now();
-      const side = l.status === 'sold' ? `<span class="meta">${l.claimed ? 'продано' : 'продано, ждёт'}</span><b>${fmtNum(l.qty * l.unit - l.fee)} 💰</b>`
-        : `<b>${fmtNum(l.qty * l.unit)} 💰</b><span class="meta">${expired ? 'срок истёк' : left(l.expires_at)}</span><button class="btn small" data-matcancel="${l.id}">${expired ? 'Забрать' : 'Снять'}</button>`;
-      return matLotRow(l, side);
+      : `<b>${fmtNum(l.unit)} 💰</b><span class="meta">за штуку</span>`)).join('');
+    return `<div class="market-tools"><button class="btn small primary" data-act="mat-sell">Продать ресурсы</button>${filter}${refreshBtn}</div>
+      <p class="meta">У вас ${fmtNum(c.gold)} 💰 · комиссия с продажи ${FEE}%, лот висит 3 дня. Тап по лоту — купить, можно часть.</p>
+      <div class="list">${rows || `<p class="empty-note">${m.loading ? 'Ищем…' : (m.msg || 'Предложений нет')}</p>`}</div>`;
+  }
+
+  // Окно поверх рынка: вкладки не перерисовываются, пока оно открыто
+  function openPane(title, html, onClick) {
+    st.view = 'card';
+    openModal(title, html, onClick, { cls: 'market-modal', onClose: () => { st.view = 'list'; $('#modal').dataset.market = ''; } });
+    $('#modal').dataset.market = '1';
+  }
+
+  // Шаг 1 продажи: сумка, тап по стаку отмечает ресурс
+  function openMatPick() {
+    const c = app.state.char, m = st.mats;
+    const cells = c.bag.map((it, i) => (it
+      ? (it.stack ? PC.itemUI.stackTile(it, { attrs: `data-matpick="${it.stack}"`, checked: m.picked.includes(it.stack) }) : tile(it, { cls: 'cant' }))
+      : '<div class="tile empty"></div>')).join('');
+    const n = m.picked.length;
+    openPane('Что продать?', `<p class="meta">Отметьте ресурсы в сумке (весь запас ресурса, количество зададите дальше). Выставить можно до 10 видов за раз.</p>
+      <div class="bag-grid modal-grid">${cells}</div>
+      <div class="row-actions"><button class="btn" data-act="back">Назад</button><button class="btn primary" data-act="mat-next" ${n ? '' : 'disabled'}>Далее${n ? ` · ${n}` : ''}</button></div>`, (e) => {
+      const t = e.target;
+      if (t.closest('[data-act="back"]')) return show('list', 'mats');
+      const pk = t.closest('[data-matpick]');
+      if (pk) {
+        const id = pk.dataset.matpick, i = m.picked.indexOf(id);
+        if (i >= 0) m.picked.splice(i, 1); else if (m.picked.length < 10) m.picked.push(id);
+        return openMatPick();
+      }
+      if (t.closest('[data-act="mat-next"]') && m.picked.length) openMatForm();
+    });
+  }
+
+  // Шаг 2 продажи: количество и цена за штуку для каждого отмеченного ресурса
+  function openMatForm() {
+    const c = app.state.char, m = st.mats;
+    for (const id of m.picked) {
+      const have = I.matCount(data, c, id);
+      const f = m.form[id] || (m.form[id] = { qty: have, unit: Math.max(1, data.materials[id].price || 1) });
+      f.qty = Math.min(Math.max(1, f.qty), have);
+    }
+    const net = (v) => fmtNum(v - Math.floor(v * FEE / 100));
+    const blocks = m.picked.map((id) => {
+      const have = I.matCount(data, c, id), f = m.form[id];
+      return `<div class="mf-block mat-form" data-mat="${id}">
+        <div class="row" style="gap:10px"><div class="tile stack" style="width:40px;flex:none">${art(data.materials[id].art, '•')}</div><b>${matName(id)}</b><span class="meta">в сумке ${fmtNum(have)}</span></div>
+        <div class="mat-field"><span>Количество</span><input type="number" inputmode="numeric" min="1" data-max="${have}" data-mf="qty" data-mat="${id}" value="${f.qty}"></div>
+        <div class="mat-field"><span>Цена за штуку, 💰</span><input type="number" inputmode="numeric" min="1" data-mf="unit" data-mat="${id}" value="${f.unit}"></div>
+        <p class="meta" data-total="${id}">Всего ${fmtNum(f.qty * f.unit)} 💰, после комиссии ${FEE}% — ${net(f.qty * f.unit)} 💰</p></div>`;
     }).join('');
-    return `<p class="meta">Камни заточки, свитки, руда, кожа и эссенция. Лот продаётся целиком, цена задаётся за штуку. Комиссия ${FEE}%, лот висит 3 дня. У вас ${fmtNum(c.gold)} 💰.</p>
-      <div class="mf-block"><h4>Продать</h4><div class="sell-form">
-        <label>Ресурс<select data-mf="mat"><option value="">Выберите…</option>${sellOpts}</select></label>
-        <label>Количество<input type="number" inputmode="numeric" min="1" data-mf="qty" value="${f.qty}"></label>
-        <label>Цена за штуку, 💰<input type="number" inputmode="numeric" min="1" data-mf="unit" value="${f.unit || ''}" placeholder="${f.mat ? `в лавке ${fmtNum(data.materials[f.mat].price)}` : ''}"></label>
-        <p class="meta">Всего ${fmtNum(total)} 💰, после комиссии вы получите ${net(total)} 💰.</p>
-        <div class="row-actions"><button class="btn primary" data-act="mat-list">Выставить</button></div></div></div>
-      <div class="mf-block"><h4>Предложения</h4><div class="chips">${chipsHtml}</div>
-        <div class="list">${offers || `<p class="empty-note">${m.loading ? 'Ищем…' : (m.msg || 'Предложений нет')}</p>`}</div></div>
-      ${mine ? `<div class="mf-block"><h4>Мои лоты ресурсов</h4><div class="list">${mine}</div></div>` : ''}`;
+    openPane('Цена и количество', `${blocks}<div class="row-actions"><button class="btn" data-act="back">Назад</button><button class="btn primary" data-act="mat-list">Выставить</button></div>`, (e) => {
+      const t = e.target;
+      if (e.type === 'change' && t.matches('[data-mf]')) {
+        const f = m.form[t.dataset.mat];
+        f[t.dataset.mf] = Math.max(1, Math.floor(Number(t.value)) || 1);
+        const el = $(`[data-total="${t.dataset.mat}"]`);
+        if (el) el.textContent = `Всего ${fmtNum(f.qty * f.unit)} 💰, после комиссии ${FEE}% — ${net(f.qty * f.unit)} 💰`;
+        return;
+      }
+      if (t.closest('[data-act="back"]')) return openMatPick();
+      if (t.closest('[data-act="mat-list"]')) listMats();
+    });
   }
 
-  async function buyMat(id) {
-    const l = st.mats.lots.find((x) => String(x.id) === id);
-    if (!l) return;
-    const res = await deal('market_mat_buy', { p_id: l.id });
-    if (res) { toast(`Куплено: ${matName(l.mat)} ×${fmtNum(l.qty)} за ${fmtNum(res.price)} 💰`, 'good'); st.mats.lots = st.mats.lots.filter((x) => x.id !== l.id); }
-    refresh();
+  async function listMats() {
+    const m = st.mats, items = [];
+    for (const id of m.picked) {
+      const f = m.form[id];
+      if (!(f.qty * f.unit <= 1e9)) return toast(ERRORS.bad_price, 'bad');
+      items.push({ mat: id, qty: f.qty, unit: f.unit });
+    }
+    const res = await deal('market_mat_list_many', { p_items: items });
+    if (!res) return openMatForm();
+    toast(`Выставлено лотов: ${items.length}`, 'good');
+    m.picked = []; m.form = {};
+    show('list', 'mats');
+    loadMatMine(); searchMats();
   }
 
-  async function listMat() {
-    const f = st.mats.form, qty = Math.floor(Number(f.qty)), unit = Math.floor(Number(f.unit));
-    if (!f.mat) return toast('Выберите ресурс', 'bad');
-    if (!(qty >= 1 && qty <= (app.state.char.materials[f.mat] || 0))) return toast(ERRORS.no_mat, 'bad');
-    if (!(unit >= 1 && qty * unit <= 1e9)) return toast(ERRORS.bad_price, 'bad');
-    const res = await deal('market_mat_list', { p_mat: f.mat, p_qty: qty, p_unit: unit });
-    if (res) { toast(`Выставлено: ${matName(f.mat)} ×${fmtNum(qty)}`, 'good'); st.mats.form = { mat: '', qty: 1, unit: 0 }; loadMatMine(); searchMats(); }
-    refresh();
+  // Покупка: сколько штук взять из лота
+  function openMatBuy(l) {
+    const c = app.state.char;
+    const room = I.matRoom(data, c, l.mat);
+    const max = Math.min(l.qty, Math.floor(c.gold / l.unit), room);
+    const why = max >= 1 ? '' : (room < 1 ? 'В сумке нет места под этот ресурс.' : 'Не хватает золота даже на одну штуку.');
+    const qty = Math.max(1, Math.min(st.mats.qty, max));
+    const total = (q) => fmtNum(q * l.unit);
+    openPane(`${matName(l.mat)} ×${fmtNum(l.qty)}`, `<div class="row" style="gap:10px"><div class="tile stack" style="width:56px;flex:none">${art(data.materials[l.mat].art, '•')}</div><div><b>${fmtNum(l.unit)} 💰 за штуку</b>
+        <div class="meta">Продавец: ${escapeHtml(l.seller_nick)} · ${left(l.expires_at)}</div></div></div>
+      ${why ? `<p class="req">${why}</p>` : `<div class="mat-field"><span>Сколько купить (всего ${fmtNum(l.qty)}; по карману и месту — до ${fmtNum(max)})</span>
+        <input type="number" inputmode="numeric" min="1" data-max="${max}" data-mbq value="${qty}"></div>`}
+      <div class="row-actions"><button class="btn" data-act="back">Назад</button>
+        <button class="btn primary" data-act="mat-buy" ${why ? 'disabled' : ''}>Купить за <span id="mat-total">${total(qty)}</span> 💰</button></div>`, (e) => {
+      const t = e.target;
+      if (e.type === 'change' && t.matches('[data-mbq]')) {
+        st.mats.qty = Math.max(1, Math.floor(Number(t.value)) || 1);
+        $('#mat-total').textContent = total(st.mats.qty);
+        return;
+      }
+      if (t.closest('[data-act="back"]')) return show('list', 'mats');
+      if (t.closest('[data-act="mat-buy"]')) buyMat(l, Math.max(1, Math.min(st.mats.qty, max)));
+    });
+  }
+
+  async function buyMat(l, qty) {
+    const res = await deal('market_mat_buy', { p_id: l.id, p_qty: qty });
+    if (res) toast(`Куплено: ${matName(l.mat)} ×${fmtNum(qty)} за ${fmtNum(res.price)} 💰`, 'good');
+    else return openMatBuy(l);
+    st.mats.qty = 1;
+    show('list', 'mats');
+    searchMats();
   }
 
   async function cancelMat(id) {
     const res = await deal('market_mat_cancel', { p_id: id });
-    if (res) toast(`Вернулось: ${matName(res.mat)} ×${fmtNum(res.qty)}`, 'good');
+    if (res) toast(`Вернулось в сумку: ${matName(res.mat)} ×${fmtNum(res.qty)}`, 'good');
     loadMatMine(); searchMats();
   }
 
@@ -474,13 +560,7 @@
         if (st.f.tmin > st.f.tmax) st.f[t.dataset.num === 'tmin' ? 'tmax' : 'tmin'] = Number(t.value);
         return render();
       }
-      if (t.matches('[data-mf]')) {
-        const f = st.mats.form;
-        f[t.dataset.mf] = t.dataset.mf === 'mat' ? t.value : Number(t.value);
-        if (t.dataset.mf !== 'mat') return;   // числа без перерисовки: иначе тап по «Выставить» теряется
-        if (t.value && !f.unit) f.unit = data.materials[t.value].price;
-        return render();
-      }
+      if (t.matches('[data-mfilter]')) { st.mats.sel = t.value; return searchMats(); }
       if (t.matches('[data-price]')) { st.f[t.dataset.price] = t.value; return; }
       if (t.matches('[data-flag]')) { st.f[t.dataset.flag] = t.checked; return; }
       return;
@@ -513,10 +593,12 @@
     }
     const b = t.closest('[data-buy]');
     if (b) { const l = st.lots.find((x) => String(x.id) === b.dataset.buy); if (l && !b.disabled) buy(l); return; }
-    const mc = t.closest('[data-mchip]');
-    if (mc) { st.mats.sel = mc.dataset.mchip; return searchMats(); }
-    const mb = t.closest('[data-matbuy]');
-    if (mb) { if (!mb.disabled) buyMat(mb.dataset.matbuy); return; }
+    const ml = t.closest('[data-matlot]');
+    if (ml && st.tab === 'mats') {
+      const l = st.mats.lots.find((x) => String(x.id) === ml.dataset.matlot);
+      if (l && l.seller_id !== auth.user.id) { st.mats.qty = 1; openMatBuy(l); }
+      return;
+    }
     const mx = t.closest('[data-matcancel]');
     if (mx) return cancelMat(Number(mx.dataset.matcancel));
     const cn = t.closest('[data-cancel]');
@@ -528,7 +610,8 @@
       if (act === 'refresh') return search(false);
       if (act === 'more') return search(true);
       if (act === 'claim') return claim();
-      if (act === 'mat-list') return listMat();
+      if (act === 'mat-sell') { st.mats.picked = []; st.mats.form = {}; return openMatPick(); }
+      if (act === 'mat-refresh') return searchMats();
       if (act === 'reset') { st.f = { ...blank(), sort: st.f.sort }; saveFilter(); return render(); }
       if (act === 'apply') { $$('[data-price]').forEach((i) => { st.f[i.dataset.price] = i.value; }); saveFilter(); show('list', 'search'); return search(false); }
       return;

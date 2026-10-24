@@ -22,9 +22,9 @@
   }
 
   // Стак ресурса в сумке: значок и количество
-  function stackTile(it, { attrs = '', cls = '' } = {}) {
+  function stackTile(it, { attrs = '', cls = '', checked = false } = {}) {
     const m = data.materials[it.stack];
-    return `<div class="tile stack ${cls}" ${attrs} title="${m.name}">${art(m.art, '•')}<span class="count">${it.count}</span></div>`;
+    return `<div class="tile stack ${checked ? 'checked' : ''} ${cls}" ${attrs} title="${m.name}">${art(m.art, '•')}<span class="count">${it.count}</span>${checked ? '<span class="check-badge">✓</span>' : ''}</div>`;
   }
 
   function emptyTile(slot, attrs = '') {
