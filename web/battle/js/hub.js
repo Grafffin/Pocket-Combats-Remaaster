@@ -500,6 +500,7 @@
       ${def.ai === 'idle' ? '' : `<div class="props-label">Возможная добыча</div>
       <p class="meta">${def.boss ? `Гарантированно ${DR.bossItems} вещи не ниже «${data.rarities[2].name}»` : `Вещь — шанс ${DR.item}%`}, тир T${tier}, уровень предмета ${m.level + dd.ilvl}${D ? `, находка +${dd.mf}%` : ''}. 80% вещей — для вашего класса.</p>
       ${def.boss ? uniqueDrops(m.id, D, m.level + dd.ilvl) : ''}
+      ${P.trophyMult(c.level, m.level) < 1 ? `<p class="meta">Вы сильнее монстра на ${c.level - m.level} ур.: трофеи и ресурсы ковки падают реже — ${Math.round(P.trophyMult(c.level, m.level) * 100)}% от обычного.</p>` : ''}
       <div class="cost drops">${mats}${[...new Set([...(def.loot || []).map((f) => data.tierMat(f, I.maxTierFor(data, m.level))), 'essence', 'stone1', 'hp_potion_1'])].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
       ${uid != null && m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }

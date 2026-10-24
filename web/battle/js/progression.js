@@ -183,6 +183,14 @@
   // Шансы выпадения за обычного монстра (босс — гарантированные вещи)
   const DROP = { item: 32, bossItems: 3, potion: 5, stone1: 8, stone2: 3, essence: 12, main: 35, zoneMat: 45 };
 
+  // Трофеи и ресурсы ковки с монстров намного ниже героя падают редко: их фармят новички, а нужны всем.
+  // До 3 уровней разницы — полностью, дальше ×0.7 за уровень, но не меньше 5%.
+  const TROPHY = { free: 3, decay: 0.7, min: 0.05 };
+  const trophyMult = (charLevel, monLevel) => {
+    const diff = charLevel - monLevel - TROPHY.free;
+    return diff <= 0 ? 1 : Math.max(TROPHY.min, Math.pow(TROPHY.decay, diff));
+  };
+
   function rollDrops(data, char, monsterId, level, stats, rng, D = 0, k = 1) {
     const m = data.monsters[monsterId];
     const drops = { items: [], materials: {} };
@@ -199,13 +207,14 @@
     }
     const tier = I().maxTierFor(data, level);
     // Ресурсы для ковки — только «свои» для монстра (с крысы не падает руда), тира монстра; босс даёт вдвое больше
-    if (m.loot && ch(DROP.main)) addMat(data.tierMat(rng.pick(m.loot), tier), rng.int(1, 1 + Math.floor(tier / 2)) * (m.boss ? 2 : 1));
+    const tm = trophyMult(char.level, level);
+    if (m.loot && ch(DROP.main * tm)) addMat(data.tierMat(rng.pick(m.loot), tier), rng.int(1, 1 + Math.floor(tier / 2)) * (m.boss ? 2 : 1));
     if (ch(DROP.essence)) addMat('essence', rng.int(1, tier));
     if (ch(DROP.stone1)) addMat('stone1', 1);
     if (tier >= 3 && ch(DROP.stone2)) addMat('stone2', 1);
     if (ch(DROP.potion)) addMat('hp_potion_1', 1);
     const zone = data.locations[char.location];
-    if (zone && zone.mats && ch(DROP.zoneMat)) addMat(rng.pick(zone.mats), rng.int(1, 2));
+    if (zone && zone.mats && ch(DROP.zoneMat * tm)) addMat(rng.pick(zone.mats), rng.int(1, 2));
     // Уники: только с «своих» боссов и с нужной сложности; шанс растёт с находкой
     if (m.boss) {
       for (const u of Object.values(data.uniques)) {
@@ -285,7 +294,7 @@
   PC.progression = {
     CHAR_VERSION, STAT_POINTS_PER_LEVEL, SKILL_POINTS_PER_LEVEL, MAX_LEVEL,
     expToNext, expMultiplier, newCharacter, migrate, classSkills, classPassives,
-    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP, fixAffixLevels,
+    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP, TROPHY, trophyMult, fixAffixLevels,
   };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
