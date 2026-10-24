@@ -172,16 +172,19 @@
     // {A} {A.gen} {B.dat} — имена в падежах, {a:ударил|ударила} — по роду A, {b:...|...} — по роду B,
     // {dmg} {hp} {skill} {heal} {verb} {adv} {ger} {Ger} — подставляются из ctx.
     fill(tpl, A, B, ctx = {}) {
+      // Английский: переводится сам шаблон и выбранные слова; число и порядок случайных выборов те же (токены в переводе сохранены),
+      // поэтому бой и контрольные суммы не зависят от языка игрока (tools/i18n-test.js проверяет токены)
+      const T = PC.i18n ? PC.i18n.tr : (x) => x;
       const ch = (f, form) => (f ? `<ch t="${f.team}">${f.forms[form || 'nom']}</ch>` : '');
-      let s = tpl;
+      let s = T(tpl);
       s = s.replace(/\{(Ger|ger|adv)\}/g, (_, k) => {
-        const v = this.rng.pick(this.data.phrases[k === 'adv' ? 'adverbs' : 'gerunds']);
+        const v = T(this.rng.pick(this.data.phrases[k === 'adv' ? 'adverbs' : 'gerunds']));
         return k === 'Ger' ? v[0].toUpperCase() + v.slice(1) : v;
       });
       s = s.replace(/\{verb\}/g, () => {
         const v = ctx.verb || this.pickVerb(A);
-        const word = A.gender === 'f' ? v.f : v.m;
-        return `${word} ${v.p ? v.p + ' ' : ''}{B.${v.c}}`;
+        const word = T(A.gender === 'f' ? v.f : v.m), prep = v.p ? T(v.p) : '';
+        return `${word} ${prep ? prep + ' ' : ''}{B.${v.c}}`;
       });
       s = s.replace(/\{([AB])(?:\.(nom|gen|dat|acc))?\}/g, (_, who, form) => ch(who === 'A' ? A : B, form));
       s = s.replace(/\{([ab]):([^|}]*)\|([^}]*)\}/g, (_, who, m, f) => ((who === 'a' ? A : B).gender === 'f' ? f : m));
