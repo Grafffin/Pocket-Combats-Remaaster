@@ -85,12 +85,12 @@
   const armorMaterials = {
     plate: {
       name: 'Латы', adj: 'metal', salvage: 'ore', def: 1, mdef: 0, art: 'heavy',
-      plus: (t, s) => ({ hpPct: pc(4 * s) }),
+      plus: (t, s) => ({ hpPct: pc(5 * s) }),
       minus: (t, s) => ({ speed: -r1(3 * s), matkPct: -pc(6 * s) }),
       desc: 'Самая высокая защита от оружия и больше здоровья. Тяжёлые: медленнее, мешают колдовать, магию почти не держат.',
     },
     leather: {
-      name: 'Кожа', adj: 'leather', salvage: 'leather', def: 0.62, mdef: 0, art: 'light',
+      name: 'Кожа', adj: 'leather', salvage: 'leather', def: 0.55, mdef: 0, art: 'light',
       plus: (t, s) => ({ speed: r1(2.5 * s), crit: r1(2 * s) }),
       minus: (t, s) => ({ mdefPct: -pc(4 * s) }),
       desc: 'Средняя защита, зато быстрее и чаще бьёт критом; вариации добавляют уклонение, крит или меткость. Магию держит хуже остальных.',
