@@ -12,6 +12,7 @@
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
   class TradeError extends Error {}
+  class Gone extends Error {}   // кто-то из двоих ушёл с локации: сделка отменяется (а не просто отказывает)
   const fail = (code) => { throw new TradeError(code); };
   const clone = (v) => JSON.parse(JSON.stringify(v));
   const other = (s) => (s === 'a' ? 'b' : 'a');
@@ -67,6 +68,12 @@
   //       commit({ uid, tradeId, ver, patch, char, stash, rev }) → { trade, rev } }; commit при расхождении версий бросает TradeError('stale')
   // Возвращает { char, stash, rev, result: { trade } } — как остальные операции функции game.
   async function handle(op, args, io, ctx) {
+    try { return await handle1(op, args, io, ctx, false); } catch (e) {
+      if (!(e instanceof Gone)) throw e;
+      return handle1(op, args, io, ctx, true);   // тот же запрос, но вместо действия — отмена с возвратом залога
+    }
+  }
+  async function handle1(op, args, io, ctx, gone) {
     const { uid, now } = ctx;
     const data = D();
     // герой и сделка читаются одновременно: меньше круговых запросов к базе
@@ -100,11 +107,11 @@
     const placed = async () => {
       const prow = await io.hero(trade[ot]);
       const partner = prow && prow.data ? P().migrate(data, clone(prow.data)) : null;
-      if (!here(mine(), trade.loc) || !here(partner, trade.loc)) fail('not_here');
+      if (!here(mine(), trade.loc) || !here(partner, trade.loc)) throw new Gone();
       return partner;
     };
 
-    if (op === 'tradeCancel') {
+    if (gone || op === 'tradeCancel') {
       open();
       return commit({ state: 'cancel', ok_a: false, ok_b: false });
     }
@@ -117,7 +124,7 @@
     if (op === 'tradeOffer') {
       open();
       if (!trade.accepted) fail('not_accepted');
-      if (!here(mine(), trade.loc)) fail('not_here');   // партнёра сверяют принятие и подтверждение, лишнего чтения при правках нет
+      if (!here(mine(), trade.loc)) throw new Gone();   // партнёра сверяют принятие и подтверждение, лишнего чтения при правках нет
       const char = mine();
       // прежний залог возвращаем, затем берём новый: сумма не может превысить то, что у героя есть
       const back = receive(char, trade[`offer_${me}`]);

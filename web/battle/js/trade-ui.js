@@ -244,7 +244,7 @@
         <p class="meta">${theirOk ? 'Партнёр подтвердил ✓' : 'Партнёр ещё не подтвердил'} · тап по вещи — осмотреть</p></div>
       <div class="row-actions"><button class="btn" data-act="cancel">Отменить обмен</button>
         <button class="btn primary" data-act="confirm" ${busy || (!myOk && rest) ? 'disabled' : ''}>${myOk ? 'Вы подтвердили — отменить' : rest ? `Подтвердить (${Math.ceil(rest / 1000)})` : 'Подтвердить'}</button></div>
-      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}${PC.cloud.lastMs ? ` <span class="meta">Отклик: ${PC.cloud.lastMs} мс${PC.cloud.lastT ? ` (функция ${PC.cloud.lastT.total}, база ${PC.cloud.lastT.db.join('+')}, ${esc(String(PC.cloud.lastT.region))})` : ''}</span>` : ''}</p>
+      <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}</p>
       <div class="bag-tools" style="padding:6px 0 0"><b>Ваша сумка</b><span class="meta grow">тап — предложить, удержание — осмотреть</span></div>
       <div class="bag-grid modal-grid">${bag}</div>`, handler, { onClose: () => {
         T.dismissed = T.row ? T.row.id : null; T.view = false; clearTimeout(T.timer);
@@ -364,6 +364,15 @@
       if (r && on() && r.state === 'open' && r.accepted && T.dismissed !== r.id && modalFree()) openView();
     }, 0);
   });
+
+  // Ушёл с локации (переход, поражение, возврат в деревню) — обмен отменяется, залог возвращается
+  setInterval(() => {
+    const r = T.row, c = PC.app && PC.app.state.char;
+    if (!r || !c || !on() || r.state !== 'open' || T.leaving === r.id) return;
+    if (!c.transit && c.location === r.loc) return;
+    T.leaving = r.id;
+    PC.cloud.act('tradeCancel', { id: r.id }).then((res) => { toast('Вы ушли с локации — обмен отменён'); onRow(res.trade); }, () => { T.leaving = null; });
+  }, 700);
 
   window.addEventListener('pc-auth', () => { if (!auth.user) unwatch(); });
   setInterval(() => { if (on() && !channels.length) watch(); if (!on() && channels.length) unwatch(); }, 2000);

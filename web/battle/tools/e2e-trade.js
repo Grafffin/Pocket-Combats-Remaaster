@@ -232,6 +232,17 @@ async function openPlayer(browser, uid, hero) {
     const tt = await A.page.evaluate(() => window.__toasts.filter((t) => /Обмен завершён/.test(t)).length);
     assert.strictEqual(tt, 1, 'итог показан один раз');
     console.log('ok   сделка завершена, вещи и золото у новых владельцев, окна закрыты');
+    // уход с локации отменяет новый обмен
+    stage = 'уход с локации';
+    await sleep(800);
+    await A.page.evaluate(() => { PC.app.state.char.transit = null; });
+    const second = (await PC.trade.handle('tradeOpen', { to: 'bbbbbbbb-0000-4000-8000-000000000002' }, io, { uid: 'aaaaaaaa-0000-4000-8000-000000000001', now: Date.now() })).result.trade.id;
+    await B.page.evaluate((id) => PC.cloud.act('tradeAccept', { id }), second);
+    await until(() => A.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 8000, 'второй обмен открылся у Альфы');
+    await A.page.evaluate(() => { PC.app.state.char.location = 'old_road'; });
+    await until(() => trades.get(second).state === 'cancel', 5000, 'обмен отменён после ухода с локации');
+    await until(() => B.page.evaluate(() => document.querySelector('#modal').hidden), 5000, 'окно у партнёра закрылось');
+    console.log('ok   уход с локации отменяет обмен у обоих');
     assert.deepStrictEqual([A.errors, B.errors], [[], []], 'в страницах нет ошибок');
     console.log('\nвсе сквозные проверки обмена прошли');
   } catch (e) {
