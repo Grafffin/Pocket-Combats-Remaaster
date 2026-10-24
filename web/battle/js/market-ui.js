@@ -29,6 +29,9 @@
     too_many: `Не больше ${MAX_LOTS} лотов одновременно`,
     too_fast: 'Слишком часто, подождите пару секунд',
     no_hero: 'Герой ещё не сохранён в облаке',
+    bad_mat: 'Такой ресурс на рынок не принимается',
+    bad_qty: 'Количество от 1 до 1 000 000',
+    no_mat: 'Не хватает ресурса',
   };
   function errText(e) {
     const msg = (e && e.message) || '';
@@ -48,7 +51,9 @@
   const blank = () => ({ kinds: [], cls: [], rarities: [], qmin: 0, qmax: MAX_Q, tmin: 1, tmax: data.MAX_TIER, enh: 0, rank: 0,
     pmin: '', pmax: '', affixes: [], special: [], noNeg: false, fit: false, sort: 'new' });
   const filterStore = storage('pc-market-filter-v1', null);
-  const st = { tab: 'search', view: 'list', f: { ...blank(), ...(filterStore.load() || {}) }, lots: [], more: false, loading: false, mine: null, busy: false, msg: '' };
+  const st = { tab: 'search', view: 'list', f: { ...blank(), ...(filterStore.load() || {}) }, lots: [], more: false, loading: false, mine: null, busy: false, msg: '',
+    mats: { sel: '', lots: [], mine: null, loading: false, msg: '', form: { mat: '', qty: 1, unit: 0 } } };
+  const FORGE = Object.keys(data.materials).filter((id) => data.materials[id].forge);
   const saveFilter = () => filterStore.save(st.f);
 
   function affixName(id) {
@@ -153,6 +158,31 @@
     refresh();
   }
 
+  // Ресурсы кузницы: свои лоты (без вещей) и предложения
+  async function searchMats() {
+    const m = st.mats;
+    if (m.loading) return;
+    m.loading = true; refresh();
+    try {
+      const { data: rows, error } = await auth.client.rpc('market_mat_search', { p_mat: m.sel || null, p_sort: 'price', p_limit: PAGE, p_offset: 0 });
+      if (error) throw error;
+      m.lots = rows; m.msg = '';
+    } catch (e) { m.lots = []; m.msg = errText(e); }
+    m.loading = false; refresh();
+  }
+
+  async function loadMatMine() {
+    try {
+      const { data: rows, error } = await auth.client.from('market_mat_listings')
+        .select('id,mat,qty,unit,fee,status,claimed,created_at,expires_at')
+        .eq('seller_id', auth.user.id).in('status', ['active', 'sold'])
+        .order('created_at', { ascending: false }).limit(40);
+      if (error) throw error;
+      st.mats.mine = rows;
+    } catch (e) { st.mats.mine = []; }
+    refresh();
+  }
+
   // Сделка: блокируем кнопки, пока сервер не ответит
   async function deal(fn, args) {
     if (st.busy) return null;
@@ -193,9 +223,9 @@
   }
 
   function tabsHtml() {
-    const pay = (st.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length;
+    const pay = (st.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length + (st.mats.mine || []).filter((l) => l.status === 'sold' && !l.claimed).length;
     const t = (id, name) => `<button class="${st.tab === id ? 'on' : ''}" data-mtab="${id}">${name}</button>`;
-    return `<div class="seg market-seg">${t('search', 'Поиск')}${t('sell', 'Продать')}${t('mine', `Мои лоты${pay ? ' <i class="dot-badge"></i>' : ''}`)}</div>`;
+    return `<div class="seg market-seg">${t('search', 'Поиск')}${t('sell', 'Продать')}${t('mats', 'Ресурсы')}${t('mine', `Мои лоты${pay ? ' <i class="dot-badge"></i>' : ''}`)}</div>`;
   }
 
   function searchHtml() {
@@ -264,7 +294,8 @@
 
   function mineHtml() {
     if (!st.mine) return '<p class="empty-note">Загружаем…</p>';
-    const pay = st.mine.filter((l) => l.status === 'sold' && !l.claimed).reduce((s, l) => s + l.price - l.fee, 0);
+    const pay = st.mine.filter((l) => l.status === 'sold' && !l.claimed).reduce((s, l) => s + l.price - l.fee, 0)
+      + (st.mats.mine || []).filter((l) => l.status === 'sold' && !l.claimed).reduce((s, l) => s + l.qty * l.unit - l.fee, 0);
     const now = Date.now();
     const rows = st.mine.map((l) => {
       let side;
@@ -275,13 +306,76 @@
     }).join('');
     return `${pay ? `<div class="flash good market-pay">Выручка к получению: ${fmtNum(pay)} 💰<button class="btn small primary" data-act="claim">Забрать</button></div>` : ''}
       ${st.msg ? `<div class="flash bad">${st.msg}</div>` : ''}
-      <div class="list">${rows || '<p class="empty-note">Вы ещё ничего не выставляли</p>'}</div>`;
+      <div class="list">${rows || '<p class="empty-note">Вы ещё ничего не выставляли</p>'}</div>
+      <p class="meta">Лоты ресурсов — во вкладке «Ресурсы»; выручка за них забирается здесь же.</p>`;
+  }
+
+  // ---------- Вкладка «Ресурсы» ----------
+
+  const matName = (id) => data.materials[id].name;
+  function matLotRow(l, side) {
+    const m = data.materials[l.mat];
+    return `<div class="lot" data-matlot="${l.id}"><div class="tile">${art(m.art, '•')}</div>
+      <div class="lot-txt"><b>${m.name} ×${fmtNum(l.qty)}</b>
+        <div class="meta">${fmtNum(l.unit)} 💰 за штуку${l.seller_nick ? ` · ${escapeHtml(l.seller_nick)}` : ''}</div></div>
+      <div class="lot-side">${side}</div></div>`;
+  }
+
+  function matsHtml() {
+    const c = app.state.char, m = st.mats, f = m.form;
+    const chipsHtml = ['', ...FORGE].map((id) => `<button class="chip-btn ${m.sel === id ? 'on' : ''}" data-mchip="${id}">${id ? matName(id) : 'Все'}</button>`).join('');
+    const sellOpts = FORGE.map((id) => `<option value="${id}" ${f.mat === id ? 'selected' : ''}>${matName(id)} (есть ${fmtNum(c.materials[id] || 0)})</option>`).join('');
+    const net = (v) => fmtNum(v - Math.floor(v * FEE / 100));
+    const total = Math.max(0, Math.floor(f.qty)) * Math.max(0, Math.floor(f.unit));
+    const offers = m.lots.map((l) => matLotRow(l, l.seller_id === auth.user.id
+      ? '<span class="meta">ваш лот</span>'
+      : `<button class="btn small primary" data-matbuy="${l.id}" ${c.gold < l.qty * l.unit ? 'disabled' : ''}>${fmtNum(l.qty * l.unit)} 💰</button>`)).join('');
+    const mine = (m.mine || []).map((l) => {
+      const expired = new Date(l.expires_at).getTime() <= Date.now();
+      const side = l.status === 'sold' ? `<span class="meta">${l.claimed ? 'продано' : 'продано, ждёт'}</span><b>${fmtNum(l.qty * l.unit - l.fee)} 💰</b>`
+        : `<b>${fmtNum(l.qty * l.unit)} 💰</b><span class="meta">${expired ? 'срок истёк' : left(l.expires_at)}</span><button class="btn small" data-matcancel="${l.id}">${expired ? 'Забрать' : 'Снять'}</button>`;
+      return matLotRow(l, side);
+    }).join('');
+    return `<p class="meta">Камни заточки, свитки, руда, кожа и эссенция. Лот продаётся целиком, цена задаётся за штуку. Комиссия ${FEE}%, лот висит 3 дня. У вас ${fmtNum(c.gold)} 💰.</p>
+      <div class="mf-block"><h4>Продать</h4><div class="sell-form">
+        <label>Ресурс<select data-mf="mat"><option value="">Выберите…</option>${sellOpts}</select></label>
+        <label>Количество<input type="number" inputmode="numeric" min="1" data-mf="qty" value="${f.qty}"></label>
+        <label>Цена за штуку, 💰<input type="number" inputmode="numeric" min="1" data-mf="unit" value="${f.unit || ''}" placeholder="${f.mat ? `в лавке ${fmtNum(data.materials[f.mat].price)}` : ''}"></label>
+        <p class="meta">Всего ${fmtNum(total)} 💰, после комиссии вы получите ${net(total)} 💰.</p>
+        <div class="row-actions"><button class="btn primary" data-act="mat-list">Выставить</button></div></div></div>
+      <div class="mf-block"><h4>Предложения</h4><div class="chips">${chipsHtml}</div>
+        <div class="list">${offers || `<p class="empty-note">${m.loading ? 'Ищем…' : (m.msg || 'Предложений нет')}</p>`}</div></div>
+      ${mine ? `<div class="mf-block"><h4>Мои лоты ресурсов</h4><div class="list">${mine}</div></div>` : ''}`;
+  }
+
+  async function buyMat(id) {
+    const l = st.mats.lots.find((x) => String(x.id) === id);
+    if (!l) return;
+    const res = await deal('market_mat_buy', { p_id: l.id });
+    if (res) { toast(`Куплено: ${matName(l.mat)} ×${fmtNum(l.qty)} за ${fmtNum(res.price)} 💰`, 'good'); st.mats.lots = st.mats.lots.filter((x) => x.id !== l.id); }
+    refresh();
+  }
+
+  async function listMat() {
+    const f = st.mats.form, qty = Math.floor(Number(f.qty)), unit = Math.floor(Number(f.unit));
+    if (!f.mat) return toast('Выберите ресурс', 'bad');
+    if (!(qty >= 1 && qty <= (app.state.char.materials[f.mat] || 0))) return toast(ERRORS.no_mat, 'bad');
+    if (!(unit >= 1 && qty * unit <= 1e9)) return toast(ERRORS.bad_price, 'bad');
+    const res = await deal('market_mat_list', { p_mat: f.mat, p_qty: qty, p_unit: unit });
+    if (res) { toast(`Выставлено: ${matName(f.mat)} ×${fmtNum(qty)}`, 'good'); st.mats.form = { mat: '', qty: 1, unit: 0 }; loadMatMine(); searchMats(); }
+    refresh();
+  }
+
+  async function cancelMat(id) {
+    const res = await deal('market_mat_cancel', { p_id: id });
+    if (res) toast(`Вернулось: ${matName(res.mat)} ×${fmtNum(res.qty)}`, 'good');
+    loadMatMine(); searchMats();
   }
 
   function render() {
     if (st.view === 'card') return;
     const body = st.view === 'filters' ? filtersHtml()
-      : `${tabsHtml()}${{ search: searchHtml, sell: sellHtml, mine: mineHtml }[st.tab]()}`;
+      : `${tabsHtml()}${{ search: searchHtml, sell: sellHtml, mats: matsHtml, mine: mineHtml }[st.tab]()}`;
     const title = st.view === 'filters' ? 'Фильтры рынка' : 'Рынок';
     const keep = isOpen() ? $('#modal .modal').scrollTop : 0;
     openModal(title, body, onClick, { cls: 'market-modal', onClose: () => { $('#modal').dataset.market = ''; } });
@@ -366,7 +460,7 @@
   async function claim() {
     const res = await deal('market_claim', {});
     if (res && res.gold > 0) toast(`Получено ${fmtNum(res.gold)} 💰`, 'good');
-    loadMine();
+    loadMine(); loadMatMine();
   }
 
   function onClick(e) {
@@ -378,6 +472,13 @@
         st.f[t.dataset.num] = Number(t.value);
         if (st.f.qmin > st.f.qmax) st.f[t.dataset.num === 'qmin' ? 'qmax' : 'qmin'] = Number(t.value);
         if (st.f.tmin > st.f.tmax) st.f[t.dataset.num === 'tmin' ? 'tmax' : 'tmin'] = Number(t.value);
+        return render();
+      }
+      if (t.matches('[data-mf]')) {
+        const f = st.mats.form;
+        f[t.dataset.mf] = t.dataset.mf === 'mat' ? t.value : Number(t.value);
+        if (t.dataset.mf !== 'mat') return;   // числа без перерисовки: иначе тап по «Выставить» теряется
+        if (t.value && !f.unit) f.unit = data.materials[t.value].price;
         return render();
       }
       if (t.matches('[data-price]')) { st.f[t.dataset.price] = t.value; return; }
@@ -400,6 +501,8 @@
       if (st.tab !== 'search' || !st.lots.length) st.msg = '';
       render();
       if (st.tab === 'mine' || st.tab === 'sell') loadMine();
+      if (st.tab === 'mine' || st.tab === 'mats') loadMatMine();
+      if (st.tab === 'mats') searchMats();
       return;
     }
     const sell = t.closest('[data-sell]');
@@ -410,6 +513,12 @@
     }
     const b = t.closest('[data-buy]');
     if (b) { const l = st.lots.find((x) => String(x.id) === b.dataset.buy); if (l && !b.disabled) buy(l); return; }
+    const mc = t.closest('[data-mchip]');
+    if (mc) { st.mats.sel = mc.dataset.mchip; return searchMats(); }
+    const mb = t.closest('[data-matbuy]');
+    if (mb) { if (!mb.disabled) buyMat(mb.dataset.matbuy); return; }
+    const mx = t.closest('[data-matcancel]');
+    if (mx) return cancelMat(Number(mx.dataset.matcancel));
     const cn = t.closest('[data-cancel]');
     if (cn) return cancel(Number(cn.dataset.cancel));
     const a = t.closest('[data-act]');
@@ -419,6 +528,7 @@
       if (act === 'refresh') return search(false);
       if (act === 'more') return search(true);
       if (act === 'claim') return claim();
+      if (act === 'mat-list') return listMat();
       if (act === 'reset') { st.f = { ...blank(), sort: st.f.sort }; saveFilter(); return render(); }
       if (act === 'apply') { $$('[data-price]').forEach((i) => { st.f[i.dataset.price] = i.value; }); saveFilter(); show('list', 'search'); return search(false); }
       return;
@@ -439,6 +549,7 @@
     render();
     search(false);
     loadMine();
+    loadMatMine();
   }
 
   PC.marketUI = { open };
