@@ -170,12 +170,14 @@
     salvageMass(S, a, ctx) {
       const c = hero(S), r = int(a.rarity, 0, 4), got = {}, lost = {};
       const list = c.bag.filter((it) => it && it.rarity <= r && !it.enhance && !it.rank && !it.locked);
+      let profUp = 0;
       for (const it of list) {
         const res = I().salvage(D(), c, it.uid, ctx.rng);
         for (const [k, v] of Object.entries(res.got || {})) got[k] = (got[k] || 0) + v;
         for (const [k, v] of Object.entries(res.lost || {})) lost[k] = (lost[k] || 0) + v;
+        profUp = Math.max(profUp, res.profUp || 0);
       }
-      return { ok: true, count: list.length, got, lost };
+      return { ok: true, count: list.length, got, lost, profUp };
     },
     drink: (S, a) => E().drink(D(), hero(S), key(D().elixirs, a.id)),
 

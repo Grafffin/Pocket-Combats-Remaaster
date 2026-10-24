@@ -1136,6 +1136,7 @@
       block('slots', 'Ячейки умений', '<span class="note">порядок = приоритет автобоя</span>', `<div class="slots-bar">${slots}</div>`),
       block('skills', 'Умения', pill(c.skillPoints), skills),
       block('passives', 'Пассивки', pill(c.skillPoints), passives),
+      block('prof', 'Мирные профессии', '', `${Object.keys(data.professions.list).map((id) => `${PC.itemUI.profBar(c, id)}<p class="meta">${data.professions.list[id].desc}</p>`).join('')}`),
       '<div class="section"><button class="btn danger wide" data-act="reset">Удалить героя и начать заново</button></div>',
     ].join('');
   }

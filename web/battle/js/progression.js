@@ -5,7 +5,7 @@
   const PC = root.PC || (root.PC = {});
   const I = () => PC.items;
 
-  const CHAR_VERSION = 8;
+  const CHAR_VERSION = 9;
   const STAT_POINTS_PER_LEVEL = 3;
   const SKILL_POINTS_PER_LEVEL = 1;
   const MAX_LEVEL = 40;
@@ -89,6 +89,12 @@
         if (!char.materials[id]) delete char.materials[id];
       }
       char.version = 8;
+    }
+    if (char.version === 8) {
+      // Ковка теперь требует уровня кузнечного дела: уже открытые тиры остаются доступными
+      const lvl = data.professions.smith.craftLevel(char.maxTier || 1);
+      if (lvl > 1) char.prof = { ...(char.prof || {}), smith: { lvl, exp: 0 } };
+      char.version = 9;
     }
     return char;
   }
@@ -176,6 +182,23 @@
     if (diff <= 0) return Math.min(1.5, 1 + 0.1 * -diff);
     if (diff <= 3) return 1;
     return Math.max(0.1, 1 - 0.2 * (diff - 3));
+  }
+
+  // ---------- Мирные профессии ----------
+  const profOf = (char, id) => (char.prof && char.prof[id]) || { lvl: 1, exp: 0 };
+  const profLevel = (char, id) => profOf(char, id).lvl;
+
+  // Начислить опыт профессии; возвращает новый уровень, если он вырос (иначе 0)
+  function addProfExp(data, char, id, n) {
+    const P = data.professions;
+    const pr = { ...profOf(char, id) };
+    if (pr.lvl >= P.max || !(n > 0)) return 0;
+    const was = pr.lvl;
+    pr.exp += Math.round(n);
+    while (pr.lvl < P.max && pr.exp >= P.exp(pr.lvl)) { pr.exp -= P.exp(pr.lvl); pr.lvl++; }
+    if (pr.lvl >= P.max) pr.exp = 0;
+    char.prof = { ...(char.prof || {}), [id]: pr };
+    return pr.lvl > was ? pr.lvl : 0;
   }
 
   // ---------- Добыча ----------
@@ -297,7 +320,7 @@
   PC.progression = {
     CHAR_VERSION, STAT_POINTS_PER_LEVEL, SKILL_POINTS_PER_LEVEL, MAX_LEVEL,
     expToNext, expMultiplier, newCharacter, migrate, classSkills, classPassives,
-    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP, TROPHY, trophyMult, fixAffixLevels,
+    allocate, learnSkill, learnPassive, setSlots, toFighter, grantExp, rollDrops, applyBattleResult, DROP, TROPHY, trophyMult, profOf, profLevel, addProfExp, fixAffixLevels,
   };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);

@@ -577,6 +577,26 @@
   const requality = { gold: (item) => 40 * item.tier, essence: (item) => item.tier };
 
   // Перенос заточки, ранга и знака на другую вещь того же вида (донор разбирается) — вложения не сгорают
+  // ---------- Мирные профессии ----------
+  // Уровень 1…max, опыт за свои действия; exp(l) — опыта с уровня l до следующего. Нет записи у героя — 1 уровень.
+  const professions = {
+    max: 20,
+    exp: (l) => Math.round(25 * Math.pow(l, 1.5)),
+    list: {
+      smith: {
+        name: 'Кузнечное дело', npc: 'smith',
+        desc: 'Ковка, разбор и ремонт. Открывает тиры ковки, повышает шанс хорошей редкости и снижает цену ремонта.',
+      },
+    },
+    // Кузнечное дело: ковка тира T — с 2(T−1)+1 уровня (T7 — с 13-го); +5% к шансу высокой редкости и −2% к цене ремонта за уровень
+    smith: {
+      craftLevel: (tier) => 2 * (tier - 1) + 1,
+      rarityPerLevel: 0.05,
+      repairDiscount: 0.02,
+      exp: { craft: (tier) => 25 * tier, salvage: (tier) => tier, repair: (cost) => Math.ceil(cost / 20) },
+    },
+  };
+
   // Прочность снаряжения: в каждом бою надетая вещь теряет 1 с шансом battleChance%, при поражении — defeatLoss.
   // Сломанная (0) не даёт ничего. Полный ремонт — cost(item) золота, сломанной — ×brokenMult.
   const durability = {
@@ -597,7 +617,7 @@
   };
 
   Object.assign(data, {
-    durability,
+    durability, professions,
     slots, TIER_LEVEL, MAX_TIER, adjectives: materials, types, armorMaterials, ARMOR_SHARE: SHARE, rarities, qualities, affixes, TIER_FALLOFF,
     legendaries, uniques, UNIQUE_CHANCE, UNIQUE_BASE, enhance, rank, materials: materials2, CRAFT_MATS, tierMat, STACK_MAX, bagExpand, shopStock, recipes, elixirs, reroll, craft, NEGATIVE, VIRTUE_RANK, virtues, requality, inherit,
   });
