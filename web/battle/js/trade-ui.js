@@ -215,8 +215,16 @@
     const s = sideOf(r), o = otherSide(s), d = draft(), their = r[`offer_${o}`];
     const c = PC.app.state.char;
     const usedUid = new Set(d.items.filter((x) => !x.stack).map((x) => x.uid)), usedStack = new Set(d.items.filter((x) => x.stack).map((x) => x.stack));
+    // ресурсы в сумке показываем уже за вычетом черновика: сервер подтвердит чуть позже
+    const left = {};
+    for (const x of d.items) if (x.stack) left[x.stack] = available(x.stack) - x.count;
     const bag = c.bag.map((it, i) => (!it ? '<div class="tile empty"></div>'
-      : it.stack ? PC.itemUI.stackTile(it, { cls: usedStack.has(it.stack) ? 'cant' : '', attrs: `data-bag="${i}"` })
+      : it.stack ? (() => {
+        if (left[it.stack] == null) return PC.itemUI.stackTile(it, { attrs: `data-bag="${i}"` });
+        const shown = Math.max(0, Math.min(it.count, left[it.stack]));
+        left[it.stack] -= shown;
+        return shown ? PC.itemUI.stackTile({ stack: it.stack, count: shown }, { cls: 'cant', attrs: `data-bag="${i}"` }) : '<div class="tile empty"></div>';
+      })()
         : PC.itemUI.tile(it, { cls: usedUid.has(it.uid) || it.locked ? 'cant' : '', attrs: `data-bag="${i}"` }))).join('');
     const myOk = r[`ok_${s}`], theirOk = r[`ok_${o}`];
     const rest = Math.max(0, T.restUntil - Date.now());
@@ -235,7 +243,11 @@
         <button class="btn primary" data-act="confirm" ${busy || (!myOk && rest) ? 'disabled' : ''}>${myOk ? 'Вы подтвердили — отменить' : rest ? `Подтвердить (${Math.ceil(rest / 1000)})` : 'Подтвердить'}</button></div>
       <p class="hint">${busy ? 'Сохраняю предложение…' : 'Любая правка сбрасывает подтверждения обоих. Проверьте вещи партнёра, прежде чем подтверждать.'}</p>
       <div class="bag-tools" style="padding:6px 0 0"><b>Ваша сумка</b><span class="meta grow">тап — предложить, удержание — осмотреть</span></div>
-      <div class="bag-grid modal-grid">${bag}</div>`, handler, { onClose: () => { T.dismissed = T.row ? T.row.id : null; T.view = false; clearTimeout(T.timer); } });
+      <div class="bag-grid modal-grid">${bag}</div>`, handler, { onClose: () => {
+        T.dismissed = T.row ? T.row.id : null; T.view = false; clearTimeout(T.timer);
+        const r = T.row;
+        if (r && r.state === 'open' && r.accepted) showBanner(`Обмен с ${nick(r[otherSide(sideOf(r))])} идёт`, 'Открыть', () => openView());
+      } });
     $('#modal-title').dataset.trade = '1';
     if (rest) { clearTimeout(T.restTimer); T.restTimer = setTimeout(() => { if (T.view) render(); }, Math.min(rest, 1000)); }
   }
@@ -318,7 +330,7 @@
     T.dirty = true;
     render();
     clearTimeout(T.timer);
-    T.timer = setTimeout(send, 200);
+    T.timer = setTimeout(send, 0);
   }
   async function send() {
     if (T.sending) { T.resend = true; return; }
