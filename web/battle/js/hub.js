@@ -394,7 +394,7 @@
         show('battle');
         PC.battleUI.preview({ player: P.toFighter(data, c), monster: M.monsterAt(row.monster_id, row.monster_level, row.diff || 0), hp: row.monster_hp, maxHp: row.monster_max,
           onMonsterInfo: () => monsterCard({ id: row.monster_id, level: row.monster_level }, row.diff || 0),
-          settings: c.settings, onSettings: () => app.save(), onCancel: () => {
+          settings: c.settings, onSettings: () => app.act('settings', { patch: { ...c.settings } }), onCancel: () => {
             cancelled = true;
             if (state.session && !state.session.host) { state.session.leave(); state.session = null; closeChannel(); PC.battles.end(); }
             back();
@@ -410,11 +410,11 @@
     if (act.dataset.act === 'cancel-travel') { app.act('cancelTravel').then(() => render()); }
     if (act.dataset.act === 'auto-settings') PC.battleUI.openAutoSettings(c.settings, (patch) => { app.act('settings', { patch }).then(() => render()); });
     if (act.dataset.act === 'hunt') {
-      c.settings.autoHunt = !c.settings.autoHunt;
-      if (c.settings.autoHunt) c.settings.autoBattle = true;
-      app.save();
-      render();
-      if (c.settings.autoHunt) scheduleHunt();
+      const on = !c.settings.autoHunt;
+      app.act('settings', { patch: on ? { autoHunt: true, autoBattle: true } : { autoHunt: false } }).then(() => {
+        render();
+        if (state.char.settings.autoHunt) scheduleHunt();
+      });
     }
   });
 
@@ -531,7 +531,10 @@
   const serverFights = () => !!(PC.cloud && PC.cloud.server && PC.cloud.fights && PC.battles && PC.battles.canCoop());
   // Начать бой: на монстра uid или вступить в бой join (строка боя). Отдаёт Promise<boolean> — начался ли бой.
   function startFight(uid, join) {
-    return serverFights() ? startFightServer(uid, join) : Promise.resolve(startFightLocal(uid, join));
+    if (serverFights()) return startFightServer(uid, join);
+    // героя меняет только сервер, а общий бой недоступен: локальный бой ничего бы не сохранил
+    if (PC.cloud && PC.cloud.locked) { toast('Нет связи с сервером боёв — попробуйте позже', 'bad'); return Promise.resolve(false); }
+    return Promise.resolve(startFightLocal(uid, join));
   }
 
   // Сервер выдаёт монстра, seed и снимок героя, а в конце сам считает итог по истории боя (actions.js, fightEnd)
@@ -625,7 +628,7 @@
     const common = {
       settings: c.settings,
       onMonsterInfo: () => monsterCard(mob, D),
-      onSettings: () => app.save(),
+      onSettings: () => app.act('settings', { patch: { ...c.settings } }),
       onEnd: (battle, { fled, share, aborted }) => {
         const sess = state.session;
         if (aborted === 'version' || aborted === 'desync') {
@@ -823,7 +826,7 @@
   $('#to-camp').addEventListener('click', () => {
     clearTimeout(state.huntTimer);
     const c = state.char;
-    if (c.settings.autoHunt) { c.settings.autoHunt = false; app.save(); }
+    if (c.settings.autoHunt) app.act('settings', { patch: { autoHunt: false } });
     $('#result').hidden = true;
     setTab(c.statPoints || c.skillPoints ? 'hero' : 'world');
   });

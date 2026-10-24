@@ -19,6 +19,7 @@ let gameRun = null;   // run() из ops.js серверной функции
 
 // ---------- подставная серверная функция game (как supabase/functions/game/index.ts) ----------
 const chars = new Map();   // uid → { data, stash, rev }
+let clientWrites = 0;
 const fights = new Map();
 function game(uid, body) {
   const fail = (error, status, extra) => ({ data: null, error: { status, body: { error, ...extra } } });
@@ -83,6 +84,7 @@ function query(uid, st) {
   if (st.table === 'characters' && SERVER) {
     const row = chars.get(uid);
     if (st.op === 'select') return ok(row ? [{ data: row.data, stash: row.stash, rev: row.rev }] : []);
+    if (st.op !== 'select') clientWrites++;   // после 0014 так нельзя: героя пишет только сервер
     if (st.op === 'insert') { chars.set(uid, { data: st.payload.data, stash: st.payload.stash, rev: 1 }); return ok([{ rev: 1 }]); }
     if (st.op === 'update') {
       const want = (st.filters.find((f) => f[1] === 'rev') || [])[2];
@@ -381,6 +383,7 @@ async function attack(p) {
         assert.ok(row.wins >= 1, `${p.nick}: победа записана сервером`);
         assert.strictEqual(row.fight, null, `${p.nick}: бой закрыт на сервере`);
       }
+      assert.strictEqual(clientWrites, 0, 'клиент не писал героя в таблицу напрямую');
       const calls = await A.page.evaluate(() => window.__calls.filter((c) => c.startsWith('fn')).length);
       assert.ok(calls > 0, 'клиент ходил в серверную функцию');
       console.log('ok   награды за бой начислил сервер по истории боя');

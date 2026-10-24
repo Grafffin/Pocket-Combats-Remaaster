@@ -14,8 +14,13 @@
   const saveMeta = () => metaStore.save(meta);
   const snapshot = () => ({ data: app.state.char || null, stash: app.stashApi ? app.stashApi.get() : null });
 
+  // Серверная правда: функция game и бои на сервере выложены — героя меняет только сервер, клиент его не пишет
+  const locked = () => cloud.server && cloud.fights;
+  Object.defineProperty(cloud, 'locked', { get: locked });
+
   // Вызывается после каждого локального сохранения.
   cloud.touch = function () {
+    if (locked()) return;   // локальная копия — только кэш серверного героя
     meta.dirty = true; saveMeta();
     if (cloud.status === 'ok') schedule();
   };
@@ -31,7 +36,7 @@
   }
 
   async function push() {
-    if (cloud.status !== 'ok' || !auth.user) return;
+    if (cloud.status !== 'ok' || !auth.user || locked()) return;
     if (pushing) { again = true; return; }
     pushing = true;
     try {
@@ -65,6 +70,16 @@
     cloud.status = 'ok';
     const sameUser = meta.user === auth.user.id;
     const local = snapshot();
+    if (locked()) {
+      // героя меняет только сервер: берём его версию, локальный (офлайн) герой уходит в резервную копию
+      if (local.data && JSON.stringify(local.data) !== JSON.stringify(row ? row.data : null) && !(sameUser && meta.rev && row && meta.rev <= row.rev)) backupStore.save({ at: Date.now(), ...local });
+      meta = { user: auth.user.id, rev: row ? row.rev : 0, dirty: false }; saveMeta();
+      if (JSON.stringify(row ? row.data : null) !== JSON.stringify(local.data) || (row && JSON.stringify(row.stash) !== JSON.stringify(local.stash))) {
+        app.applyRemote(row ? row.data : null, row ? row.stash : null);
+        if (row && row.data) toast('Герой загружен с сервера');
+      }
+      return;
+    }
     if (!row) {
       if (meta.user && !sameUser) {   // локальный герой чужого аккаунта: не переносим его в этот
         backupStore.save({ at: Date.now(), ...local });
@@ -94,8 +109,8 @@
     if (cloud.status !== 'ok') throw new Error('offline');
     clearTimeout(timer);
     while (pushing) await new Promise((r) => setTimeout(r, 100));
-    if (meta.dirty || !meta.rev) await push();
-    if (meta.dirty || !meta.rev || cloud.status !== 'ok') throw new Error('not_saved');
+    if (!locked() && (meta.dirty || !meta.rev)) await push();
+    if ((!locked() && meta.dirty) || !meta.rev || cloud.status !== 'ok') throw new Error('not_saved');
     const { data: res, error } = await auth.client.rpc(fn, { ...args, p_rev: meta.rev });
     if (error) {
       if (/stale/.test(error.message || '')) await pull(true);
@@ -141,8 +156,8 @@
     if (cloud.status !== 'ok') throw new Error('offline');
     clearTimeout(timer);
     while (pushing) await new Promise((r) => setTimeout(r, 100));
-    if (meta.dirty) await push();
-    if (meta.dirty || cloud.status !== 'ok') throw new Error('not_saved');
+    if (meta.dirty && !locked()) await push();
+    if ((meta.dirty && !locked()) || cloud.status !== 'ok') throw new Error('not_saved');
     let res;
     try { res = await invoke(op, args, meta.rev || 0); } catch (e) {
       if (e.message === 'stale' && e.body) {   // герой изменился на другом устройстве: берём серверного
@@ -162,10 +177,11 @@
   async function sync() {
     if (syncing || !auth.client || !auth.user) return;
     syncing = true;
-    try { await pull(false); } catch (e) { fail(e); } finally { syncing = false; }
-    if (cloud.status === 'ok' && !cloud.server) {
+    // сначала узнаём, выложен ли сервер: от этого зависит, можно ли вообще писать героя с клиента
+    if (!cloud.server) {
       try { const r = await invoke('ping', {}); cloud.server = true; cloud.fights = !!(r && r.result && r.result.fights); } catch (e) { cloud.server = false; }
     }
+    try { await pull(false); } catch (e) { fail(e); } finally { syncing = false; }
   }
   cloud.sync = sync;
 
