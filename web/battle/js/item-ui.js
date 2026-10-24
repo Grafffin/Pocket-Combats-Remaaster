@@ -322,7 +322,7 @@
         openInfo(id);
       });
     });
-    $('#sheet').classList.add('over-modal');
+    $('#sheet').classList.add('over-modal', 'centered');   // справка — окном по центру, как карточка вещи
   }
 
   // Любой элемент с data-info открывает справку

@@ -923,3 +923,8 @@ p.bag-expand { text-align: center; margin: 0; }
 .prof-bar .row { display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
 .prof-bar .bar { height: 6px; border-radius: 3px; background: #151821; overflow: hidden; margin-top: 4px; }
 .prof-bar .bar i { display: block; height: 100%; background: var(--accent-2); }
+
+/* ---------- Справка по центру (ресурсы, термины) ---------- */
+.sheet-wrap.centered { align-items: center; padding: 14px; }
+.sheet-wrap.centered .sheet { max-width: 440px; border: 1px solid #3a4055; border-radius: 16px; padding: 14px 16px 16px; background: linear-gradient(180deg, #1d2130, #171a23); box-shadow: 0 0 0 1px rgba(217, 164, 65, .12), 0 24px 60px rgba(0, 0, 0, .65); animation: pop .16s ease-out; }
+.sheet-wrap.centered .sheet-grip { display: none; }
