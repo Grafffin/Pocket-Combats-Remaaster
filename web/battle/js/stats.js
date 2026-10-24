@@ -29,7 +29,7 @@
     if (a >= 1e9) return `${sign}${cut(a / 1e9)}млрд`;
     if (a >= 1e6) return `${sign}${cut(a / 1e6)}кк`;
     if (a >= 1e4) return `${sign}${cut(a / 1e3)}к`;
-    return `${sign}${Math.round(a).toLocaleString('ru-RU')}`;
+    return `${sign}${Math.round(a).toLocaleString(PC.i18n ? PC.i18n.locale : 'ru-RU')}`;
   }
 
   // name — для интерфейса и текста аффиксов; fmt — как показать значение; icon — assets/stats/<icon>.svg

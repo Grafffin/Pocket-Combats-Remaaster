@@ -261,7 +261,7 @@
       : !rows.length ? '<p class="meta">Пока нет завершённых боёв.</p>'
       : `<div class="menu-list">${rows.map((r) => {
         const m = data.monsters[r.monster_id], [label, cls] = RESULT[r.result] || ['?', 'meta'];
-        const when = new Date(r.ended_at).toLocaleString('ru-RU', { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
+        const when = new Date(r.ended_at).toLocaleString(PC.i18n.locale, { day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit' });
         return `<button class="menu-item" data-hist="${r.id}"><span><b class="${cls}">${label}</b> · ${escapeHtml(m ? m.name : r.monster_id)} ${r.monster_level} ур.
           <small class="meta">${when} · ${r.turns} ход. · ${(r.members || []).map(escapeHtml).join(', ')}${r.total_damage ? ` · урон ${fmtNum(r.my_damage || 0)}/${fmtNum(r.total_damage)}` : ''}</small></span></button>`;
       }).join('')}</div>`;
@@ -285,7 +285,7 @@
       ${item('history', 'ui/gear', 'История боёв', PC.battles && PC.battles.history ? 'Последние 30 боёв' : 'Недоступно', !!(PC.battles && PC.battles.history))}
       ${item('quests', 'npcs/elder', 'Задания', 'Скоро', false)}
       ${item('account', 'ui/gear', 'Аккаунт', accNote(), true)}
-      ${item('settings', 'ui/gear', 'Настройки', 'Скоро', false)}
+      ${item('settings', 'ui/gear', 'Настройки', 'Язык / Language', true)}
     </div>`, (e) => {
       const b = e.target.closest('[data-menu]');
       if (!b || b.disabled) return;
@@ -296,6 +296,7 @@
       if (b.dataset.menu === 'market') PC.marketUI.open();
       if (b.dataset.menu === 'account') openAccount();
       if (b.dataset.menu === 'history') openHistory();
+      if (b.dataset.menu === 'settings') PC.i18n.openSettings();
     });
   }
 

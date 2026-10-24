@@ -104,7 +104,7 @@ const PC = globalThis.PC, data = PC.data;
   assert.ok(ops.buy && ops.enhance && ops.stashPut, 'действия из actions.js подключены');
   // каждое действие, которое вызывает клиент, есть на сервере
   const jsDir = path.join(root, 'web', 'battle', 'js');
-  for (const f of fs.readdirSync(jsDir)) {
+  for (const f of fs.readdirSync(jsDir).filter((x) => x.endsWith('.js'))) {
     for (const m of fs.readFileSync(path.join(jsDir, f), 'utf8').matchAll(/\.act\('([a-zA-Z]+)'/g)) assert.ok(ops[m[1]] || PC.trade.OPS.includes(m[1]), `${f}: нет действия ${m[1]} на сервере`);
   }
 
