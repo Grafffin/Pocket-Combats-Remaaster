@@ -426,7 +426,7 @@
         closeSheet(); closeModal();
         show('battle');
         PC.battleUI.preview({ player: P.toFighter(data, c), monster: M.monsterAt(row.monster_id, row.monster_level, row.diff || 0), hp: row.monster_hp, maxHp: row.monster_max,
-          onMonsterInfo: () => monsterCard({ id: row.monster_id, level: row.monster_level }, row.diff || 0),
+          onMonsterInfo: (x) => monsterCard({ id: row.monster_id, level: row.monster_level }, row.diff || 0, undefined, x),
           settings: c.settings, onSettings: () => app.act('settings', { patch: { ...c.settings } }), onCancel: () => {
             cancelled = true;
             if (state.session && !state.session.host) { state.session.leave(); state.session = null; closeChannel(); PC.battles.end(); }
@@ -463,7 +463,7 @@
 
   // m — { id, level } и, на локации, deadUntil/busy; uid есть только на локации (тогда кнопка «Напасть»).
   // Из боя (без uid) карточка та же, но без кнопки.
-  function monsterCard(m, D, uid) {
+  function monsterCard(m, D, uid, extra) {
     const c = state.char;
     const def = data.monsters[m.id];
     if (!def) return;
@@ -493,6 +493,7 @@
       ${rows}
       ${skills ? `<div class="kv"><span>Умения</span><b>${skills}</b></div>` : ''}
       ${res ? `<div class="kv"><span>Сопротивления</span><b>${res}</b></div>` : ''}
+      ${extra && extra.effects || ''}
       <div class="props-label">Награда</div>
       <div class="kv"><span>Опыт</span><b>≈${fmt(exp)}</b></div>
       <div class="kv"><span>Золото</span><b>${g0}–${g1}</b></div>
@@ -502,6 +503,8 @@
       <div class="cost drops">${mats}${['essence', 'stone1', 'hp_potion_1'].map((id) => `<span class="info-link" data-info="${id}">${art(data.materials[id].art, '•')}${data.materials[id].name}</span>`).join('')}</div>`}
       ${uid != null && m.deadUntil == null && def.ai !== 'idle' ? `<div class="row-actions"><button class="btn primary" data-act="attack" ${m.busy ? 'disabled' : ''}>Напасть</button></div>` : ''}`, (e) => {
       if (e.target.closest('[data-act="attack"]')) { closeModal(); startFight(uid); }
+      const fx = e.target.closest('[data-fx]');
+      if (fx) { PC.battleUI.openEffect(...fx.dataset.fx.split('|')); return; }
       const un = e.target.closest('[data-unique]');
       if (un) PC.itemUI.openUnique(un.dataset.unique, m.level + dd.ilvl, () => monsterCard(m, D, uid));
     });
@@ -588,7 +591,7 @@
     closeModal();
     const common = {
       settings: c.settings,
-      onMonsterInfo: () => monsterCard(mob, D),
+      onMonsterInfo: (x) => monsterCard(mob, D, undefined, x),
       onSettings: () => app.act('settings', { patch: { ...common.settings } }),
       onEnd: (battle, { fled, share, aborted }) => {
         const sess = state.session;
@@ -660,7 +663,7 @@
     const B = PC.battles;
     const common = {
       settings: c.settings,
-      onMonsterInfo: () => monsterCard(mob, D),
+      onMonsterInfo: (x) => monsterCard(mob, D, undefined, x),
       onSettings: () => app.act('settings', { patch: { ...c.settings } }),
       onEnd: (battle, { fled, share, aborted }) => {
         const sess = state.session;

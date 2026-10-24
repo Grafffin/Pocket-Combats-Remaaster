@@ -540,20 +540,38 @@
     if (all) { openEffects(all.dataset.fxAll); return; }
     const card = e.target.closest('.fighter');
     if (!card) return;
-    if (card.id === 'f-m' && ui.opts && ui.opts.onMonsterInfo) { ui.opts.onMonsterInfo(); return; }
     const f = card.id === 'f-p' ? ui.battle.player : ui.battle.monster;
-    const s = f.s;
-    const rows = [
-      ['Атака', s.caster ? fmt(s.matk) : `${fmt(s.atk)} + ${fmt(s.weaponMin)}–${fmt(s.weaponMax)}`],
-      ['Защита / маг.', `${fmt(s.def)} / ${fmt(s.mdef)}`],
-      ['Крит', `${Math.round(s.crit)}% ×${Math.round(s.critDmg)}%`],
-      ['Точность / уклонение', `${Math.round(s.acc)} / ${Math.round(s.eva)}`],
-      ['Скорость', Math.round(s.speed)],
-      ['Блок', `${Math.round(s.block || 0)}%`],
-    ];
-    openModal(f.name, rows.map(([k, v]) => `<div class="kv"><span>${k}</span><b>${v}</b></div>`).join('') +
-      (f.effects.length ? `<p class="hint">${f.effects.map((x) => x.name).join(', ')}</p>` : ''));
+    if (card.id === 'f-m' && ui.opts && ui.opts.onMonsterInfo) { ui.opts.onMonsterInfo({ effects: effectsBlock(f) }); return; }
+    openPlayerCard(f);
   });
+
+  // Карточка героя в том же стиле, что у монстра: значки характеристик, затем эффекты и снаряжение (его можно открыть)
+  function openPlayerCard(f) {
+    const s = f.s;
+    const c = f === ui.battle.player && PC.app && PC.app.state && PC.app.state.char;
+    const res = [['fireRes', '🔥'], ['coldRes', '❄'], ['poisonRes', '☠']].filter(([k]) => s[k]).map(([k, i]) => `${i} ${s[k] > 0 ? '' : '−'}${Math.abs(s[k])}%`).join(' ');
+    const rows = [
+      ['hp', 'Здоровье', `${fmt(f.hp)} / ${fmt(f.maxHp)}`],
+      [s.caster ? 'matk' : 'atk', s.caster ? 'Магическая атака' : 'Атака', s.caster ? fmt(s.matk) : `${fmt(s.atk)} + ${fmt(s.weaponMin)}–${fmt(s.weaponMax)}`],
+      ['def', 'Защита / маг.', `${fmt(s.def)} / ${fmt(s.mdef)}`],
+      ['crit', 'Крит', `${Math.round(s.crit)}% ×${Math.round(s.critDmg)}%`],
+      ['accuracy', 'Точность / уклонение', `${Math.round(s.acc)} / ${Math.round(s.eva)}`],
+      ['speed', 'Скорость', Math.round(s.speed)],
+      ...(s.block ? [['block', 'Блок', `${Math.round(s.block)}%`]] : []),
+    ].map(([ic, k, v]) => `<div class="kv"><span>${art(`stats/${ic}`, '', 'stat-ico')}${k}</span><b>${v}</b></div>`).join('');
+    const gear = c ? `<div class="props-label">Снаряжение</div><div class="gear-grid">${Object.keys(data.slots).map((slot) => {
+      const it = c.equipment[slot];
+      return `<div class="slot-cell">${it ? PC.itemUI.tile(it, { attrs: `data-gear="${slot}"` }) : PC.itemUI.emptyTile(slot)}<small>${data.slots[slot].name}</small></div>`;
+    }).join('')}</div>` : '';
+    const fx = effectsBlock(f);
+    const show = () => openModal(f.name, `${rows}${res ? `<div class="kv"><span>Сопротивления</span><b>${res}</b></div>` : ''}${fx}${gear}`, (e) => {
+      const g = e.target.closest('[data-gear]');
+      if (g) { PC.itemUI.openItem(c, c.equipment[g.dataset.gear], 'equipped', '', null); return; }
+      const row = e.target.closest('[data-fx]');
+      if (row) openEffect(...row.dataset.fx.split('|'));
+    });
+    show();
+  }
 
   // Подробности эффекта: что он делает и сколько ему осталось. Только чтение — состояние боя не меняется.
   const MOD_NAMES = {
@@ -603,22 +621,23 @@
   }
 
   // Все эффекты бойца списком: что делает и сколько осталось; нажатие на строку — подробности с тем, кто наложил
-  function openEffects(fid) {
-    const b = ui.battle;
-    const f = b && b.fighters.find((x) => String(x.id) === fid);
-    if (!f) return;
+  function effectsBlock(f) {
     const shown = ((ui.snap && ui.snap[f.id] && ui.snap[f.id].effects) || f.effects).filter((x) => x.id !== 'shield');
-    if (!shown.length) return;
-    const rows = shown.map((s) => {
+    if (!shown.length) return '';
+    return `<div class="props-label">Эффекты</div><div class="list">${shown.map((s) => {
       const e = f.effects.find((x) => x.id === s.id) || s;
       return `<button class="fx-row" data-fx="${f.id}|${s.id}"><span class="chip ${s.kind}">${s.name.slice(0, 2)}</span>
         <div class="txt"><div class="fx-head"><b>${s.name}</b><span class="meta">${effectLeft(e, s)}</span></div>
         ${describeEffect(e).map((t) => `<div class="meta">${t}</div>`).join('')}</div></button>`;
-    }).join('');
-    openModal(`Эффекты · ${f.name}`, `<div class="list">${rows}</div>`, (ev) => {
-      const row = ev.target.closest('[data-fx]');
-      if (row) openEffect(...row.dataset.fx.split('|'));
-    });
+    }).join('')}</div>`;
+  }
+
+  // «+N» у значка открывает карточку бойца: эффекты теперь показаны в ней
+  function openEffects(fid) {
+    const f = ui.battle && ui.battle.fighters.find((x) => String(x.id) === fid);
+    if (!f) return;
+    if (f === ui.battle.monster && ui.opts && ui.opts.onMonsterInfo) ui.opts.onMonsterInfo({ effects: effectsBlock(f) });
+    else openPlayerCard(f);
   }
 
   function plural(n, one, few, many) {
@@ -650,5 +669,5 @@
     $('#tick-label').textContent = '';
   }
 
-  PC.battleUI = { start, stop, preview, openAutoSettings };
+  PC.battleUI = { start, stop, preview, openAutoSettings, openEffect };
 })();
