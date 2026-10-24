@@ -40,6 +40,7 @@
   const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
   const fightId = (v) => (typeof v === 'string' && UUID.test(v) ? v.toLowerCase() : bad());
   const MAX_EVENTS = 6000;
+  const MAX_PLAYERS = 20;
   // Сравнение снимков без учёта порядка ключей
   function canon(v) {
     if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
@@ -226,7 +227,14 @@
       if (c.fight) dropFight(c, ctx);
       if (c.transit) W().completeTravel(D(), c, ctx.now);
       if (c.transit) return no('Вы в пути');
-      W().update(D(), c, ctx.now, ctx.rng);
+      // число игроков на локации задаёт число слотов (+2 за игрока); монстры от этого не дороже и не щедрее
+      const players = a.players == null ? undefined : int(a.players, 1, MAX_PLAYERS);
+      W().update(D(), c, ctx.now, ctx.rng, players);
+      // общий мир (world_mobs): слоты, которые другие игроки убили или возродили, у героя на сервере устарели
+      if (Array.isArray(ctx.world)) {
+        W().applyShared(D(), c, c.location, ctx.world, ctx.now, null, (m, patch) => PC.worldSync && PC.worldSync.push(c.location, m, patch));
+        W().update(D(), c, ctx.now, ctx.rng, players);
+      }
       const r = W().engage(D(), c, str(a.uid), ctx.now);
       if (!r.ok) return r;
       const mob = r.mob, diff = W().diffOf(c);

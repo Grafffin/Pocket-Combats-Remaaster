@@ -22,23 +22,8 @@
 
   // Накладывает состояние слотов с сервера на монстров локации героя
   function apply(c, loc, rows) {
-    const data = PC.data, st = c.world && c.world[loc];
-    if (!st || !data.locations[loc] || data.locations[loc].safe) return;
-    const tick = W.tickOf(Date.now());
     const mine = PC.app.state.fight && PC.app.state.fight.uid;
-    const byslot = {};
-    for (const r of rows) byslot[r.slot] = r;
-    st.mobs.forEach((m, i) => {
-      const r = byslot[m.slot];
-      if (!r) return;
-      if (r.cycle > m.cycle) { m = st.mobs[i] = W.rollMob(data.locations[loc], loc, m.slot, r.cycle); }
-      else if (r.cycle < m.cycle) { S.push(loc, m, { dead_until: m.deadUntil, busy_until: m.busy ? (m.busySince || tick) + W.BUSY_TICKS : null }); return; }
-      if (r.dead_until != null && m.deadUntil == null) { m.deadUntil = Number(r.dead_until); m.busy = false; }
-      if (m.deadUntil == null && m.uid !== mine) {
-        if (r.busy_until != null && Number(r.busy_until) > tick) { m.busy = true; m.busySince = Number(r.busy_until) - W.BUSY_TICKS; }
-        else m.busy = false;
-      }
-    });
+    W.applyShared(PC.data, c, loc, rows, Date.now(), mine, (m, patch) => S.push(loc, m, patch));
   }
 
   let busy = false, lastLoc = null;

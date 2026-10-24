@@ -576,7 +576,7 @@
     if (state.session && state.session.host && !state.session.ended && !state.session.stopped) { toast('Вы ведёте бой, в котором уже погибли — дождитесь его конца', 'bad'); return false; }
     const B = PC.battles;
     const id = join ? join.id : crypto.randomUUID();
-    const r = await app.act(join ? 'fightJoin' : 'fightStart', join ? { id } : { id, uid });
+    const r = await app.act(join ? 'fightJoin' : 'fightStart', join ? { id } : { id, uid, players: W.playersHere(state.char) });
     if (!r.ok) { if (!r.shown) toast(r.reason, 'bad'); if (join) B.end(); return false; }
     const c = state.char;
     const mob = r.mob || { id: join.monster_id, level: join.monster_level };

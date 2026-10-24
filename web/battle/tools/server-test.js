@@ -211,6 +211,31 @@ const PC = globalThis.PC, data = PC.data;
   assert.ok(runAt(P4, 'arrive', {}, at(T0 + 3600e3, 'p4')).ok);
   assert.strictEqual(P4.row.data.location, to);
 
+  // общий мир: монстра возродили/убили другие игроки (world_mobs) — сервер узнаёт его по тому же uid, что и клиент
+  {
+    const W = PC.world, T1 = T0 + 50 * W.TICK_MS, tick = W.tickOf(T1);
+    const H = { row: mkHero('Сосед') };
+    W.update(data, H.row.data, T0, PC.makeRng(1));          // так сервер помнит локацию с прошлого раза
+    const client = JSON.parse(JSON.stringify(H.row.data));
+    const rows = [{ slot: 1, cycle: 7, dead_until: null, busy_until: null }, { slot: 2, cycle: 3, dead_until: tick + 1, busy_until: null }];
+    W.update(data, client, T1, PC.makeRng(2));
+    W.applyShared(data, client, zone, rows, T1, null, null);
+    const reborn = W.findMob(data, client, `${zone}.1.7`);
+    assert.ok(reborn && reborn.deadUntil == null, 'клиент видит монстра нового цикла');
+    assert.strictEqual(runAt(H, 'fightStart', { id: uuid(7), uid: reborn.uid }, at(T1, 'h')).ok, false, 'без общего мира сервер монстра не знает (старая ошибка)');
+    const o = run('fightStart', { id: uuid(7), uid: reborn.uid }, H.row, { ...at(T1, 'h'), world: rows });
+    assert.ok(o.result.ok && o.result.mob.uid === reborn.uid, 'с общим миром — тот же монстр');
+    assert.ok(o.world.some((w) => w.slot === 1 && w.cycle === 7 && w.busy > tick), 'сервер отмечает «занят» в общем мире');
+    const dead = run('fightStart', { id: uuid(8), uid: `${zone}.2.3` }, H.row, { ...at(T1, 'h'), world: rows });
+    assert.strictEqual(dead.result.ok, false, 'убитого другим игроком не дают');
+    // +2 слота за второго игрока: последний слот есть только при players: 2
+    const last = W.poolSize(data.locations[zone], 2) - 1;
+    const extra = W.rollMob(data.locations[zone], zone, last, 0).uid;
+    assert.strictEqual(run('fightStart', { id: uuid(9), uid: extra }, H.row, { ...at(T1, 'h'), world: [] }).result.ok, false);
+    assert.ok(run('fightStart', { id: uuid(9), uid: extra, players: 2 }, H.row, { ...at(T1, 'h'), world: [] }).result.ok, 'слот второго игрока');
+    assert.throws(() => run('fightStart', { id: uuid(9), uid: extra, players: 999 }, H.row, at(T1, 'h')), /bad_args/);
+  }
+
   console.log(`бои: одиночный ${won ? 'победа' : 'поражение'} за ${battle.turn} ход., общий ${rr.summary.win ? 'победа' : 'поражение'} (доля ${rr.contrib ? rr.contrib.pct : 0}%)`);
   console.log('server-test: ok');
 })().catch((e) => { console.error(e); process.exit(1); });
