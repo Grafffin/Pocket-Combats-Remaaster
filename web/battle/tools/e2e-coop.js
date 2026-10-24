@@ -306,6 +306,11 @@ async function attack(p) {
     const partyB = await B.page.evaluate(() => document.querySelector('#party').textContent);
     assert.ok(/Бета/.test(partyA), `у хозяина виден союзник: ${partyA}`);
     assert.ok(/Альфа/.test(partyB), `у вступившего виден хозяин: ${partyB}`);
+    // тап по карточке напарника открывает его информацию, а не мою
+    await A.page.click('#party .pmate');
+    const titleA = await A.page.evaluate(() => document.querySelector('#modal-title').textContent);
+    assert.ok(/Бета/.test(titleA), `окно напарника у хозяина: ${titleA}`);
+    await A.page.click('[data-mclose]', { position: { x: 5, y: 5 } });
     assert.ok(la.some((t) => /вступает в бой/.test(t)) || lb.some((t) => /вступает в бой/.test(t)), 'в логе есть вступление');
     // подсветка цели монстра: у обоих один и тот же игрок, ровно одна обводка на экране
     const aggroOf = (pg) => pg.evaluate(() => {
