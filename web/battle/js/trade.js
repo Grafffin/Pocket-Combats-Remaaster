@@ -69,7 +69,8 @@
   async function handle(op, args, io, ctx) {
     const { uid, now } = ctx;
     const data = D();
-    const row = await io.hero(uid);
+    // герой и сделка читаются одновременно: меньше круговых запросов к базе
+    const [row, trade] = await Promise.all([io.hero(uid), op === 'tradeOpen' ? null : io.trade(idOf(args.id))]);
     if (!row || !row.data) fail('no_hero');
     const mine = () => P().migrate(data, clone(row.data));
     const answer = (trade, char, rev) => ({ char: char || row.data, stash: row.stash, rev: rev != null ? rev : row.rev, result: { ok: true, trade } });
@@ -84,7 +85,6 @@
       return answer(await io.create(uid, to, me.location));
     }
 
-    const trade = await io.trade(idOf(args.id));
     if (!trade) fail('no_trade');
     const me = trade.a === uid ? 'a' : trade.b === uid ? 'b' : fail('not_yours');
     const ot = other(me);
@@ -117,7 +117,7 @@
     if (op === 'tradeOffer') {
       open();
       if (!trade.accepted) fail('not_accepted');
-      await placed();
+      if (!here(mine(), trade.loc)) fail('not_here');   // партнёра сверяют принятие и подтверждение, лишнего чтения при правках нет
       const char = mine();
       // прежний залог возвращаем, затем берём новый: сумма не может превысить то, что у героя есть
       const back = receive(char, trade[`offer_${me}`]);

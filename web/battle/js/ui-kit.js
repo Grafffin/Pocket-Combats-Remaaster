@@ -80,6 +80,7 @@
     const cb = modalOnClose;
     modalOnClose = null;
     if (cb) cb();
+    window.dispatchEvent(new Event('pc-modal-closed'));   // обмен возвращает своё окно, если его закрыло чужое
   }
   $('#modal').addEventListener('click', (e) => {
     if (e.target.closest('[data-mclose]')) return closeModal();

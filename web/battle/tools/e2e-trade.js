@@ -192,6 +192,17 @@ async function openPlayer(browser, uid, hero) {
     assert.ok(await B.page.evaluate(() => !!document.querySelector('.item-card')), 'карточка вещи партнёра');
     await B.page.click('[data-act="back"]');
     await until(() => B.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 3000, 'возврат в окно обмена');
+    // закрыть карточку крестиком — обмен возвращается, у партнёра он не закрывается
+    await B.page.click('[data-their="0"]');
+    await B.page.click('[data-mclose]', { position: { x: 5, y: 5 } });
+    await until(() => B.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 3000, 'обмен вернулся после крестика карточки');
+    assert.ok(await A.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 'у партнёра обмен остался');
+    // крестик самого обмена закрывает окно, но не сделку, и само не открывается
+    await B.page.click('[data-mclose]', { position: { x: 5, y: 5 } });
+    await sleep(600);
+    assert.ok(await B.page.evaluate(() => document.querySelector('#modal').hidden), 'окно обмена закрыто вручную остаётся закрытым');
+    await B.page.click('.trade-banner [data-b="ok"]');
+    await until(() => B.page.evaluate(() => !!document.querySelector('#modal-title[data-trade]')), 3000, 'обмен открывается из плашки');
     console.log('ok   вещь партнёра можно осмотреть и вернуться в обмен');
 
     stage = 'подтверждения';

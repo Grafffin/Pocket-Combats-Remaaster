@@ -73,7 +73,7 @@
   // Опрос на случай, если Realtime не включён: редко в покое, часто пока открыто окно
   async function poll() {
     if (!on() || document.hidden) return;
-    const gap = T.view ? 2500 : 20000;
+    const gap = T.view ? 1200 : 20000;
     if (Date.now() - polled < gap) return;
     polled = Date.now();
     const { data: rows, error } = await auth.client.from('game_trades').select('*').or(`a.eq.${me()},b.eq.${me()}`).order('updated_at', { ascending: false }).limit(6);
@@ -318,7 +318,7 @@
     T.dirty = true;
     render();
     clearTimeout(T.timer);
-    T.timer = setTimeout(send, 500);
+    T.timer = setTimeout(send, 200);
   }
   async function send() {
     if (T.sending) { T.resend = true; return; }
@@ -340,6 +340,14 @@
   }
 
   // ---------- Включение ----------
+
+  // Любое окно поверх обмена (карточка вещи, герой…) при закрытии возвращает окно обмена; крестик самого обмена — нет
+  window.addEventListener('pc-modal-closed', () => {
+    setTimeout(() => {
+      const r = T.row;
+      if (r && on() && r.state === 'open' && r.accepted && T.dismissed !== r.id && modalFree()) openView();
+    }, 0);
+  });
 
   window.addEventListener('pc-auth', () => { if (!auth.user) unwatch(); });
   setInterval(() => { if (on() && !channels.length) watch(); if (!on() && channels.length) unwatch(); }, 2000);
