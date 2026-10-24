@@ -33,6 +33,48 @@
   const sortItems = (list) => list.filter(Boolean).sort((x, y) =>
     ((SORT_KIND[D().types[x.type].kind] ?? 9) - (SORT_KIND[D().types[y.type].kind] ?? 9)) || (y.rarity - x.rarity) || (I().power(D(), y) - I().power(D(), x)));
 
+  // ---------- Бои (серверная правда наград) ----------
+  // Бой выдаёт сервер: seed, монстра и снимок бойца (запись боя rec хранится вне героя, ctx.fight / ctx.saveFight).
+  // В конце клиент сдаёт историю боя (lockstep hist: seed, монстр, первый состав, события), сервер переигрывает её
+  // тем же движком и сам начисляет опыт, золото, добычу и расход зелий. Подделанная история не сходится и награды не даёт.
+  const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+  const fightId = (v) => (typeof v === 'string' && UUID.test(v) ? v.toLowerCase() : bad());
+  const MAX_EVENTS = 6000;
+  // Сравнение снимков без учёта порядка ключей
+  function canon(v) {
+    if (Array.isArray(v)) return `[${v.map(canon).join(',')}]`;
+    if (v && typeof v === 'object') return `{${Object.keys(v).sort().map((k) => `${JSON.stringify(k)}:${canon(v[k])}`).join(',')}}`;
+    return JSON.stringify(v);
+  }
+  const same = (a, b) => canon(a) === canon(b);
+  const snapshot = (c) => JSON.parse(JSON.stringify(P().toFighter(D(), c)));
+
+  // Закрыть бой без наград и потерь (оборвался, брошен): монстр свободен, передышка до следующего тика
+  function dropFight(c, ctx) {
+    const f = c.fight;
+    if (!f) return;
+    if (f.host && f.mob) W().disengage(D(), c, f.mob, false, ctx.now);
+    else c.restTick = W().tickOf(ctx.now) + 1;
+    c.fight = null;
+  }
+
+  // Переиграть историю боя для игрока me. null — история не сходится с записью боя на сервере.
+  function replay(rec, hist, me, myTpl) {
+    if (!hist || typeof hist !== 'object' || !Array.isArray(hist.roster) || !Array.isArray(hist.ev) || hist.ev.length > MAX_EVENTS) return null;
+    if (hist.seed !== rec.seed || !same(hist.monster, rec.monster)) return null;
+    if (hist.roster.length !== 1 || hist.roster[0].key !== rec.owner || !same(hist.roster[0].tpl, rec.tpl)) return null;
+    if (me !== rec.owner) {
+      const j = hist.ev.find((e) => e && e.k === 'j' && e.key === me);
+      if (!j || !same(j.tpl, myTpl)) return null;
+    }
+    let b;
+    try {
+      b = new PC.Battle({ players: hist.roster, monster: hist.monster, seed: hist.seed, data: D(), localKey: me });
+      for (const e of hist.ev) { if (b.ended) break; b.applyEvent(e); }
+    } catch (e) { return null; }
+    return b.player ? b : null;
+  }
+
   const actions = {
     // ---------- Герой ----------
     create(S, a) {
@@ -165,6 +207,82 @@
       return I().craft(D(), c, type, int(a.tier, 1, D().TIER_LEVEL.length - 1), ctx.rng);
     },
 
+    // ---------- Переходы ----------
+    travel(S, a, ctx) {
+      const c = hero(S);
+      if (c.fight) return no('Сначала закончите бой');
+      return W().startTravel(D(), c, key(D().locations, a.to), ctx.now);
+    },
+    cancelTravel(S) { W().cancelTravel(hero(S)); return { ok: true }; },
+    arrive(S, a, ctx) {
+      const r = W().completeTravel(D(), hero(S), ctx.now);
+      return r ? { ok: true, ...r } : no('Ещё в пути');
+    },
+
+    // ---------- Бои ----------
+    // Напасть на монстра локации: сервер сам проверяет передышку и монстра (по своему времени и своему миру)
+    fightStart(S, a, ctx) {
+      const c = hero(S), id = fightId(a.id);
+      if (c.fight) dropFight(c, ctx);
+      if (c.transit) W().completeTravel(D(), c, ctx.now);
+      if (c.transit) return no('Вы в пути');
+      W().update(D(), c, ctx.now, ctx.rng);
+      const r = W().engage(D(), c, str(a.uid), ctx.now);
+      if (!r.ok) return r;
+      const mob = r.mob, diff = W().diffOf(c);
+      const monster = JSON.parse(JSON.stringify(PC.monsters.monsterAt(mob.id, mob.level, diff)));
+      const tpl = snapshot(c), seed = ctx.rng.int(1, 2147483646);
+      ctx.saveFight = { id, owner: ctx.uid, seed, monster, tpl, loc: c.location, mob: { uid: mob.uid, id: mob.id, level: mob.level }, diff, start: ctx.now };
+      c.fight = { id, host: true, mob: mob.uid, tpl, start: ctx.now };
+      return { ok: true, seed, monster, tpl, mob: { uid: mob.uid, id: mob.id, level: mob.level }, diff };
+    },
+    // Вступить в чужой бой (или вернуться в свой после обновления страницы)
+    fightJoin(S, a, ctx) {
+      const c = hero(S), id = fightId(a.id), rec = ctx.fight;
+      if (c.fight && c.fight.id === id) return { ok: true, tpl: c.fight.tpl, mob: rec && rec.mob, diff: rec && rec.diff };
+      if (!rec || rec.id !== id) return no('Бой уже закончился');
+      if (c.transit || c.location !== rec.loc) return no('Бой идёт на другой локации');
+      if (!W().canAttack(c, ctx.now)) return no(`Передышка: ${Math.ceil(W().restLeft(c, ctx.now) / 1000)} с`);
+      if (c.fight) dropFight(c, ctx);
+      const tpl = snapshot(c);
+      c.fight = { id, host: false, tpl, start: ctx.now };
+      return { ok: true, tpl, mob: rec.mob, diff: rec.diff };
+    },
+    // Итог боя по его истории: награда, поражение или бегство считаются здесь
+    fightEnd(S, a, ctx) {
+      const c = hero(S), id = fightId(a.id), rec = ctx.fight, f = c.fight;
+      if (!f || f.id !== id) return no('Бой уже закрыт');
+      if (!rec || rec.id !== id) { dropFight(c, ctx); return no('Бой не найден на сервере'); }
+      const b = replay(rec, a.hist, ctx.uid, f.tpl);
+      // ход длится тик мира: бой не может закончиться быстрее, чем прошло его ходов
+      if (!b || ctx.now - rec.start < (b.turn - 1) * W().TICK_MS * 0.5) { dropFight(c, ctx); return no('Бой не сошёлся с сервером — без награды'); }
+      // вышел из боя (кнопка «Сбежать», событие l) — бегство без потерь, как и раньше; погиб — поражение
+      const p = b.player, won = b.ended && b.winner === p, fled = !won && (p.left || p.hp > 0);
+      // зелья: списываем выпитое в бою из того, что есть сейчас (а не возвращаем запас из снимка)
+      for (const it of p.consumables) {
+        const had = (f.tpl.consumables.find((x) => x.id === it.id) || { count: 0 }).count;
+        it.count = Math.max(0, (c.materials[it.id] || 0) - Math.max(0, had - it.count));
+      }
+      const fight = { monsterId: rec.mob.id, level: rec.mob.level, diff: rec.diff };
+      let contrib = null;
+      if (won && b.players.length > 1) {
+        const r = b.rewardMult(p);
+        fight.lootMult = r.mult;
+        contrib = { pct: Math.round(r.share * 100), pool: r.pool, n: b.players.length };
+      }
+      // награда зоны боя: уйти с локации в бою нельзя (travel отказывает), поэтому c.location === rec.loc
+      const summary = P().applyBattleResult(D(), c, b, fight, ctx.rng, { fled });
+      if (f.host) W().disengage(D(), c, f.mob, won, ctx.now); else c.restTick = W().tickOf(ctx.now) + 1;
+      c.fight = null;
+      return { ok: true, summary, contrib, turns: b.turn };
+    },
+    // Бой оборвался (хозяин ушёл, другая версия игры): без наград и без потерь
+    fightAbort(S, a, ctx) {
+      const c = hero(S), id = fightId(a.id);
+      if (c.fight && c.fight.id === id) dropFight(c, ctx);
+      return { ok: true };
+    },
+
     // ---------- Сундук (деревня, общий для героев аккаунта) ----------
     stashTake(S, a) {
       const c = village(hero(S)), st = stashOf(S), i = int(a.index, 0, STASH_SIZE - 1);
@@ -194,6 +312,6 @@
     },
   };
 
-  PC.actions = { list: actions, ActionError, STASH_SIZE, STASH_PAGE, SORT_KIND, sortItems };
+  PC.actions = { list: actions, ActionError, STASH_SIZE, STASH_PAGE, SORT_KIND, sortItems, canon };
   if (typeof module !== 'undefined') module.exports = PC;
 })(typeof window !== 'undefined' ? window : globalThis);
