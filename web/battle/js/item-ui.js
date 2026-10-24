@@ -149,9 +149,11 @@
 
   // Сильнее надетого? Сравниваем боевую оценку героя с этой вещью и без неё (кэш до следующего изменения)
   const upgradeCache = new Map();
-  function isUpgrade(char, item) {
+  // Отпечаток героя для кэша: считается один раз на перерисовку сумки (sig), а не на каждую из десятков вещей
+  const upgradeSig = (char) => `${JSON.stringify(char.equipment)}|${JSON.stringify(char.stats)}|${char.level}`;
+  function isUpgrade(char, item, sig = upgradeSig(char)) {
     if (!I.canEquip(data, char, item).ok) return false;
-    const key = `${item.uid}|${JSON.stringify(char.equipment)}|${JSON.stringify(char.stats)}|${char.level}`;
+    const key = `${item.uid}|${sig}`;
     if (upgradeCache.has(key)) return upgradeCache.get(key);
     const slots = I.slotsFor(data, item);
     const slot = slots.find((s) => !char.equipment[s]) || slots.reduce((a, b) => (I.power(data, char.equipment[a]) <= I.power(data, char.equipment[b]) ? a : b));
@@ -346,6 +348,6 @@
 
   const costHtml = (cost) => `<div class="cost">${Object.entries(cost).map(([k, v]) => matChip(k, v)).join('')}</div>`;
 
-  PC.itemUI = { KIND_EMOJI, profBar, profUpText, recipeRows, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
+  PC.itemUI = { upgradeSig, KIND_EMOJI, profBar, profUpText, recipeRows, tile, stackTile, emptyTile, nameHtml, cardHtml, uniqueSample, openUnique, diffHtml, isUpgrade, openItem, openInfo, matChip, costHtml };
   void closeModal;
 })();

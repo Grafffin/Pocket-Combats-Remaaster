@@ -49,6 +49,16 @@ const srv = http.createServer((q, r) => {
   await p.evaluate(() => PC.kit.openModal('Окно', '<p>тест</p>'));
   await swipe(-160, 0); assert.strictEqual(await tab(), 'world', 'при открытом окне свайп не работает');
   await p.evaluate(() => PC.kit.closeModal());
+  // кнопки снизу тоже анимируют въезд: вперёд — справа, назад — слева
+  await p.evaluate(() => { PC.app.setTab('world'); });
+  await p.evaluate(() => document.querySelector('#tabs [data-tab="bag"]').click());
+  assert.ok(await p.evaluate(() => document.querySelector('#tab-bag').classList.contains('slide-l')), 'кнопка «Сумка» вперёд: въезд справа');
+  await p.waitForTimeout(350);
+  await p.evaluate(() => document.querySelector('#tabs [data-tab="hero"]').click());
+  assert.ok(await p.evaluate(() => document.querySelector('#tab-hero').classList.contains('slide-r')), 'кнопка «Герой» назад: въезд слева');
+  await p.waitForTimeout(350);
+  await p.evaluate(() => PC.app.setTab('world'));
+  await p.waitForTimeout(350);
   // анимация входа
   await swipe(-160, 0, 120);
   assert.deepStrictEqual(await p.evaluate(() => document.querySelector('#tab-hero').className), 'tab', 'класс анимации снят после неё');

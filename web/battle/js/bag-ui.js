@@ -40,8 +40,9 @@
       return `<div class="slot-cell" style="grid-area:${slot}">${inner}<small>${blocked ? 'двуручное' : data.slots[slot].name}</small></div>`;
     }).join('');
 
+    const sig = PC.itemUI.upgradeSig(c);
     const cells = c.bag.map((it, i) => (it
-      ? (it.stack ? stackTile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"` }) : tile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"`, cls: `${it.fresh ? 'new' : ''} ${isUpgrade(c, it) ? 'up' : ''}`, can: I.canEquip(data, c, it).ok }))
+      ? (it.stack ? stackTile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"` }) : tile(it, { attrs: `data-drag="bag:${i}" data-drop="bag:${i}"`, cls: `${it.fresh ? 'new' : ''} ${isUpgrade(c, it, sig) ? 'up' : ''}`, can: I.canEquip(data, c, it).ok }))
       : `<div class="tile empty" data-drop="bag:${i}"></div>`)).join('');
 
     const free = I.bagFree(c);
